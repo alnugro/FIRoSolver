@@ -1,18 +1,15 @@
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import medfilt, freqz, firwin
+from scipy.signal import medfilt
 from matplotlib.patches import Rectangle
 
 class Plotter:
     def __init__(self, app=None):
         self.app = app
         self.fig, self.ax = plt.subplots(figsize=(8, 4))
-        self.numtaps = 101
-        self.cutoff = 0.1
-        self.h = firwin(self.numtaps, self.cutoff)
-        self.w, self.h_response = freqz(self.h, worN=8000)
-        self.x = self.w / np.pi
+
+        self.x = np.arange(0.0, 1.0, 0.01)
         self.y = np.sin(self.x)
 
         if app:
@@ -20,7 +17,7 @@ class Plotter:
             self.future = []
 
         self.line, = self.ax.plot(self.x, self.y, 'b')
-        self.draggable_point, = self.ax.plot([self.x[4000]], [self.y[4000]], 'ro', picker=5)
+        self.draggable_point, = self.ax.plot([self.x[0]], [self.y[0]], 'ro', picker=5)
 
         self.ax.set_title('Draggable Line Example')
         self.ax.set_xlabel('Normalized Frequency (0-1)')
@@ -54,7 +51,7 @@ class Plotter:
             self.app.canvas.draw()
 
     def smoothen_plot(self):
-        kernel_size = self.app.kernel_slider.get()
+        kernel_size = self.app.kernel_slider.value()
         self.y = medfilt(self.y, kernel_size)
         self.save_state()
         self.redraw_plot()
@@ -76,16 +73,16 @@ class Plotter:
     def toggle_selection_mode(self):
         self.selection_mode = not self.selection_mode
         if self.selection_mode:
-            self.app.selection_mode_button.config(text="Exit Selection Mode")
+            self.app.selection_mode_button.setText("Exit Selection Mode")
         else:
-            self.app.selection_mode_button.config(text="Selection Mode")
+            self.app.selection_mode_button.setText("Selection Mode")
 
     def apply_flatten(self):
         if not self.selected_range:
             return
         start, end = self.selected_range
         start, end = sorted([start, end])
-        target_y = self.app.flat_level_slider.get()
+        target_y = self.app.flat_level_slider.value()
         indices = (self.x >= start) & (self.x <= end)
         self.y[indices] = target_y
         self.save_state()
@@ -112,7 +109,7 @@ class Plotter:
             if event.button == 1 and contains:
                 self.dragging = True
                 self.move_only = False
-            elif event.button == 3:
+            elif event.button == 3 and contains:
                 self.dragging = True
                 self.move_only = True
                 self.update_draggable_point(event, move_only=True)
@@ -121,7 +118,7 @@ class Plotter:
         if self.selection_mode and self.selected_range:
             self.selected_range[1] = event.xdata
             self.selection_mode = False
-            self.app.selection_mode_button.config(text="Selection Mode")
+            self.app.selection_mode_button.setText("Selection Mode")
             if self.selection_rect:
                 self.selection_rect.set_width(self.selected_range[1] - self.selected_range[0])
                 self.app.canvas.draw()
@@ -157,7 +154,7 @@ class Plotter:
             idx = np.argmin(np.abs(self.x - x))
             x = self.x[idx]
             self.draggable_point.set_data([x], [y])
-            sigma = self.app.gaussian_width_slider.get()
+            sigma = self.app.gaussian_width_slider.value()
             influence = np.exp(-0.5 * ((self.x - x) / sigma) ** 2)
             delta_y = y - self.y[idx]
             self.y += influence * delta_y

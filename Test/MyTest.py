@@ -1,34 +1,51 @@
 import numpy as np
-
-# Example of non-linear distortion
-def non_linear_distortion(x, alpha, beta):
-    return x + alpha * x**2 + beta * x**3
-
-# Example inverse filter
-def inverse_filter(y, alpha, beta, iterations=5):
-    x = y.copy()
-    for _ in range(iterations):
-        x = y - alpha * x**2 - beta * x**3
-    return x
-
-# Generate a test signal
-fs = 44100  # Sampling frequency
-t = np.linspace(0, 1, fs)
-x_original = np.sin(2 * np.pi * 440 * t)  # A 440 Hz sine wave
-
-# Apply non-linear distortion
-alpha, beta = 0.5, 0.2
-y_distorted = non_linear_distortion(x_original, alpha, beta)
-
-# Apply inverse filter to correct distortion
-x_corrected = inverse_filter(y_distorted, alpha, beta)
-
-# Compare original and corrected signals
 import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 
-plt.figure()
-plt.plot(t, x_original, label='Original Signal')
-plt.plot(t, y_distorted, label='Distorted Signal')
-plt.plot(t, x_corrected, label='Corrected Signal')
-plt.legend()
+# Define the original function
+def original_function(x, y):
+    return x / y
+
+# Define piecewise linear function
+def piecewise_linear(X, a1, b1, c1, a2, b2, c2):
+    x, y = X
+    r = x / y
+    return np.piecewise(r, 
+                        [r <= 1, r > 1], 
+                        [lambda r: a1 * r + b1 * y + c1, 
+                         lambda r: a2 * r + b2 * y + c2])
+
+# Generate data points for fitting
+x = np.linspace(0.1, 10, 100)
+y = np.linspace(0.1, 10, 100)
+x, y = np.meshgrid(x, y)
+z = original_function(x, y)
+
+# Flatten the arrays for curve fitting
+x_data = x.ravel()
+y_data = y.ravel()
+z_data = z.ravel()
+
+# Define initial guesses for the parameters
+initial_guesses = [1, 0, 0, 1, 0, 0]
+
+# Fit the piecewise linear function to the data
+params, _ = curve_fit(piecewise_linear, (x_data, y_data), z_data, p0=initial_guesses)
+
+# Extract fitted parameters
+a1, b1, c1, a2, b2, c2 = params
+
+# Define the fitted piecewise linear function
+def fitted_piecewise_linear(x, y):
+    return piecewise_linear((x, y), a1, b1, c1, a2, b2, c2)
+
+# Plot the original and fitted functions
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.scatter(x, y, z, color='blue', label='Original')
+ax.scatter(x, y, fitted_piecewise_linear(x, y), color='red', label='Piecewise Linear Approximation')
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.legend()
 plt.show()
