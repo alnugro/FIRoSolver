@@ -233,24 +233,24 @@ class DraggableLine(tk.Tk):
             self.selection_rect = None
 
     def redraw_plot(self):
-        # Clear the previous plot
-        self.ax.clear()
+         # Clear the previous plot
+         self.ax.clear()
 
-        # Plot the updated line
-        self.ax.plot(self.x, self.y, 'b')
+         # Plot the updated line
+         self.ax.plot(self.x, self.y, 'b')
 
-        # Update the draggable point
-        current_x, current_y = self.draggable_point.get_data()
-        idx = np.argmin(np.abs(self.x - current_x))
-        self.draggable_point.set_data([self.x[idx]], [self.y[idx]])
-        self.ax.plot([self.x[idx]], [self.y[idx]], 'ro', picker=5)
+         # Update the draggable point
+         current_x, current_y = self.draggable_point.get_data()
+         idx = np.argmin(np.abs(self.x - current_x))
+         self.draggable_point.set_data([self.x[idx]], [self.y[idx]])
+         self.ax.plot([self.x[idx]], [self.y[idx]], 'ro', picker=5)
 
-        self.ax.set_title('Draggable Line Example')
-        self.ax.set_xlabel('X axis')
-        self.ax.set_ylabel('Y axis')
-        self.ax.grid()
+         self.ax.set_title('Draggable Line Example')
+         self.ax.set_xlabel('X axis')
+         self.ax.set_ylabel('Y axis')
+         self.ax.grid()
 
-        self.canvas.draw()
+         self.canvas.draw()
 
     def on_closing(self):
         # Disconnect matplotlib event handlers
