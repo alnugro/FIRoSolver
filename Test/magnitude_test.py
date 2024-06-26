@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 class SolverFunc():
     def __init__(self,filter_type, order):
         self.filter_type=filter_type
-        self.half_order = order//2
+        self.half_order = (order//2)
 
     def db_to_linear(self,db_arr):
         # Create a mask for NaN values
@@ -52,6 +52,7 @@ class FIRFilter:
 
     def runsolver(self):
         self.order_current = int(self.order_upper)
+        half_order = (self.order_current // 2)
         
         print("solver called")
         sf = SolverFunc(self.filter_type, self.order_current)
@@ -63,7 +64,7 @@ class FIRFilter:
         self.freq_lower_lin = [sf.db_to_linear(f) for f in self.freq_lower]
 
         # declaring variables
-        h_int = [Int(f'h_int_{i}') for i in range(self.order_current)]
+        h_int = [Int(f'h_int_{i}') for i in range(half_order+1)]
 
         # Create a Z3 solver instance
         solver = Solver()
@@ -74,42 +75,43 @@ class FIRFilter:
             print("lower freq:", self.freq_lower_lin[i])
             print("freq:", self.freqx_axis[i])
             term_sum_exprs = 0
-            half_order = self.order_current // 2
+            
             if np.isnan(self.freq_upper_lin[i]) or np.isnan(self.freq_lower_lin[i]):
                 continue
 
-            for j in range((self.order_current // 2)):
+            for j in range(half_order+1):
                 cm_const = sf.cm_handler(j, self.freqx_axis[i])
-                term_sum_exprs += h_int[(self.order_current//2)-j] * cm_const
-            abs_term_sum_exprs = If(term_sum_exprs >= 0, term_sum_exprs, -term_sum_exprs)
-            solver.add(abs_term_sum_exprs <= self.freq_upper_lin[i])
+                term_sum_exprs += h_int[half_order-j] * cm_const
+                print("this coef h", half_order-j, " is multiplied by ", cm_const)
+            solver.add(term_sum_exprs <= self.freq_upper_lin[i])
 
 
             if self.freq_lower_lin[i] < self.ignore_lowerbound_lin:
+                solver.add(term_sum_exprs >= -self.freq_upper_lin[i])
                 continue
-            solver.add(abs_term_sum_exprs >= self.freq_lower_lin[i])
+            solver.add(term_sum_exprs >= self.freq_lower_lin[i])
             
 
 
-        for i in range(self.order_current // 2):
-            mirror = (i + 1) * -1
+        # for i in range(self.order_current // 2):
+        #     mirror = (i + 1) * -1
 
-            if self.filter_type == 0 or self.filter_type == 1:
-                solver.add(h_int[i] == h_int[mirror])
-                print(f"Added constraint: h_int[{i}] == h_int[{mirror}]")
+        #     if self.filter_type == 0 or self.filter_type == 1:
+        #         solver.add(h_int[i] == h_int[mirror])
+        #         print(f"Added constraint: h_int[{i}] == h_int[{mirror}]")
 
-            if self.filter_type == 2 or self.filter_type == 3:
-                solver.add(h_int[i] == -h_int[mirror])
-                print(f"Added constraint: h_int[{i}] == -h_int[{mirror}]")
+        #     if self.filter_type == 2 or self.filter_type == 3:
+        #         solver.add(h_int[i] == -h_int[mirror])
+        #         print(f"Added constraint: h_int[{i}] == -h_int[{mirror}]")
 
-            print(f"stype = {self.filter_type}, {i} is equal with {mirror}")
+        #     print(f"stype = {self.filter_type}, {i} is equal with {mirror}")
 
         print("solver running")
 
         if solver.check() == sat:
             print("solver sat")
             model = solver.model()
-            for i in range(self.order_current):
+            for i in range(half_order+1):
                 print(f'h_int_{i} = {model[h_int[i]]}')
                 self.h_int_res.append(model[h_int[i]].as_long())
 
@@ -123,7 +125,10 @@ class FIRFilter:
         print("result plotter called")
         fir_coefficients = np.array([])
         for i in range(len(result_coef)):
-            fir_coefficients = np.append(fir_coefficients, result_coef[i])
+            fir_coefficients = np.append(fir_coefficients, result_coef[(i+1)*-1])
+
+        for i in range(len(result_coef)-1):
+            fir_coefficients = np.append(fir_coefficients, result_coef[i+1])
 
         print(fir_coefficients)
 
@@ -143,7 +148,9 @@ class FIRFilter:
         # print("magdb in mp", magnitude_response_db)
 
         # Normalize frequencies to range from 0 to 1
-        normalized_frequencies = frequencies / np.max(frequencies)
+        omega= frequencies * 2 * np.pi
+        normalized_omega = omega / np.max(omega)
+   
 
 
         #plot input
@@ -152,13 +159,14 @@ class FIRFilter:
 
         # Plot the updated upper_ydata
         self.ax.set_ylim([-0.5, 4])
-        self.ax.plot(normalized_frequencies, magnitude_response, color='y')
+        self.ax.plot(normalized_omega, magnitude_response, color='y')
 
         if self.app:
             self.app.canvas.draw()
 
     def plot_validation(self):
         print("Validation plotter called")
+        half_order = (self.order_current // 2)
         sf = SolverFunc(self.filter_type, self.order_current)
         # Array to store the results of the frequency response computation
         computed_frequency_response = []
@@ -169,12 +177,12 @@ class FIRFilter:
             term_sum_exprs = 0
             
             # Compute the sum of products of coefficients and the cosine/sine terms
-            for j in range(len(self.h_int_res) // 2):
+            for j in range(half_order+1):
                 cm_const = sf.cm_handler(j, omega)
-                term_sum_exprs += self.h_int_res[j] * cm_const
+                term_sum_exprs += self.h_int_res[half_order-j] * cm_const
             
             # Append the computed sum expression to the frequency response list
-            computed_frequency_response.append(term_sum_exprs)
+            computed_frequency_response.append(np.abs(term_sum_exprs))
         
         # Normalize frequencies to range from 0 to 1 for plotting purposes
 
@@ -196,7 +204,7 @@ class FIRFilter:
 
 # Test inputs
 filter_type = 0
-order_upper = 8
+order_upper = 12
 
 
 # Initialize freq_upper and freq_lower with NaN values

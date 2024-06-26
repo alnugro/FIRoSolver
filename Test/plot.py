@@ -3,38 +3,90 @@ import matplotlib.pyplot as plt
 
 # Define your FIR filter coefficients
 h = [
-    0, -2, -4, -4, -1, -1, -4, -4, -2, 0
+    0.000000000000000000,
+    -0.000011466433343440,
+    -0.000048159680438716,
+    -0.000070951498745996,
+    0.000000000000000000,
+    0.000226394896924650,
+    0.000570593070542985,
+    0.000843882357908127,
+    0.000742644459879189,
+    -0.000000000000000001,
+    -0.001387330856962112,
+    -0.002974017320060804,
+    -0.003876072294410999,
+    -0.003078546062261788,
+    0.000000000000000002,
+    0.004911281747189231,
+    0.009897689392343489,
+    0.012239432700612913,
+    0.009302643950572093,
+    -0.000000000000000005,
+    -0.013947257358995015,
+    -0.027649479941983943,
+    -0.034045985830080311,
+    -0.026173578588735643,
+    0.000000000000000007,
+    0.043288592274982135,
+    0.096612134128292462,
+    0.148460098539443669,
+    0.186178664190551207,
+    0.199977588313552862,
+    0.186178664190551235,
+    0.148460098539443669,
+    0.096612134128292462,
+    0.043288592274982128,
+    0.000000000000000007,
+    -0.026173578588735653,
+    -0.034045985830080325,
+    -0.027649479941983936,
+    -0.013947257358995019,
+    -0.000000000000000005,
+    0.009302643950572094,
+    0.012239432700612920,
+    0.009897689392343489,
+    0.004911281747189235,
+    0.000000000000000002,
+    -0.003078546062261790,
+    -0.003876072294411004,
+    -0.002974017320060808,
+    -0.001387330856962112,
+    -0.000000000000000001,
+    0.000742644459879189,
+    0.000843882357908127,
+    0.000570593070542984,
+    0.000226394896924650,
+    0.000000000000000000,
+    -0.000070951498745996,
+    -0.000048159680438716,
+    -0.000011466433343440,
+    0.000000000000000000,
 ]
 fir_coefficients = np.array(h)  # Example coefficients
 
 # Compute the FFT of the coefficients
-N = 512  # Number of points for the FFT
+N = 1000  # Number of points for the FFT
 frequency_response = np.fft.fft(fir_coefficients, N)
-frequencies = np.fft.fftfreq(N, d=1.0)[:N//2]  # Extract positive frequencies up to Nyquist
+frequencies = np.fft.fftfreq(N, d=1.0)  # Extract positive frequencies up to Nyquist
+
+print(frequencies)
 
 # Compute the magnitude and phase response for positive frequencies
-magnitude_response = np.abs(frequency_response)[:N//2]
-phase_response = np.angle(frequency_response)[:N//2]
+magnitude_response = np.abs(frequency_response)
+# phase_response = np.angle(frequency_response)[:N//2]
 
-# Normalize frequencies to range from 0 to 1
-normalized_frequencies = frequencies / np.max(frequencies)
+# # Normalize frequencies to range from 0 to 1
+# normalized_frequencies = frequencies / np.max(frequencies)
 
 # Plot the magnitude response
 plt.figure(figsize=(12, 6))
-plt.subplot(2, 1, 1)
-plt.plot(normalized_frequencies, magnitude_response)
+plt.plot(frequencies, magnitude_response)
 plt.title('Magnitude Response')
 plt.xlabel('Normalized Frequency')
 plt.ylabel('Magnitude')
 plt.grid()
 
-# Plot the phase response
-plt.subplot(2, 1, 2)
-plt.plot(normalized_frequencies, phase_response)
-plt.title('Phase Response')
-plt.xlabel('Normalized Frequency')
-plt.ylabel('Phase (radians)')
-plt.grid()
 
 plt.tight_layout()
 plt.show()
