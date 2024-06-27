@@ -21,7 +21,7 @@ class SolverFunc():
     
     def cm_handler(self,m,omega):
         if self.filter_type == 0:
-            if m == self.half_order:
+            if m == 0:
                 return 1
             return 2*np.cos(np.pi*omega*m)
         
@@ -46,7 +46,7 @@ class FIRFilter:
         self.ignore_lowerbound_lin = ignore_lowerbound_lin
         self.h_int_res = []
         self.app = app
-        self.fig, self.ax = plt.subplots()
+        self.fig, (self.ax1, self.ax2) = plt.subplots(2,1)
         self.freq_upper_lin=0
         self.freq_lower_lin=0
 
@@ -81,8 +81,8 @@ class FIRFilter:
 
             for j in range(half_order+1):
                 cm_const = sf.cm_handler(j, self.freqx_axis[i])
-                term_sum_exprs += h_int[half_order-j] * cm_const
-                print("this coef h", half_order-j, " is multiplied by ", cm_const)
+                term_sum_exprs += h_int[j] * cm_const
+                print("this coef h", j, " is multiplied by ", cm_const)
             solver.add(term_sum_exprs <= self.freq_upper_lin[i])
 
 
@@ -150,16 +150,15 @@ class FIRFilter:
         # Normalize frequencies to range from 0 to 1
         omega= frequencies * 2 * np.pi
         normalized_omega = omega / np.max(omega)
-   
+        self.ax1.set_ylim([-10, 10])
 
 
         #plot input
-        self.ax.scatter(self.freqx_axis, self.freq_upper_lin, color='r', s=20, picker=5)
-        self.ax.scatter(self.freqx_axis, self.freq_lower_lin, color='b', s=20, picker=5)
+        self.ax1.scatter(self.freqx_axis, self.freq_upper_lin, color='r', s=20, picker=5)
+        self.ax1.scatter(self.freqx_axis, self.freq_lower_lin, color='b', s=20, picker=5)
 
         # Plot the updated upper_ydata
-        self.ax.set_ylim([-0.5, 4])
-        self.ax.plot(normalized_omega, magnitude_response, color='y')
+        self.ax1.plot(normalized_omega, magnitude_response, color='y')
 
         if self.app:
             self.app.canvas.draw()
@@ -179,7 +178,7 @@ class FIRFilter:
             # Compute the sum of products of coefficients and the cosine/sine terms
             for j in range(half_order+1):
                 cm_const = sf.cm_handler(j, omega)
-                term_sum_exprs += self.h_int_res[half_order-j] * cm_const
+                term_sum_exprs += self.h_int_res[j] * cm_const
             
             # Append the computed sum expression to the frequency response list
             computed_frequency_response.append(np.abs(term_sum_exprs))
@@ -187,13 +186,10 @@ class FIRFilter:
         # Normalize frequencies to range from 0 to 1 for plotting purposes
 
         # Plot the computed frequency response
-        self.ax.plot(self.freqx_axis, computed_frequency_response, color='green', label='Computed Frequency Response')
+        self.ax2.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
 
-        # Enhancing the plot
-        self.ax.legend()
-        self.ax.set_xlabel('Normalized Frequency')
-        self.ax.set_ylabel('Response Magnitude')
-        self.ax.set_title('Validation of Computed Filter Response')
+        self.ax2.set_ylim(-10,10)
+
 
         if self.app:
             self.app.canvas.draw()
@@ -204,7 +200,7 @@ class FIRFilter:
 
 # Test inputs
 filter_type = 0
-order_upper = 12
+order_upper = 20
 
 
 # Initialize freq_upper and freq_lower with NaN values
