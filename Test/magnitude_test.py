@@ -1,11 +1,14 @@
 import numpy as np
 from z3 import *
 import matplotlib.pyplot as plt
+import time
+
 
 class SolverFunc():
     def __init__(self,filter_type, order):
         self.filter_type=filter_type
         self.half_order = (order//2)
+        self.gain = 10**1
 
     def db_to_linear(self,db_arr):
         # Create a mask for NaN values
@@ -22,8 +25,9 @@ class SolverFunc():
     def cm_handler(self,m,omega):
         if self.filter_type == 0:
             if m == 0:
-                return 1
-            return 2*np.cos(np.pi*omega*m)
+                return self.gain
+            cm=(2*np.cos(np.pi*omega*m))*self.gain
+            return int(cm)
         
         #ignore the rest, its for later use if type 1 works
         if self.filter_type == 1:
@@ -43,12 +47,14 @@ class FIRFilter:
         self.freqx_axis = freqx_axis
         self.freq_upper = freq_upper
         self.freq_lower = freq_lower
-        self.ignore_lowerbound_lin = ignore_lowerbound_lin
         self.h_int_res = []
         self.app = app
         self.fig, (self.ax1, self.ax2) = plt.subplots(2,1)
         self.freq_upper_lin=0
         self.freq_lower_lin=0
+        self.gain = 10**1
+        self.ignore_lowerbound_lin = ignore_lowerbound_lin*self.gain
+
 
     def runsolver(self):
         self.order_current = int(self.order_upper)
@@ -60,8 +66,10 @@ class FIRFilter:
         print("filter order:", self.order_current)
         print("ignore lower than:", self.ignore_lowerbound_lin)
         # linearize the bounds
-        self.freq_upper_lin = [sf.db_to_linear(f) for f in self.freq_upper]
-        self.freq_lower_lin = [sf.db_to_linear(f) for f in self.freq_lower]
+        self.freq_upper_lin = [int((sf.db_to_linear(f)) * self.gain) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_upper]
+        self.freq_lower_lin = [int((sf.db_to_linear(f)) * self.gain) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_lower]
+
+
 
         # declaring variables
         h_int = [Int(f'h_int_{i}') for i in range(half_order+1)]
@@ -93,20 +101,14 @@ class FIRFilter:
             
 
 
-        # for i in range(self.order_current // 2):
-        #     mirror = (i + 1) * -1
+        for i in range(half_order+1):
+                solver.add(h_int[i] <= 2^12)
+                solver.add(h_int[i] >= -2^12)
 
-        #     if self.filter_type == 0 or self.filter_type == 1:
-        #         solver.add(h_int[i] == h_int[mirror])
-        #         print(f"Added constraint: h_int[{i}] == h_int[{mirror}]")
+        print("solver Running")
+        start_time = time.time()
 
-        #     if self.filter_type == 2 or self.filter_type == 3:
-        #         solver.add(h_int[i] == -h_int[mirror])
-        #         print(f"Added constraint: h_int[{i}] == -h_int[{mirror}]")
 
-        #     print(f"stype = {self.filter_type}, {i} is equal with {mirror}")
-
-        print("solver running")
 
         if solver.check() == sat:
             print("solver sat")
@@ -114,12 +116,16 @@ class FIRFilter:
             for i in range(half_order+1):
                 print(f'h_int_{i} = {model[h_int[i]]}')
                 self.h_int_res.append(model[h_int[i]].as_long())
+                end_time = time.time()
 
             print(self.h_int_res)
         else:
             print("Unsatisfiable")
+            end_time = time.time()
 
         print("solver stopped")
+        duration = end_time - start_time
+        print(f"Duration: {duration} seconds")
 
     def plot_result(self, result_coef):
         print("result plotter called")
@@ -151,6 +157,13 @@ class FIRFilter:
         omega= frequencies * 2 * np.pi
         normalized_omega = omega / np.max(omega)
         self.ax1.set_ylim([-10, 10])
+        # Convert lists to numpy arrays
+        freq_upper_lin_array = np.array(self.freq_upper_lin, dtype=np.float64)
+        freq_lower_lin_array = np.array(self.freq_lower_lin, dtype=np.float64)
+
+        # Perform element-wise division
+        self.freq_upper_lin = (freq_upper_lin_array / self.gain).tolist()
+        self.freq_lower_lin = (freq_lower_lin_array / self.gain).tolist()
 
 
         #plot input
@@ -177,7 +190,7 @@ class FIRFilter:
             
             # Compute the sum of products of coefficients and the cosine/sine terms
             for j in range(half_order+1):
-                cm_const = sf.cm_handler(j, omega)
+                cm_const = sf.cm_handler(j, omega)/self.gain
                 term_sum_exprs += self.h_int_res[j] * cm_const
             
             # Append the computed sum expression to the frequency response list
@@ -186,7 +199,7 @@ class FIRFilter:
         # Normalize frequencies to range from 0 to 1 for plotting purposes
 
         # Plot the computed frequency response
-        self.ax2.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
+        self.ax1.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
 
         self.ax2.set_ylim(-10,10)
 
@@ -200,20 +213,20 @@ class FIRFilter:
 
 # Test inputs
 filter_type = 0
-order_upper = 20
+order_upper = 40
 
 
 # Initialize freq_upper and freq_lower with NaN values
-freqx_axis = np.linspace(0, 1, 16*order_upper) #according to Mr. Kumms paper
+freqx_axis = np.linspace(0, 1, 160) #according to Mr. Kumms paper
 freq_upper = np.full(16 * order_upper, np.nan)
 freq_lower = np.full(16 * order_upper, np.nan)
 
 # Manually set specific values for the elements of freq_upper and freq_lower in dB
-freq_upper[20:50] = 15
-freq_lower[20:50] = 0
+freq_upper[0:50] = 2
+freq_lower[0:50] = -2
 
-freq_upper[100:120] = -0.2
-freq_lower[100:120] = -1000
+freq_upper[120:159] = -20
+freq_lower[120:159] = -1000
 
 
 

@@ -42,6 +42,24 @@ class DraggablePlotter:
             'button_release_event', self.on_release)
         self.cidmotion = self.draggable_point.figure.canvas.mpl_connect(
             'motion_notify_event', self.on_motion)
+        
+    def disconnect(self):
+        if self.cidpress:
+            self.draggable_point.figure.canvas.mpl_disconnect(self.cidpress)
+            self.cidpress = None
+        if self.cidrelease:
+            self.draggable_point.figure.canvas.mpl_disconnect(self.cidrelease)
+            self.cidrelease = None
+        if self.cidmotion:
+            self.draggable_point.figure.canvas.mpl_disconnect(self.cidmotion)
+            self.cidmotion = None
+        print("Disconnected events.")
+        print("removed lines.")
+        self.clear_line
+
+    def clear_line(self):
+        self.line.remove()
+        self.point.remove()
 
     def on_click(self, event):
         if event.inaxes != self.line.axes:

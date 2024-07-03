@@ -10,17 +10,22 @@ class MagnitudePlotter:
         self.app = app
         self.fig, self.ax = plt.subplots(figsize=(30, 4))
         self.fig.subplots_adjust(left=0.03, bottom=0.1, right=0.98, top=0.98)
+        
+        #input data from user
+        self.filter_type = None
+        self.order_upper = None
+        self.order_lower = None
+        self.wordlength = None
+        self.sampling_rate = None
+        self.flatten_value = None
+        self.gaussian_smoothing_value = None
+        self.average_flaten_value = None
+        self.cutoff_smoothing_value = None
 
         # Array to put the object of Draggable plotter
         self.draggable_lines_mag = []
         self.draggable_lines_upper = []
         self.draggable_lines_lower = []
-
-        # Stuff to run get data
-        self.step = None
-        self.upper_xdata = np.array([])
-        self.upper_ydata = np.array([])
-        self.lower_ydata = np.array([])
 
 
         self.ax.set_xlim([0, 1])
@@ -32,7 +37,48 @@ class MagnitudePlotter:
         self.selected_range = None
         self.selection_rect = None
 
+        # Array to put the object of Draggable plotter
+        self.draggable_lines_mag = []
+        self.draggable_lines_upper = []
+        self.draggable_lines_lower = []
+
+ 
+    #set input data
+    def update_plotter_data(self, data_dict):
+        for data_key, data_value in data_dict.items():
+            if hasattr(self, data_key):
+                setattr(self, data_key, data_value)
+            
+
     def initiate_plot(self, table_data):
+    
+
+        #reset plot if its not empty
+        if self.draggable_lines_mag or self.draggable_lines_upper or self.draggable_lines_lower:
+            print("clearing")
+
+            for draggable_line in self.draggable_lines_mag:
+                draggable_line.disconnect()
+
+            for draggable_line in self.draggable_lines_upper:
+                draggable_line.disconnect()
+
+            for draggable_line in self.draggable_lines_lower:
+                draggable_line.disconnect()
+
+            # Clear each list
+            self.draggable_lines_mag.clear()
+            self.draggable_lines_upper.clear()
+            self.draggable_lines_lower.clear()
+
+        # Clear the axes to remove all plot elements
+        self.ax.cla()
+
+        self.ax.set_xlim([0, 1])
+        self.ax.set_ylim([-60, 5])
+        self.ax.grid()
+
+
         highest_upper=0
         lowest_lower=0
 
@@ -40,21 +86,6 @@ class MagnitudePlotter:
 
         for row in table_data:
             magnitude, lower_bound, upper_bound, start_freq, end_freq = row
-
-            #highest x and y
-            
-
-            if highest_upper < magnitude+upper_bound:
-                print("highest upper called")
-                highest_upper = magnitude+upper_bound + 5
-
-            if lowest_lower > magnitude-lower_bound:
-                print("lowest lower called")
-                lowest_lower=magnitude-lower_bound - 10
-            
-            self.ax.set_ylim([lowest_lower, highest_upper])
-
-
 
             # Generate points between start and end frequencies with 10^-8 distance between each points
             freqs = np.arange(start_freq, end_freq, 0.001)
@@ -68,6 +99,16 @@ class MagnitudePlotter:
             self.draggable_lines_upper.append(DraggablePlotter(line_upper_bound, self, 'salmon',midpoint))
             self.draggable_lines_lower.append(DraggablePlotter(line_lower_bound, self, 'aqua',midpoint))
 
+
+            #highest x and y to limit y
+            if highest_upper < magnitude+upper_bound:
+                highest_upper = magnitude+upper_bound + 10
+
+            if lowest_lower > magnitude-lower_bound:
+                lowest_lower=magnitude-lower_bound - 10
+            
+        self.ax.set_ylim([lowest_lower, highest_upper])
+
         for draggable_line in self.draggable_lines_mag:
             draggable_line.connect()
 
@@ -80,66 +121,41 @@ class MagnitudePlotter:
         if self.app:
             self.app.canvas.draw()
 
-    def set_data(self, filter_order):
-        
+    def get_frequency_bounds(self):
+        bounds_dict = {}
+        for i in range(self.order_lower, self.order_upper + 1):
+            bounds_dict[i]=self.set_bounds_for_solver(i)
+        return bounds_dict
+
+    def set_bounds_for_solver(self, filter_order):
         self.step = filter_order*16
         print("step is : ",self.step)
-        self.xdata = np.linspace(0, 1, self.step)
-        self.upper_ydata = np.full(self.xdata.shape, np.nan)
-        self.lower_ydata = np.full(self.xdata.shape, np.nan)
+        xdata = np.linspace(0, 1, self.step)
+        upper_ydata = np.full(xdata.shape, np.nan)
+        lower_ydata = np.full(xdata.shape, np.nan)
          
         for draggable_line in self.draggable_lines_upper:
-            x_data = draggable_line.get_xdata()
-            y_data = draggable_line.get_ydata()
+            current_xdata = draggable_line.get_xdata()
+            current_ydata = draggable_line.get_ydata()
 
-            # Interpolate y_data to match self.upper_xdata
-            interpolated_y_data = np.interp(self.xdata, x_data, y_data, left=np.nan, right=np.nan)
+            # Interpolate current_ydata to match self.upper_xdata
+            interpolated_current_ydata = np.interp(xdata, current_xdata, current_ydata, left=np.nan, right=np.nan)
 
-            # Update self.upper_ydata with the interpolated values
-            self.upper_ydata = np.where(np.isnan(self.upper_ydata), interpolated_y_data, self.upper_ydata)
+            # Update upper_ydata with the interpolated values
+            upper_ydata = np.where(np.isnan(upper_ydata), interpolated_current_ydata, upper_ydata)
 
         for draggable_line in self.draggable_lines_lower:
-            x_data = draggable_line.get_xdata()
-            y_data = draggable_line.get_ydata()
+            current_xdata = draggable_line.get_xdata()
+            current_ydata = draggable_line.get_ydata()
 
-            # Interpolate y_data to match self.lower_xdata
-            interpolated_y_data = np.interp(self.xdata, x_data, y_data, left=np.nan, right=np.nan)
+            # Interpolate current_ydata to match self.lower_xdata
+            interpolated_current_ydata = np.interp(xdata, current_xdata, current_ydata, left=np.nan, right=np.nan)
 
-            # Update self.lower_ydata with the interpolated values
-            self.lower_ydata = np.where(np.isnan(self.lower_ydata), interpolated_y_data, self.lower_ydata)
+            # Update lower_ydata with the interpolated values
+            lower_ydata = np.where(np.isnan(lower_ydata), interpolated_current_ydata, lower_ydata)
+        return [xdata, upper_ydata, lower_ydata]
 
-        self.upper_ydata_lin=self.db_to_linear(self.upper_ydata)
-        self.lower_ydata_lin=self.db_to_linear(self.lower_ydata)
-        
-        # Plot the updated upper_ydata
-        self.ax.scatter(self.xdata, self.upper_ydata_lin, color='r', s=20, picker=5)
-        # Plot the updated lower_ydata
-        self.ax.scatter(self.xdata, self.lower_ydata_lin, color='b', s=20, picker=5)
-
-        # Refresh the plot if the app is provided
-        if self.app:
-            self.app.canvas.draw()
-
-    def get_upper_ydata(self):
-        return self.upper_ydata
-
-    def get_lower_ydata(self):
-        return self.lower_ydata
-
-    def get_xdata(self):
-        return self.xdata  
     
-    def db_to_linear(self,db_arr):
-        # Create a mask for NaN values
-        nan_mask = np.isnan(db_arr)
-
-        # Apply the conversion to non-NaN values (magnitude)
-        linear_array = np.zeros_like(db_arr)
-        linear_array[~nan_mask] = 10 ** (db_arr[~nan_mask] / 20)
-
-        # Preserve NaN values
-        linear_array[nan_mask] = np.nan
-        return linear_array
     
     def plot_result(self, result_coef):
         print("result plotter called")
@@ -170,6 +186,15 @@ class MagnitudePlotter:
 
         if self.app:
             self.app.canvas.draw()
+
+
+    def result_plotter(self, result):
+
+        pass
+
+
+
+
 
 
 

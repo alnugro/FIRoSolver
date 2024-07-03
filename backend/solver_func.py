@@ -17,18 +17,19 @@ class SolverFunc():
         linear_array[nan_mask] = np.nan
         return linear_array
     
-    def cm_handler(self,m,omega):
+    def cm_handler(self, m, omega):
         if self.filter_type == 0:
             if m == 0:
                 return 1
-            return 2*np.cos(np.pi*omega*m)
-        
+            return 2 * np.cos(np.pi * omega * m)
+
+        # Ignore the rest, its for later use if type 1 works
         if self.filter_type == 1:
-            return 2*np.cos(omega*np.pi*(m+0.5))
+            return 2 * np.cos(omega * np.pi * (m + 0.5))
 
         if self.filter_type == 2:
-            return 2*np.sin(omega*np.pi*(m-1))
+            return 2 * np.sin(omega * np.pi * (m - 1))
 
         if self.filter_type == 3:
-            return 2*np.sin(omega*np.pi*(m+0.5))
+            return 2 * np.sin(omega * np.pi * (m + 0.5))
         

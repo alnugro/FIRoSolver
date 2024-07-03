@@ -1,81 +1,53 @@
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.linalg import lstsq
-from scipy.fft import fft, fftfreq
+import z3
+import multiprocessing
+import time
 
-# Define the desired frequency response
-def desired_magnitude_phase(omega):
-    magnitude = np.piecewise(omega, 
-                             [omega < 0.2 * np.pi, (omega >= 0.2 * np.pi) & (omega <= 0.4 * np.pi), omega > 0.4 * np.pi],
-                             [0, 1, 0])  # Bandpass magnitude response
-    phase = np.piecewise(omega, 
-                         [omega < 0.2 * np.pi, (omega >= 0.2 * np.pi) & (omega <= 0.4 * np.pi), omega > 0.4 * np.pi],
-                         [0, np.pi / 4, 0])  # Nonlinear phase response
-    return magnitude, phase
+# Function to interrupt the solver
+def interrupt_solver():
+    print("Interrupting solver...")
+    z3.Z3_interrupt
 
-# FIR filter design parameters
-N = 50  # Number of filter coefficients
-M = 500  # Number of frequency samples
+# Function to solve the problem
+def solve_problem(solver):
+    try:
+        result = solver.check()
+        if result == z3.sat:
+            return "Satisfiable", solver.model()
+        elif result == z3.unsat:
+            return "Unsatisfiable", None
+        else:
+            return "Unknown or interrupted", None
+    except z3.Z3Exception as e:
+        return f"Solver interrupted: {e}", None
 
-# Sample points
-omega = np.linspace(0, np.pi, M)
-magnitude, phase = desired_magnitude_phase(omega)
+# Main function
+if __name__ == "__main__":
+    # Define a simple problem
+    x = z3.Int('x')
+    y = z3.Int('y')
+    solver = z3.Solver()
+    solver.add(x + y > 5)
+    solver.add(x - y < 3)
 
-# Desired complex response
-H_d_samples = magnitude * np.exp(1j * phase)
+    # Create a multiprocessing pool
+    pool = multiprocessing.Pool(processes=1)
 
-# Construct the matrix for the least squares problem
-A_real = np.zeros((M, N))
-A_imag = np.zeros((M, N))
+    # Start solving the problem in a separate process
+    solver_result = pool.apply_async(solve_problem, (solver,))
 
-for k in range(M):
-    for n in range(N):
-        A_real[k, n] = np.cos(omega[k] * n)
-        A_imag[k, n] = np.sin(omega[k] * n)
+    # Wait for a while and then interrupt the solver
+    time.sleep(2)  # Sleep for 2 seconds before interrupting
+    interrupt_solver()
 
-# Desired response vector
-b_real = H_d_samples.real
-b_imag = H_d_samples.imag
+    # Get the result (with a timeout to avoid hanging if interrupted)
+    try:
+        status, model = solver_result.get(timeout=5)
+        print(status)
+        if model:
+            print(model)
+    except multiprocessing.TimeoutError:
+        print("Solver was interrupted and timed out.")
 
-# Solve the least squares problem separately for real and imaginary parts
-h_real, _, _, _ = lstsq(A_real, b_real)
-h_imag, _, _, _ = lstsq(A_imag, b_imag)
-
-# Combine the real and imaginary parts to get the final filter coefficients
-h = h_real + 1j * h_imag
-
-# Ensure coefficients are purely real
-h = h.real
-
-# Perform FFT to obtain the frequency response of the designed filter
-H = fft(h, n=1024)
-freqs = fftfreq(1024, d=1/1024)[:512]
-
-# Desired response for comparison
-omega_full = np.linspace(0, np.pi, 512)
-H_d_full_magnitude, H_d_full_phase = desired_magnitude_phase(omega_full)
-H_d_full = H_d_full_magnitude * np.exp(1j * H_d_full_phase)
-
-# Plotting
-plt.figure(figsize=(12, 8))
-
-# Magnitude response
-plt.subplot(2, 1, 1)
-plt.plot(omega_full / np.pi, np.abs(H_d_full), label='Desired Magnitude Response', color='blue')
-plt.plot(freqs / np.pi, np.abs(H[:512]), label='Designed Filter Magnitude Response', color='red', linestyle='--')
-plt.title('Magnitude Response')
-plt.xlabel('Normalized Frequency (×π rad/sample)')
-plt.ylabel('Magnitude')
-plt.legend()
-
-# Phase response
-plt.subplot(2, 1, 2)
-plt.plot(omega_full / np.pi, np.angle(H_d_full), label='Desired Phase Response', color='blue')
-plt.plot(freqs / np.pi, np.angle(H[:512]), label='Designed Filter Phase Response', color='red', linestyle='--')
-plt.title('Phase Response')
-plt.xlabel('Normalized Frequency (×π rad/sample)')
-plt.ylabel('Phase (radians)')
-plt.legend()
-
-plt.tight_layout()
-plt.show()
+    # Close the pool
+    pool.close()
+    pool.join()
