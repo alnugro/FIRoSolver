@@ -1,53 +1,42 @@
-import z3
-import multiprocessing
-import time
+from z3 import *
 
-# Function to interrupt the solver
-def interrupt_solver():
-    print("Interrupting solver...")
-    z3.Z3_interrupt
-
-# Function to solve the problem
-def solve_problem(solver):
-    try:
-        result = solver.check()
-        if result == z3.sat:
-            return "Satisfiable", solver.model()
-        elif result == z3.unsat:
-            return "Unsatisfiable", None
+# Function to decompose large coefficients
+def decompose_coefficients(literal, coeff, max_coeff_value):
+    coeffs = []
+    while coeff > 0:
+        if coeff >= max_coeff_value:
+            coeffs.append((literal, max_coeff_value))
+            coeff -= max_coeff_value
         else:
-            return "Unknown or interrupted", None
-    except z3.Z3Exception as e:
-        return f"Solver interrupted: {e}", None
+            coeffs.append((literal, coeff))
+            coeff = 0
+    return coeffs
 
-# Main function
-if __name__ == "__main__":
-    # Define a simple problem
-    x = z3.Int('x')
-    y = z3.Int('y')
-    solver = z3.Solver()
-    solver.add(x + y > 5)
-    solver.add(x - y < 3)
+# Define variables and large coefficients
+variables = [Bool(f'hm{i}') for i in range(5)]
+large_coeffs = [6, 7, 8, 9, 10]
 
-    # Create a multiprocessing pool
-    pool = multiprocessing.Pool(processes=1)
+# Define maximum coefficient value
+max_coeff_value = 4
 
-    # Start solving the problem in a separate process
-    solver_result = pool.apply_async(solve_problem, (solver,))
+# Decompose coefficients and construct pairs
+pb_pairs = []
+for var, coeff in zip(variables, large_coeffs):
+    pb_pairs.extend(decompose_coefficients(var, coeff, max_coeff_value))
 
-    # Wait for a while and then interrupt the solver
-    time.sleep(2)  # Sleep for 2 seconds before interrupting
-    interrupt_solver()
+print(large_coeffs)
+print(pb_pairs)
 
-    # Get the result (with a timeout to avoid hanging if interrupted)
-    try:
-        status, model = solver_result.get(timeout=5)
-        print(status)
-        if model:
-            print(model)
-    except multiprocessing.TimeoutError:
-        print("Solver was interrupted and timed out.")
+# Example bound for the constraint
+bound = 20
 
-    # Close the pool
-    pool.close()
-    pool.join()
+# Create the solver and add the pseudo-boolean constraint
+solver = Solver()
+solver.add(PbGe(pb_pairs, bound))
+
+# Check satisfiability
+if solver.check() == sat:
+    print("SAT")
+    print(solver.model())
+else:
+    print("UNSAT")
