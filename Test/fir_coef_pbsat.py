@@ -8,6 +8,7 @@ class SolverFunc():
     def __init__(self,filter_type, order):
         self.filter_type=filter_type
         self.half_order = (order//2)
+        self.overflow_count = 0
 
     def db_to_linear(self,db_arr):
         # Create a mask for NaN values
@@ -37,6 +38,36 @@ class SolverFunc():
 
         if self.filter_type == 3:
             return 2*np.sin(omega*np.pi*(m+0.5))
+        
+    def overflow_handler(self, input_value, upper_bound, lower_bound, literal):
+        self.overflow_count+=1
+        overflow_coef = []
+        overflow_lit = []
+
+        if input_value > upper_bound:
+            while input_value > upper_bound:
+                overflow_coef.append(upper_bound)
+                overflow_lit.append(literal)
+                input_value -= upper_bound
+            overflow_coef.append(input_value)
+            overflow_lit.append(literal)
+        
+        elif input_value < lower_bound:
+            while input_value < lower_bound:
+                overflow_coef.append(lower_bound)
+                overflow_lit.append(literal)
+                input_value -= lower_bound
+            overflow_coef.append(input_value)
+            overflow_lit.append(literal)
+        
+        else:
+            overflow_coef.append(input_value)
+            overflow_lit.append(literal)
+            print("somehting weird happens on overflow handler")
+
+        return [overflow_lit, overflow_coef]
+
+
 
 
 class FIRFilter:
@@ -53,8 +84,9 @@ class FIRFilter:
         self.freq_lower_lin=0
         self.filter_accuracy = 5
         self.wordlength= 10
+        self.gain_res = 0
 
-        self.gain_wordlength=9 #9bits accuracy
+        self.gain_wordlength=9 #9 bits wordlength for gain
         self.gain_accuracy = 2 #2 floating points accuracy with max 5.12
 
         self.gain_upperbound= 1.4
@@ -85,14 +117,13 @@ class FIRFilter:
         # print(len(self.freq_lower_lin) )
         # print(len(self.freqx_axis) )
 
-        print(self.freqx_axis, "_",self.freq_upper_lin,"_", self.freq_lower_lin)
+        #print(self.freqx_axis, "_",self.freq_upper_lin,"_", self.freq_lower_lin)
 
 
         hm = [[Bool(f'hm{a}_{w}') for w in range(self.wordlength)] for a in range(half_order+1)]
         gain= [Bool(f'gain{g}') for g in range(self.gain_wordlength)]
 
-        t = Then(Tactic('simplify'), Tactic('solve-eqs'), Tactic('smt'))
-        solver = t.solver()
+        solver = Solver()
 
 
         gain_coeffs = []
@@ -122,7 +153,9 @@ class FIRFilter:
             filter_bool_literalls.clear()
             filter_bool_weights.clear()
             for w in range(self.wordlength):
-                filter_bool_weights.append(2**w)
+                if w==self.wordlength-1:
+                    filter_bool_weights.append(-1*2**w)
+                else: filter_bool_weights.append(2**w)
                 filter_bool_literalls.append(hm[a][w])
             filter_bool_pairs=[(filter_bool_literalls[i],filter_bool_weights[i]) for i in range(len(filter_bool_literalls))]
             solver.add(PbLe(filter_bool_pairs, 2**self.wordlength))
@@ -131,20 +164,28 @@ class FIRFilter:
 
             
         filter_literals = []
-        filter_literals.extend(hm[a][w] for a in range(half_order + 1) for w in range(self.wordlength))
-        filter_literals.extend(gain_literalls)
-
-        print(filter_literals)
         filter_coeffs = []
-        gain_coeffs_freq_upper_prod = []
-        gain_coeffs_freq_lower_prod = []
-        filter_coeffs_upper = []
-        filter_coeffs_lower = []
-        pb_filter_upper_pairs = []
-        pb_filter_lower_pairs = []
+        gain_freq_upper_prod_coeffs = []
+        gain_freq_lower_prod_coeffs = []
+
+        filter_upper_pb_pairs = []
+        filter_lower_pb_pairs = []
+
+        filter_overflow_literalls=[]
+        filter_overflow_coeffs = []
+
+        gain_upper_overflow_literalls=[]
+        gain_upper_overflow_coeffs = []
+
+        gain_lower_overflow_literalls=[]
+        gain_lower_overflow_coeffs = []
+
+        gain_upper_literalls = []
+        gain_lower_literalls = []
 
 
-        
+        max_positive_int_pbfunc = 2147483647
+        max_negative_int_pbfunc = -2147483648
 
 
 
@@ -152,49 +193,118 @@ class FIRFilter:
             if np.isnan(self.freq_lower_lin[x]):
                 continue
 
+            #clearing each list like this make the programm run faster, instead of decalring new one each time
+            gain_literalls.clear()
+            filter_literals.clear()
             filter_coeffs.clear()
-            gain_coeffs_freq_upper_prod.clear()
-            gain_coeffs_freq_lower_prod.clear()
-            filter_coeffs_upper.clear()
-            filter_coeffs_lower.clear()
-            pb_filter_upper_pairs.clear()
-            pb_filter_lower_pairs.clear()
+
+            gain_freq_upper_prod_coeffs.clear()
+            gain_freq_lower_prod_coeffs.clear()
+
+            filter_upper_pb_pairs.clear()
+            filter_lower_pb_pairs.clear()
+
+            filter_overflow_literalls.clear()
+            filter_overflow_coeffs.clear()
+
+            gain_upper_overflow_literalls.clear()
+            gain_upper_overflow_coeffs.clear()
+
+            gain_lower_overflow_literalls.clear()
+            gain_lower_overflow_coeffs.clear()
+            
+            gain_upper_literalls.clear()
+            gain_lower_literalls.clear()
 
             for a in range(half_order+1):
                 cm = sf.cm_handler(a, self.freqx_axis[x])
                 for w in range(self.wordlength):
-                    cm_word_prod= int(cm*(10**self.filter_accuracy)*(2**w))
-                    if cm_word_prod > 2147483647:
-                        buffer=
-                    elif cm_word_prod < -2147483648:
+                    if w==self.wordlength-1:
+                        cm_word_prod= int(cm*(10**self.filter_accuracy)*(-1*(2**w)))
+                    else: cm_word_prod= int(cm*(10**self.filter_accuracy)*(2**w))
+
+                    if cm_word_prod > max_positive_int_pbfunc or cm_word_prod < max_negative_int_pbfunc:
+                        overflow = sf.overflow_handler(cm_word_prod,max_positive_int_pbfunc,max_negative_int_pbfunc,hm[a][w])
+                        filter_overflow_literalls.extend(overflow[0])
+                        filter_overflow_coeffs.extend(overflow[1])
+                        print("overflow happened in the product of cm: appended this to the sum coeff:", overflow[1], " with literall: ", overflow[0])
+                        continue
 
                     filter_coeffs.append(cm_word_prod)
+                    filter_literals.append(hm[a][w])
 
-            gain_coeffs_freq_upper_prod=[int(-1 * gc * self.freq_upper_lin[x]) for gc in gain_coeffs]
-            filter_coeffs_upper=filter_coeffs+gain_coeffs_freq_upper_prod
-            pb_filter_upper_pairs = [(filter_literals[i],filter_coeffs_upper[i],) for i in range(len(filter_literals))]
+            for g in range(self.gain_wordlength):
+                gain_upper_prod = int(-1 * (2**g) * self.freq_upper_lin[x])
+                 
 
-            solver.add(PbLe(pb_filter_upper_pairs, 0))
+                if gain_upper_prod > max_positive_int_pbfunc or gain_upper_prod < max_negative_int_pbfunc:
+                    overflow = sf.overflow_handler(gain_upper_prod,max_positive_int_pbfunc,max_negative_int_pbfunc,gain[g])
+                    gain_upper_overflow_literalls.extend(overflow[0])
+                    gain_upper_overflow_coeffs.extend(overflow[1])
+                    print("overflow happened in the gain upper product: appended this to the sum coeff:", overflow[1], " with literall: ", overflow[0])
+                    continue
+                gain_freq_upper_prod_coeffs.append(gain_upper_prod)
+                gain_upper_literalls.append(gain[g])
 
+                if self.freq_lower_lin[x] < self.ignore_lowerbound_lin:
+                    gain_lower_prod=int((2**g) * self.freq_upper_lin[x])
+                    if gain_lower_prod > max_positive_int_pbfunc or gain_lower_prod < max_negative_int_pbfunc:
+                        overflow = sf.overflow_handler(gain_lower_prod,max_positive_int_pbfunc,max_negative_int_pbfunc,gain[g])
+                        gain_lower_overflow_literalls.extend(overflow[0])
+                        gain_lower_overflow_coeffs.extend(overflow[1])
+                        print("overflow happened in the gain lower product: appended this to the sum coeff:", overflow[1], " with literall: ", overflow[0])
+                        continue
+                    gain_freq_lower_prod_coeffs.append(gain_lower_prod)
+                    gain_lower_literalls.append(gain[g])
+                    print("ignored ",self.freq_lower_lin[x], " in frequency = ", self.freqx_axis[x])
+                else:
+                    gain_lower_prod=int(-1 *(2**g) * self.freq_lower_lin[x])
+                    if gain_lower_prod > max_positive_int_pbfunc or gain_lower_prod < max_negative_int_pbfunc:
+                        overflow = sf.overflow_handler(gain_lower_prod,max_positive_int_pbfunc,max_negative_int_pbfunc,gain[g])
+                        gain_lower_overflow_literalls.extend(overflow[0])
+                        gain_lower_overflow_coeffs.extend(overflow[1])
+                        print("overflow happened in the gain lower product: appended this to the sum coeff:", overflow[1], " with literall: ", overflow[0])
+                        continue
+                    gain_freq_lower_prod_coeffs.append(gain_lower_prod)
+                    gain_lower_literalls.append(gain[g])
 
-            if self.freq_lower_lin[x] < self.ignore_lowerbound_lin:
-                gain_coeffs_freq_lower_prod=[int(gc * self.freq_upper_lin[x]) for gc in gain_coeffs]
-                print("ignored",self.freq_lower_lin[x])
-                continue
-            else:
-                gain_coeffs_freq_lower_prod=[int(-1 * gc * self.freq_lower_lin[x]) for gc in gain_coeffs]
+            filter_upper_pb_coeffs=filter_coeffs+gain_freq_upper_prod_coeffs+filter_overflow_coeffs+gain_upper_overflow_coeffs
+            filter_upper_pb_literalls=filter_literals+gain_upper_literalls+filter_overflow_literalls+gain_upper_overflow_literalls
 
-            filter_coeffs_lower=filter_coeffs+gain_coeffs_freq_lower_prod
-            pb_filter_lower_pairs = [(filter_literals[i],filter_coeffs_lower[i]) for i in range(len(filter_literals))]
+            #print("coeffs: ",filter_upper_pb_coeffs)
+            #print("lit: ",filter_upper_pb_literalls)
 
-
-            #print(pb_filter_upper_pairs)
+            if len(filter_upper_pb_coeffs) != len(filter_upper_pb_literalls):
+                raise("sumtin wong with upper filter pb")
             
-            solver.add(PbGe(pb_filter_lower_pairs, 0))
+            else: print("filter upperbound length is validated")
+
+            #z3 only take pairs
+            filter_upper_pb_pairs = [(filter_upper_pb_literalls[i],filter_upper_pb_coeffs[i],) for i in range(len(filter_upper_pb_literalls))]
+            solver.add(PbLe(filter_upper_pb_pairs, 0))
+
+            
+           
+            filter_lower_pb_coeffs=filter_coeffs+gain_freq_lower_prod_coeffs+filter_overflow_coeffs+gain_lower_overflow_coeffs
+            filter_lower_pb_literalls=filter_literals+gain_lower_literalls+filter_overflow_literalls+gain_lower_overflow_literalls
+
+            print("coeffs: ",filter_lower_pb_coeffs)
+            print("lit: ",filter_lower_pb_literalls)
+
+            if len(filter_upper_pb_coeffs) != len(filter_upper_pb_literalls):
+                raise("sumtin wong with upper filter pb")
+            
+            else: print("filter lowerbound length is validated")
+
+            
+            filter_lower_pb_pairs = [(filter_lower_pb_literalls[i],filter_lower_pb_coeffs[i]) for i in range(len(filter_lower_pb_literalls))]
+            
+            #z3 only take pairs
+            solver.add(PbGe(filter_lower_pb_pairs, 0))
         
         start_time=time.time()
 
-        print("solver ruuning")  
+        print("solver runing")  
 
 
         # print(filter_coeffs)
@@ -205,6 +315,33 @@ class FIRFilter:
             model = solver.model()
             print(model)
             end_time = time.time()
+            
+            for a in range(half_order + 1):
+                fir_coef = 0
+                for w in range(self.wordlength):
+                    # Evaluate the boolean value from the model
+                    bool_value = model.eval(hm[a][w], model_completion=True)
+                    # Convert boolean to integer (0 or 1) and calculate the term
+                    if w==self.wordlength-1:
+                        fir_coef += -2**w * (1 if bool_value else 0)
+                    else:                    
+                        fir_coef += 2**w * (1 if bool_value else 0)
+                
+                self.h_int_res.append(fir_coef)
+            print("FIR Coeffs calculated: ",self.h_int_res)
+            
+            gain_coef=0
+            for g in range(self.gain_wordlength):
+                # Evaluate the boolean value from the model
+                bool_value = model.eval(gain[g], model_completion=True)
+                # Convert boolean to integer (0 or 1) and calculate the term
+                gain_coef += 2**g * (1 if bool_value else 0)
+            self.gain_res=gain_coef
+            print("gain Coeffs: ", self.gain_res)
+                      
+
+            
+
         else:
             print("Unsatisfiable")
             end_time = time.time()
@@ -248,8 +385,8 @@ class FIRFilter:
         freq_lower_lin_array = np.array(self.freq_lower_lin, dtype=np.float64)
 
         # Perform element-wise division
-        self.freq_upper_lin = (freq_upper_lin_array / self.gain).tolist()
-        self.freq_lower_lin = (freq_lower_lin_array / self.gain).tolist()
+        self.freq_upper_lin = ((freq_upper_lin_array * (self.gain_res/10**self.gain_accuracy)) / 10**(self.filter_accuracy-self.gain_accuracy)).tolist()
+        self.freq_lower_lin = ((freq_lower_lin_array * (self.gain_res/10**self.gain_accuracy)) / 10**(self.filter_accuracy-self.gain_accuracy)).tolist()
 
 
         #plot input
@@ -276,7 +413,7 @@ class FIRFilter:
             
             # Compute the sum of products of coefficients and the cosine/sine terms
             for j in range(half_order+1):
-                cm_const = sf.cm_handler(j, omega)/self.gain
+                cm_const = sf.cm_handler(j, omega)
                 term_sum_exprs += self.h_int_res[j] * cm_const
             
             # Append the computed sum expression to the frequency response list
@@ -285,7 +422,7 @@ class FIRFilter:
         # Normalize frequencies to range from 0 to 1 for plotting purposes
 
         # Plot the computed frequency response
-        self.ax1.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
+        #self.ax1.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
 
         self.ax2.set_ylim(-10,10)
 
@@ -297,10 +434,11 @@ class FIRFilter:
 
     
 
+    
 # Test inputs
 filter_type = 0
 order_upper = 40
-accuracy = 16
+accuracy = 4
 
 
 # Initialize freq_upper and freq_lower with NaN values
@@ -309,11 +447,11 @@ freq_upper = np.full(accuracy * order_upper, np.nan)
 freq_lower = np.full(accuracy * order_upper, np.nan)
 
 # Manually set specific values for the elements of freq_upper and freq_lower in dB
-freq_upper[30:60] = 10
-freq_lower[30:60] = -2
+freq_upper[1:5] = 10
+freq_lower[1:5] = -2
 
-freq_upper[120:130] = -20
-freq_lower[120:130] = -1000
+freq_upper[20:200] = -10
+freq_lower[20:200] = -1000
 
 
 

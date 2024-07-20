@@ -210,10 +210,9 @@ class FIRFilter:
 
 
     
-
 # Test inputs
 filter_type = 0
-order_upper = 20
+order_upper = 30
 accuracy = 4
 
 
@@ -223,11 +222,11 @@ freq_upper = np.full(accuracy * order_upper, np.nan)
 freq_lower = np.full(accuracy * order_upper, np.nan)
 
 # Manually set specific values for the elements of freq_upper and freq_lower in dB
-freq_upper[30:60] = 2
-freq_lower[30:60] = -2
+freq_upper[1:5] = 10
+freq_lower[1:5] = -2
 
-freq_upper[120:130] = -20
-freq_lower[120:130] = -1000
+freq_upper[20:30] = -10
+freq_lower[20:30] = -1000
 
 
 
