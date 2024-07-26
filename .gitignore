@@ -1,0 +1,15 @@
+# Ignore all .log files
+*.log
+
+# Ignore all files in the logs directory
+logs/
+
+# ignore venv file
+.VenvFIRoSolver/
+
+
+# Ignore a specific file
+secret_config.txt
+
+# Ignore all .DS_Store files (common on macOS)
+.DS_Store
