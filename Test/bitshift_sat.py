@@ -4,10 +4,9 @@ import matplotlib.pyplot as plt
 import time
 
 class bitshift():
-    def __init__(self, out, wordlength, verbose=False):
+    def __init__(self, wordlength, verbose=False):
         self.wordlength = wordlength
-        self.out = out
-        self.N = 4
+        self.N = 3
         self.verbose = verbose
 
 
@@ -17,14 +16,18 @@ class bitshift():
         r=[[Bool(f'r{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
 
-        alpha = [[Bool(f'alpha{i}{a}') for a in range(i+1)] for i in range(1, self.N+1)]
-        beta =[[ Bool(f'Beta{i}{a}') for a in range(i+1)] for i in range(1, self.N+1)] 
+        alpha = [[Bool(f'alpha{i}{a}') for a in range(i)] for i in range(1, self.N+1)]
+        beta =[[ Bool(f'Beta{i}{a}') for a in range(i)] for i in range(1, self.N+1)] 
 
         solver = Solver()
 
-        #c 0 is always 0
-        for w in range(self.wordlength):
+
+        #c0,w is always 0 except w=0
+        for w in range(1,self.wordlength):
             solver.add(Not(c[0][w]))
+
+        solver.add(c[0][0])
+
 
         #input multiplexer
         for i in range(1, self.N+1):
@@ -45,7 +48,6 @@ class bitshift():
                 beta_sum.append((beta[i-1][a], 1))
 
            
-            print(alpha_sum)
             solver.add(PbEq(alpha_sum,1))
             solver.add(PbEq(beta_sum,1))
 
@@ -69,7 +71,7 @@ class bitshift():
 
 
             for kf in range(1,self.wordlength-1):
-                for b in range(kf-1):
+                for b in range(kf):
                     clause4 = Or(Not(gamma[i-1][kf]),Not(s[i-1][b]))
                     clause5 = Or(Not(gamma[i-1][kf]), Not(l[i-1][self.wordlength-1]), l[i-1][self.wordlength-2-b])
                     clause6 = Or(Not(gamma[i-1][kf]), l[i-1][self.wordlength-1], Not(l[i-1][self.wordlength-2-b]))
@@ -83,9 +85,11 @@ class bitshift():
 
 
         delta = [Bool(f'delta{i}') for i in range(1, self.N+1)]
-        w     = [[Bool(f'w{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        u     = [[Bool(f'u{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
         x     = [[Bool(f'x{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
+   
+    
         #delta selector
         for i in range(1, self.N+1):
             for word in range(self.wordlength):
@@ -93,17 +97,19 @@ class bitshift():
                 clause8_2 = Or(Not(delta[i-1]),s[i-1][word],Not(x[i-1][word]))
                 solver.add(And(clause8_1, clause8_2))
                 
-                clause9_1 = Or(Not(delta[i-1]),Not(r[i-1][word]),w[i-1][word])
-                clause9_2 = Or(Not(delta[i-1]),r[i-1][word],Not(w[i-1][word]))
+                clause9_1 = Or(Not(delta[i-1]),Not(r[i-1][word]),u[i-1][word])
+                clause9_2 = Or(Not(delta[i-1]),r[i-1][word],Not(u[i-1][word]))
                 solver.add(And(clause9_1, clause9_2))
 
-                clause10_1 = Or(delta[i-1],Not(s[i-1][word]),w[i-1][word])
-                clause10_2 = Or(delta[i-1],s[i-1][word],Not(w[i-1][word]))
+                clause10_1 = Or(delta[i-1],Not(s[i-1][word]),u[i-1][word])
+                clause10_2 = Or(delta[i-1],s[i-1][word],Not(u[i-1][word]))
                 solver.add(And(clause10_1, clause10_2))
 
                 clause11_1 = Or(delta[i-1],Not(r[i-1][word]),x[i-1][word])
                 clause11_2 = Or(delta[i-1],r[i-1][word],Not(x[i-1][word]))
                 solver.add(And(clause11_1, clause11_2))
+
+                solver.add(Or(delta[i-1], Not(delta[i-1])))
                 
         epsilon = [Bool(f'epsilon{i}') for i in range(1, self.N+1)]
         y     = [[Bool(f'y{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
@@ -112,19 +118,24 @@ class bitshift():
         #xor
         for i in range(1, self.N+1):
             for word in range(self.wordlength):
-                clause12 = Or(w[i-1][word], epsilon[i-1], Not(y[i-1][word]))
-                clause13 = Or(w[i-1][word], Not(epsilon[i-1]), y[i-1][word])
-                clause14 = Or(Not(w[i-1][word]), epsilon[i-1], y[i-1][word])
-                clause15 = Or(Not(w[i-1][word]), Not(epsilon[i-1]), Not(y[i-1][word]))
+                clause12 = Or(u[i-1][word], epsilon[i-1], Not(y[i-1][word]))
+                clause13 = Or(u[i-1][word], Not(epsilon[i-1]), y[i-1][word])
+                clause14 = Or(Not(u[i-1][word]), epsilon[i-1], y[i-1][word])
+                clause15 = Or(Not(u[i-1][word]), Not(epsilon[i-1]), Not(y[i-1][word]))
                 solver.add(clause12)
                 solver.add(clause13)
                 solver.add(clause14)
                 solver.add(clause15)
 
+        
+        
+        
+
         #ripple carry
         z     = [[Bool(f'z{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
-        cout  = [[Bool(f'z{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        cout  = [[Bool(f'cout{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
+        
         for i in range(1, self.N+1):
             # Clauses for sum = a ⊕ b ⊕ cin at 0
             clause16 = Or(x[i-1][0], y[i-1][0], epsilon[i-1], Not(z[i-1][0]))
@@ -160,7 +171,7 @@ class bitshift():
             solver.add(clause28)
             solver.add(clause29)
 
-            for kf in range(1, self.wordlength-1):
+            for kf in range(1, self.wordlength):
                 # Clauses for sum = a ⊕ b ⊕ cin at kf
                 clause30 = Or(x[i-1][kf], y[i-1][kf], cout[i-1][kf-1], Not(z[i-1][kf]))
                 clause31 = Or(x[i-1][kf], y[i-1][kf], Not(cout[i-1][kf-1]), z[i-1][kf])
@@ -195,15 +206,16 @@ class bitshift():
                 solver.add(clause42)
                 solver.add(clause43)
 
-            clause44 = Or(epsilon[i-1], x[i-1][self.wordlength-1], y[i-1][self.wordlength-1], Not(z[i-1][self.wordlength-1]))
-            clause45 = Or(epsilon[i-1], Not(x[i-1][self.wordlength-1]), Not(y[i-1][self.wordlength-1]), z[i-1][self.wordlength-1])
-            clause46 = Or(Not(epsilon[i-1]), x[i-1][self.wordlength-1], Not(y[i-1][self.wordlength-1]), Not(z[i-1][self.wordlength-1]))
-            clause47 = Or(Not(epsilon[i-1]), Not(x[i-1][self.wordlength-1]), y[i-1][self.wordlength-1], z[i-1][self.wordlength-1])
+            clause44 = Or(epsilon[i-1], x[i-1][self.wordlength-1], u[i-1][self.wordlength-1], Not(z[i-1][self.wordlength-1]))
+            clause45 = Or(epsilon[i-1], Not(x[i-1][self.wordlength-1]), Not(u[i-1][self.wordlength-1]), z[i-1][self.wordlength-1])
+            clause46 = Or(Not(epsilon[i-1]), x[i-1][self.wordlength-1], Not(u[i-1][self.wordlength-1]), Not(z[i-1][self.wordlength-1]))
+            clause47 = Or(Not(epsilon[i-1]), Not(x[i-1][self.wordlength-1]), u[i-1][self.wordlength-1], z[i-1][self.wordlength-1])
 
             solver.add(clause44)
             solver.add(clause45)
             solver.add(clause46)
             solver.add(clause47)
+
 
         #right shift
         zeta = [[Bool(f'zeta{i}{k}') for k in range(self.wordlength-1)] for i in range(1, self.N+1)]
@@ -224,7 +236,7 @@ class bitshift():
 
 
             for kf in range(1,self.wordlength-1):
-                for b in range(kf-1):
+                for b in range(kf):
                     clause49_1 = Or(Not(zeta[i-1][kf]), Not(z[i-1][self.wordlength-1]), c[i][self.wordlength-2-b])
                     clause49_2 = Or(Not(zeta[i-1][kf]), z[i-1][self.wordlength-1], Not(c[i][self.wordlength-2-b]))
                     solver.add(clause49_1)
@@ -243,18 +255,167 @@ class bitshift():
 
 
 
+        half_order = (6 // 2)
+        connected_coefficient = half_order
+
+        #solver connection
+        h = [[Bool(f'h{m}_{w}') for w in range(self.wordlength)] for m in range(half_order+1)]
+        h0 = [Bool(f'h0{m}') for m in range(half_order+1)]
+        t = [[Bool(f't{i}_{m}') for m in range(half_order+1)] for i in range(1, self.N+1)]
+        e = [Bool(f'e{m}') for m in range(half_order+1)]
+
+        e_sum = []
+        for m in range(half_order):
+            h_or_clause=[]
+            t_or_clauses=[]
+            
+
+            for w in range(self.wordlength):
+                h_or_clause.append(h[m][w])
+            h_or_clause.append(h0[m])
+            solver.add(Or(h_or_clause))
+
+            for i in range(1, self.N+1):
+                for word in range(self.wordlength):
+                    clause52_1=Or(Not(t[i-1][m]), Not(e[m]), Not(c[i][word]),h[m][word])
+                    clause52_2=Or(Not(t[i-1][m]), Not(e[m]), c[i][word],Not(h[m][word]))
+                    solver.add(And(clause52_1, clause52_2))
+
+                t_or_clauses.append(t[i-1][m])
+            solver.add(Or(t_or_clauses))
+
+            e_sum.append((e[m],1))
+        
+        solver.add(PbEq(e_sum,connected_coefficient))
+        
+        #test case
+
+        
+
+
         if solver.check() == sat:
             print("its sat")
             model = solver.model()
-            print(model)
+            for i in range(len(c)):
+                for w in range(wordlength):
+                    val = model[c[i][w]]
+                    print(f'c[{i}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(l)):
+                for w in range(wordlength):
+                    val = model[l[i][w]]
+                    print(f'l[{i+1}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(r)):
+                for w in range(wordlength):
+                    val = model[r[i][w]]
+                    print(f'r[{i+1}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(alpha)):
+                for a in range(len(alpha[i])):
+                    val = model[alpha[i][a]]
+                    print(f'alpha[{i+1}][{a}] = {val if val is not None else "None"}')
+
+            for i in range(len(beta)):
+                for a in range(len(beta[i])):
+                    val = model[beta[i][a]]
+                    print(f'beta[{i+1}][{a}] = {val if val is not None else "None"}')
+
+            for i in range(len(gamma)):
+                for k in range(wordlength-1):
+                    val = model[gamma[i][k]]
+                    print(f'gamma[{i+1}][{k}] = {val if val is not None else "None"}')
+
+            for i in range(len(s)):
+                for w in range(wordlength):
+                    val = model[s[i][w]]
+                    print(f's[{i+1}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(delta)):
+                val = model[delta[i]]
+                print(f'delta[{i+1}] = {val if val is not None else "None"}')
+
+            for i in range(len(u)):
+                for w_idx in range(wordlength):
+                    val = model[u[i][w_idx]]
+                    print(f'u[{i+1}][{w_idx}] = {val if val is not None else "None"}')
+
+            for i in range(len(x)):
+                for w_idx in range(wordlength):
+                    val = model[x[i][w_idx]]
+                    print(f'x[{i+1}][{w_idx}] = {val if val is not None else "None"}')
+
+            for i in range(len(epsilon)):
+                val = model[epsilon[i]]
+                print(f'epsilon[{i+1}] = {val if val is not None else "None"}')
+
+            for i in range(len(y)):
+                for w in range(wordlength):
+                    val = model[y[i][w]]
+                    print(f'y[{i+1}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(z)):
+                for w in range(wordlength):
+                    val = model[z[i][w]]
+                    print(f'z[{i+1}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(cout)):
+                for w in range(wordlength):
+                    val = model[cout[i][w]]
+                    print(f'cout[{i+1}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(zeta)):
+                for k in range(wordlength-1):
+                    val = model[zeta[i][k]]
+                    print(f'zeta[{i+1}][{k}] = {val if val is not None else "None"}')
+
+            for i in range(len(h)):
+                for w in range(wordlength):
+                    val = model[h[i][w]]
+                    print(f'h[{i}][{w}] = {val if val is not None else "None"}')
+
+            for i in range(len(h0)):
+                val = model[h0[i]]
+                print(f'h0[{i}] = {val if val is not None else "None"}')
+
+            for i in range(len(t)):
+                for m in range(half_order+1):
+                    val = model[t[i][m]]
+                    print(f't[{i+1}][{m}] = {val if val is not None else "None"}')
+
+            for i in range(len(e)):
+                val = model[e[i]]
+                print(f'e[{i}] = {val if val is not None else "None"}')
         else:
             print("No solution")
+
+    def int_to_signed_binary_list(value, word_length):
+        # Calculate the range for the word length
+        min_val = -(1 << (word_length - 1))
+        max_val = (1 << (word_length - 1)) - 1
         
+        # Check if the value fits in the given word length
+        if value < min_val or value > max_val:
+            raise ValueError(f"Value {value} out of range for a {word_length}-bit signed integer")
+        
+        # Handle negative values using two's complement
+        if value < 0:
+            value = (1 << word_length) + value
+
+        # Get the binary representation and pad with leading zeros if necessary
+        bin_representation = format(value, f'0{word_length}b')
+        
+        print(bin_representation)
+        
+        # Convert the binary representation to a list of integers (0 or 1)
+        bin_list = [int(bit) for bit in bin_representation]
+        
+        return bin_list
+
 
 
 
 
 if __name__ == '__main__':
-    hm = (25, 23, 11,25,75)
     wordlength = 6 #min wordlength would be 2
-    bitshift(hm, wordlength, verbose=True)
+    bitshift(wordlength, verbose=True)

@@ -7,7 +7,7 @@ class bitshift():
     def __init__(self, out, wordlength, verbose=False):
         self.wordlength = wordlength
         self.out = out
-        self.A_M = 15
+        self.A_M = 5
         self.verbose = verbose
         solver = Solver()
 
@@ -152,7 +152,7 @@ class bitshift():
                                 sign = 1
                             else:
                                 sign = -1
-                            self._print(f'Output[{i}] is connected to adder {a + 1} with a value of {c_a_val} multiplied by {2**shift} with sign of {sign}')
+                            self._print(f'Output[{i}] is connected to adder {a + 1} with an adder value of {c_a_val},end result is shifted by {shift}, thus its multiplied by {2**shift} with sign of {sign}')
                             self._print(f'Output[{i}]: Expected: {self.out[i]}, Calculated: {calculated_value}')
                             if calculated_value != self.out[i]:
                                 self._print(f"Validation failed for output[{i}]: Expected: {self.out[i]}, Calculated: {calculated_value}")
@@ -161,6 +161,6 @@ class bitshift():
         print("Validation Completed with no Error")
 
 if __name__ == '__main__':
-    hm = (25, 23, 11,25,75)
-    wordlength = 10
+    hm = (1, 2, 3)
+    wordlength = 6
     bitshift(hm, wordlength, verbose=True)
