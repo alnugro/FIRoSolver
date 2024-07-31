@@ -1,5 +1,7 @@
 import numpy as np
 from pysat.solvers import Solver
+from pysat.pb import PBEnc
+from pysat.formula import IDPool
 import matplotlib.pyplot as plt
 import time
 from variable_handler import VariableMapper
@@ -95,10 +97,14 @@ class FIRFilter:
     def runsolver(self):
         self.order_current = int(self.order_upper)
         half_order = (self.order_current // 2)
+
+        encoding_type = 2
         
         print("solver called")
         sf = SolverFunc(self.filter_type, self.order_current)
         var_mapper = VariableMapper(half_order, self.wordlength, self.gain_wordlength, self.N)
+
+        max_var = var_mapper.max_int_value
 
         def v2i(var_tuple):
             return var_mapper.tuple_to_int(var_tuple)
@@ -112,8 +118,8 @@ class FIRFilter:
         self.freq_upper_lin = [int((sf.db_to_linear(f)) * (10 ** self.coef_accuracy) * (2 ** self.fh)) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_upper]
         self.freq_lower_lin = [int((sf.db_to_linear(f)) * (10 ** self.coef_accuracy) * (2 ** self.fh)) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_lower]
 
-        solver = Solver(name='cadical195')
-        solver.activate_atmost()  # Ensure atmost is activated
+        solver = Solver(name='minisat22')
+        pool = IDPool(start_from=max_var)  # Ensure pool starts from some max value
 
         gain_coeffs = []
         gain_literals = []
@@ -131,8 +137,11 @@ class FIRFilter:
         if self.gain_lowerbound_int > sum(gain_coeffs):
             raise("gain lowerbound is bigger than gain_coef")
         
-        solver.add_atmost(lits=gain_literals, k=self.gain_upperbound_int, weights=gain_coeffs)
-        solver.add_atmost(lits=[-l for l in gain_literals], k=(sum(gain_coeffs) - self.gain_lowerbound_int), weights=gain_coeffs)
+        cnf = PBEnc.atmost(lits=gain_literals, weights=gain_coeffs, bound=self.gain_upperbound_int, vpool=pool, encoding=encoding_type)
+        cnf.extend(PBEnc.atleast(lits=gain_literals, weights=gain_coeffs, bound=self.gain_lowerbound_int, vpool=pool, encoding=encoding_type).clauses)
+
+        for clause in cnf.clauses:
+            solver.add_clause(clause)
 
         filter_literals = []
         filter_coeffs = []
@@ -236,13 +245,7 @@ class FIRFilter:
             if len(filter_upper_pb_coeffs) != len(filter_upper_pb_literals):
                 raise Exception("sumtin wong with upper filter pb")
             
-            filter_upper_negative_sum = 0
-            for i in range(len(filter_upper_pb_coeffs)):
-                if filter_upper_pb_coeffs[i] >= 0:
-                    continue
-                filter_upper_pb_coeffs[i] = np.abs(filter_upper_pb_coeffs[i])
-                filter_upper_negative_sum += filter_upper_pb_coeffs[i]
-                filter_upper_pb_literals[i] = -1 * filter_upper_pb_literals[i]
+            
 
             print("coeffs up: ",filter_upper_pb_coeffs)
             print("lit up: ",filter_upper_pb_literals)
@@ -253,13 +256,6 @@ class FIRFilter:
             if len(filter_lower_pb_coeffs) != len(filter_lower_pb_literals):
                 raise Exception("sumtin wong with lower filter pb")
 
-            filter_lower_negative_sum = 0
-            for i in range(len(filter_lower_pb_coeffs)):
-                if filter_lower_pb_coeffs[i] >= 0:
-                    continue
-                filter_lower_pb_coeffs[i] = np.abs(filter_lower_pb_coeffs[i])
-                filter_lower_negative_sum += filter_lower_pb_coeffs[i]
-                filter_lower_pb_literals[i] = -1 * filter_lower_pb_literals[i]
 
             print("coeffs: ",filter_lower_pb_coeffs)
             print("lit: ",filter_lower_pb_literals)
@@ -268,9 +264,11 @@ class FIRFilter:
             if len(filter_lower_pb_coeffs) != len(filter_lower_pb_literals):
                 raise Exception("sumtin wong with upper filter pb")
             
-            solver.add_atmost(lits=filter_upper_pb_literals, k=filter_upper_negative_sum, weights=filter_upper_pb_coeffs)
-            # solver.add_atleast(lits=filter_lower_pb_literals, k=filter_lower_negative_sum, weights=filter_lower_pb_coeffs) now convert this to atmost
-            solver.add_atmost(lits=[-l for l in filter_lower_pb_literals], k=sum(filter_lower_pb_coeffs)-filter_lower_negative_sum, weights=filter_lower_pb_coeffs)
+            cnf = PBEnc.atmost(lits=filter_upper_pb_literals, weights=filter_upper_pb_coeffs, bound=0, vpool=pool, encoding=encoding_type)
+            cnf.extend(PBEnc.atleast(lits=filter_lower_pb_literals, weights=filter_lower_pb_coeffs, bound=0, vpool=pool, encoding=encoding_type).clauses)
+
+            for clause in cnf.clauses:
+                solver.add_clause(clause)
 
         # Bitshift SAT starts here
 
@@ -295,16 +293,20 @@ class FIRFilter:
 
                 beta_lits.append(v2i(('Beta', i, a)))
 
-            solver.add_atmost(lits=alpha_lits, k=1)
-            solver.add_atmost(lits=[-l for l in alpha_lits], k=len(alpha_lits)-1)
+            cnf = PBEnc.atmost(lits=alpha_lits, weights=[1]*len(alpha_lits), bound=1, vpool=pool, encoding=encoding_type)
+            cnf.extend(PBEnc.atleast(lits=alpha_lits, weights=[1]*len(alpha_lits), bound=1, vpool=pool, encoding=encoding_type).clauses)
+
+            for clause in cnf.clauses:
+                solver.add_clause(clause)
             
-            solver.add_atmost(lits=beta_lits, k=1)
-            solver.add_atmost(lits=[-l for l in beta_lits], k=len(beta_lits)-1)
+            cnf = PBEnc.equals(lits=beta_lits, weights=[1]*len(beta_lits), bound=1, vpool=pool, encoding=encoding_type)
+
+            for clause in cnf.clauses:
+                solver.add_clause(clause)
 
         # Left Shifter
         for i in range(1, self.N + 1):
             gamma_lits = []
-            gamma_weights = []
             for k in range(self.wordlength - 1):
                 for j in range(self.wordlength - 1 - k):
                     solver.add_clause([-v2i(('gamma', i, k)), -v2i(('l', i, j)), v2i(('s', i, j + k))])
@@ -312,8 +314,10 @@ class FIRFilter:
 
                 gamma_lits.append(v2i(('gamma', i, k)))
             
-            solver.add_atmost(lits=gamma_lits, k=1)
-            solver.add_atmost(lits=[-l for l in gamma_lits], k=len(gamma_lits)-1)
+            cnf = PBEnc.equals(lits=gamma_lits, weights=[1]*len(gamma_lits), bound=1, vpool=pool, encoding=encoding_type)
+
+            for clause in cnf.clauses:
+                solver.add_clause(clause)
 
             for kf in range(1, self.wordlength - 1):
                 for b in range(kf):
@@ -396,8 +400,10 @@ class FIRFilter:
 
                 zeta_lits.append(v2i(('zeta', i, k)))
             
-            solver.add_atmost(lits=zeta_lits, k=1)
-            solver.add_atmost(lits=[-l for l in zeta_lits], k=len(zeta_lits)-1)
+            cnf = PBEnc.equals(lits=zeta_lits, weights=[1]*len(zeta_lits), bound=1, vpool=pool, encoding=encoding_type)
+
+            for clause in cnf.clauses:
+                solver.add_clause(clause)
 
             for kf in range(1, self.wordlength - 1):
                 for b in range(kf):
@@ -433,12 +439,13 @@ class FIRFilter:
 
             e_lits.append(v2i(('e', m)))
         
-        solver.add_atmost(lits=e_lits, k=connected_coefficient)
-        solver.add_atmost(lits=[-l for l in e_lits], k=len(e_lits)-connected_coefficient)
+        cnf = PBEnc.equals(lits=e_lits, weights=[1]*len(e_lits), bound=connected_coefficient, vpool=pool, encoding=encoding_type)
+
+        for clause in cnf.clauses:
+            solver.add_clause(clause)
 
         start_time = time.time()
         print("solver running")
-
 
         if solver.solve():
             print("solver sat")

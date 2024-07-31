@@ -1,5 +1,6 @@
 import time
 import random
+from pysat.formula import CNF, IDPool
 from pysat.pb import PBEnc
 from pysat.solvers import Solver
 
@@ -13,6 +14,8 @@ def measure_time(func):
 # Function to solve using PBEnc
 def solve_with_pbenc(lits, weights, bound):
     cnf = PBEnc.atmost(lits=lits, weights=weights, bound=bound)
+    cnf.extend(PBEnc.atleast(lits=lits, weights=weights, bound=bound).clauses)
+
     solver = Solver(name='cadical195')
     for clause in cnf.clauses:
         solver.add_clause(clause)
@@ -25,7 +28,10 @@ def solve_with_pbenc(lits, weights, bound):
 def solve_with_native(lits, weights, bound):
     solver = Solver(name='cadical195')
     solver.activate_atmost()  # Ensure atmost is activated
-    solver.add_atmost(lits, bound, weights)
+
+    solver.add_atmost(lits=lits, k=bound, weights=weights)
+    solver.add_atmost(lits=[-l for l in lits], k=sum(weights)-bound, weights=weights)
+
     is_sat = solver.solve()
     model = solver.get_model() if is_sat else None
     solver.delete()
@@ -37,7 +43,7 @@ step = 100
 length = 1
 
 # Write header to the result file
-with open('pbenc_vs_cadical_atmost.txt', 'w') as f:
+with open('pbenc_vs_cadical_atmost_eq.txt', 'w') as f:
     f.write("Length, PBEnc method SAT, PBEnc method Time (s), Native method SAT, Native method Time (s)\n")
 
 # Loop over different lengths
@@ -55,10 +61,10 @@ while length <= bench_length:
     result_native, time_native = measure_time(lambda: solve_with_native(lits, weights, bound))
     
     # Write results to file
-    with open('pbenc_vs_cadical_atmost.txt', 'a') as f:
+    with open('pbenc_vs_cadical_atmost_eq.txt', 'a') as f:
         f.write("{}, {}, {:.4f}, {}, {:.4f}\n".format(length, result_pbenc[0], time_pbenc, result_native[0], time_native))
     print("Length={} completed.".format(length))
     
     length += step
 
-print("Benchmarking completed and results written to pbenc_vs_cadical_atmost.txt")
+print("Benchmarking completed and results written to pbenc_vs_cadical_atmost_eq.txt")
