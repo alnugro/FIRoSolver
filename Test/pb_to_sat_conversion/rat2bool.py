@@ -80,12 +80,12 @@ class Rat2bool():
 
 
 
-    def frac2bool2s(self, b_frac, nbits, nfrac):
-        ntaps = len(b_frac)  # number of coefficients
+    def frac2bool2s(self, frac, nbits, nfrac):
+        ntaps = len(frac)  # number of coefficients
         A = np.zeros((ntaps, nbits), dtype=int)
         
         for i in range(ntaps):  # coefficient index (row index)
-            num = b_frac[i]
+            num = frac[i]
             scale_factor = 1 << nfrac
             
             # Scale the number and round to nearest integer
@@ -103,7 +103,8 @@ class Rat2bool():
                 bin_str = bin_str[-nbits:]
             
             # Reverse the binary string to match the MSB on the right convention
-            A[i, :] = np.array([int(bit) for bit in bin_str[::-1]])
+            A[i, :] = np.array([bit for bit in bin_str[::-1]])
+
         
         return A
     
@@ -142,6 +143,28 @@ class Rat2bool():
         if n <= 0:
             return lst  # No shifting needed if n is 0 or negative
         return [0] * n + lst[:-n]
+    
+    def frac2round(self, frac, nbits, nfrac):
+        bool = self.frac2bool2s(frac,nbits,nfrac)
+        frac_round = self.bool2s2frac(bool,nfrac)
+        return frac_round
+    
+    def bool2s2frac(self,bool2s, nfrac):
+        """Calculate the weighted sum based on the model using 2's complement representation."""
+        frac = []
+       
+        for i in range(len(bool2s)):
+            sum = 0
+            for j in range(len(bool2s[i])):
+                bool_value= bool2s[i][j]
+                bool_weight = 2**(-nfrac+j)
+                if j == len(bool2s[i])-1:
+                    bool_weight = -2**(-nfrac+j)
+                if bool_value > 0:
+                    sum += bool_weight*bool_value
+            frac.append(sum)
+        return frac
+                
 
 if __name__ == "__main__":
     # Example usage:
@@ -151,6 +174,11 @@ if __name__ == "__main__":
     nbits = 10  # number of bits
     nfrac = 3 # bits for fractional
     boolean = Rat2bool()
+    
+    test = [-37.39576654281973, -413.76919725065727, 1241.849632544874, 2365.221692502124, -3327.1022651454678, -3863.7774723317243]
+    test_res = boolean.frac2round(test,9,2)
+
+    print ("Result ",test_res)
     
     Y = boolean.frac2csd(b_frac, nbits, nfrac)
     A = boolean.abs_frac2bool(b_frac, nbits, nfrac)

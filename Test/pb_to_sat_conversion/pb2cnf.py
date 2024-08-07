@@ -385,7 +385,7 @@ class PB2CNF():
             #add 1 to lsb if it was inversed and not added by zero. only the case if it were not bitshifted and multiplied by minus 1 or csd[0] = -1, so it is always on the adder_model[i][1] position
 
             while len(adder_model[i]) > 3:
-                print("deleting one line in adder graph")
+                # print("deleting one line in adder graph")
 
                 sum_sub_res = []
                 for j in range(sum_wordlength):
@@ -404,7 +404,7 @@ class PB2CNF():
                 
             # print("Model After sum ",adder_model)
 
-            print("deleting adder graph done")
+            # print("deleting adder graph done")
             if len(adder_model[i]) == 2:
                
                cnf_final += (self.list_equalization(adder_model[i][0],adder_model[i][1]))
@@ -463,7 +463,7 @@ class PB2CNF():
         # print(sum_adder_model)
         #add all the sum
         while len(sum_adder_model) > 1:
-            print("deleting the sum of adder graph")
+            # print("deleting the sum of adder graph")
             sum_sub_res = []
             for j in range(extended_wordlength):
                 sum_sub_res.append(self.aux_var_setter())
@@ -485,7 +485,7 @@ class PB2CNF():
         cnf_final+=self.bound_case(sum_adder_model_1d,case)
         # print(f"\nCNF final: {cnf_final} ")
 
-        print("deleting done")
+        # print("deleting done")
 
         return cnf_final
 
@@ -502,11 +502,10 @@ class PB2CNF():
         cnf_bound = []
         if case == 'atmost':
             for i in range(len(sum_adder_model_1d)-1):
-                cnf_bound.append([sum_adder_model_1d[-1], sum_adder_model_1d[i]])
+                cnf_bound.append([sum_adder_model_1d[-1], -sum_adder_model_1d[i]])
         elif case == 'atleast':
-            print("atleast is called")
             for i in range(len(sum_adder_model_1d)-1):
-                cnf_bound.append([-sum_adder_model_1d[-1], sum_adder_model_1d[i]])
+                cnf_bound.append([-sum_adder_model_1d[-1]])
         elif case == 'equal':
             for i in range(len(sum_adder_model_1d)):
                 cnf_bound.append([-sum_adder_model_1d[i]])
@@ -732,17 +731,16 @@ class PB2CNF():
 if __name__ == "__main__":
     #Example Use
     # lits = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24]]
-    lits = [[1, 2, 3, 4, 5 ,6]]
-
-    weight = [1.8]
-    bounds = -3
-    fracW = 2
+    lits = [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [11, 12, 13, 14, 15, 16, 17, 18, 19, 20], [21, 22, 23, 24, 25, 26, 27, 28, 29, 30], [31, 32, 33, 34, 35, 36, 37, 38, 39, 40], [41, 42, 43, 44, 45, 46, 47, 48, 49, 50], [51, 52, 53, 54, 55, 56, 57, 58, 59, 60], [61, 62, 63, 64, 65, 66, 67, 68, 69, 70]]
+    weight = [10, -271, 502, 408, 455, 265, -83]
+    bounds = -383
+    fracW = 0
 
     top_var = max(max(lit_group) for lit_group in lits)
     print(top_var)
     
     pb = PB2CNF(top_var=top_var)
-    cnf = pb.atmost(weight,lits,bounds,fracW)
+    cnf = pb.equal(weight,lits,bounds,fracW)
  
     # cnf=[]
     # lits1 =['zero', 'zero', 1, 2, 3, 4, 5, 6, 7, 7, 7]

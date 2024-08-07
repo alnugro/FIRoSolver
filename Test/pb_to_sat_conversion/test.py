@@ -1,13 +1,9 @@
 import random
+import numpy as np
 from pb2cnf import PB2CNF
 from pysat.solvers import Solver
-
-def interpret_2s_complement(value, bits):
-    """Interpret a binary value as a 2's complement number."""
-    msb_mask = 1 << (bits - 1)
-    if value & msb_mask:
-        value -= 1 << bits
-    return value
+from rat2bool import Rat2bool
+import time
 
 def calculate_result(model, lits, weights, fracW):
     """Calculate the weighted sum based on the model using 2's complement representation."""
@@ -59,16 +55,16 @@ def test_pb2cnf(case, lits, weights, bound, fracW, top_var):
         print(f"Original Bound Value: {bound}")
 
         if case == 'atleast':
-            if rounded_result <= bound+2**-fracW:
-                failed_test.append([f"Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}"])
+            if rounded_result < bound:
+                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits} ,{weights}"])
                 print("\n*****************atleast failed*****************\n")
         elif case == 'atmost':
-            if rounded_result >= bound-2**-fracW:
-                failed_test.append([f"Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}"])
+            if rounded_result > bound:
+                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits},{weights}"])
                 print("\n*****************atmost failed*****************\n")
         elif case == 'equals':
-            if rounded_result-(8*2**-fracW) > bound or rounded_result+(8*2**-fracW) < bound:
-                failed_test.append([f"Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}"])
+            if rounded_result > bound or rounded_result < bound:
+                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits},{weights}"])
                 print("\n*****************equals failed*****************\n")
         print("Model verification passed")
     else:
@@ -98,36 +94,41 @@ iter = 0
 
 # Example usage:
 
-num_lists_start = 15
-num_lists_end = 20
+num_lists_start = 10
+num_lists_end = 15
 list_length_start = 10
 list_length_end = 15
 
 
 # Set a random seed for reproducibility
-random_seed = 42
+random_seed = 1
 random.seed(random_seed)
-
+rat = Rat2bool()
     
+start_time= time.time()
 
-
-total_test = 30  # Example number of tests, adjust as needed
+total_test = 100 # Example number of tests, adjust as needed
 failed_test = []
 
 for i in range(total_test):
     random_lits = generate_randomized_lits(num_lists_start, num_lists_end, list_length_start, list_length_end)
-    fracW_min = int(0.6*len(random_lits[0]))
-    fracW_max = len(random_lits[0]) - int(0.2*len(random_lits[0]))
-    # fracW = random.randint(fracW_min, fracW_max)
-    fracW = 0
-    bound_min = -2**(len(random_lits[0])-fracW-1)
-    bound_max = 2**(len(random_lits[0])-fracW-1)
-    bound = random.randint(bound_min, bound_max)
+    fracW_min = 4
+    fracW_max = len(random_lits[0]) - 5
+    fracW = random.randint(fracW_min, fracW_max)
+    bound_min = (-2**(len(random_lits[0])-fracW-1))
+    bound_max = (2**(len(random_lits[0])-fracW-1))
+    bound = random.uniform(bound_min, bound_max)
+
     top_var = max(max(lit_group) for lit_group in random_lits)
     weight_min = -2**(len(random_lits[0])-fracW-1)
     weight_max = 2**(len(random_lits[0])-fracW-1)
 
-    random_weights = [random.randint(weight_min, weight_max) for _ in range(len(random_lits))]
+    random_weights = [random.uniform(weight_min, weight_max) for _ in range(len(random_lits))]
+
+    # round the inputs
+    bound_round = rat.frac2round([bound],len(random_lits[0]), fracW)
+    bound = bound_round[0]
+    random_weights = rat.frac2round(random_weights,len(random_lits[0]), fracW)
 
     print(f"\n\n--------Start Test----------- {i + 1}:")
     print(f"Top Var: {top_var}")
@@ -158,9 +159,13 @@ for i in range(total_test):
 
     failed_test += test_pb2cnf('equals', random_lits, random_weights, bound, fracW, top_var)
 
+failed_test = np.array(failed_test)
+end_time = time.time()
 print(f"Total failed tests: {len(failed_test)}")
-print(f"failed tests description: {failed_test}")
+print(f"failed tests description: \n{failed_test}")
 print(f"Total tests done: {total_test*3}")
+print(f"Duration: {end_time-start_time}")
+
 
 
 
