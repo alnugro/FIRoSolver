@@ -81,6 +81,8 @@ class Rat2bool():
 
 
     def frac2bool2s(self, frac, nbits, nfrac):
+        # print("i am called")
+        # print(f"frac is this {frac}")
         ntaps = len(frac)  # number of coefficients
         A = np.zeros((ntaps, nbits), dtype=int)
         
@@ -105,7 +107,8 @@ class Rat2bool():
             # Reverse the binary string to match the MSB on the right convention
             A[i, :] = np.array([bit for bit in bin_str[::-1]])
 
-        
+        # print(f"result is this {A}")
+
         return A
     
     def bool2str(self, bools):

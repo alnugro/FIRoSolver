@@ -325,12 +325,7 @@ class PB2CNF():
         cnf = self.run_pb2cnf(weight, lits, bounds, fracW, "equal")
         return cnf
     
-    def atmost_cardinality(self, lits, bounds):
-        pass
-    def atleast_cardinality(self, lits, bounds):
-        pass
-    def equal_cardinality(self, lits, bounds):
-        pass
+    
 
     def remove_zeroes_weight(self, we, li):
         weight = we[:]  # Create a copy of the original weight list

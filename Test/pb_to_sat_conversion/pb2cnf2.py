@@ -1,6 +1,7 @@
 import numpy as np
 from rat2bool import Rat2bool
 from pysat.solvers import Solver
+import math
 
 
 
@@ -63,7 +64,7 @@ class PB2CNF():
         deleted_cnf = []
         # Iterate in reverse to avoid index issues while deleting elements
         for i in range(len(weight) - 1, -1, -1):
-            
+
             if all(x == 0 for x in weight[i]):
                 deleted_cnf += ([[-l ]for l in lits[i]])
                 del weight[i]
@@ -127,7 +128,7 @@ class PB2CNF():
 
         #create an extended wordlength    
         max_integer_sum_adder_csd = (2**sum_wordlength)*lits_counts
-        extended_wordlength = int(np.ceil(np.log2(max_integer_sum_adder_csd)))
+        extended_wordlength = int(math.ceil(math.log2(max_integer_sum_adder_csd)))
         #print(extended_wordlength)
 
         sum_adder_model= self.generate_sum_adder_model(adder_model, extended_wordlength)
@@ -162,7 +163,7 @@ class PB2CNF():
         # print(f"bool1 {bounds_bool_str}\n")
         
 
-        print(f"Sum adder on 1: {sum_adder_model}")
+        # print(f"Sum adder on 1: {sum_adder_model}")
         #add all the sum
         while len(sum_adder_model) > 2:
             sum_sub_res = []
@@ -183,7 +184,7 @@ class PB2CNF():
         sum_adder_model[0] = sum_sub_res
         # print(f"This is deleted {sum_adder_model[1]}\n")
         del sum_adder_model[1]
-        print(f"Sum adder on 2: {sum_adder_model}")
+        # print(f"Sum adder on 2: {sum_adder_model}")
 
         
         sum_adder_model_1d = [sublist for sublist in sum_adder_model[0]]
@@ -250,6 +251,10 @@ class PB2CNF():
         for i in range(len(lst_b)):
             if i == 0:
                 cnf_temp,cout_temp,lst_result_temp= self.addition_matcher(lst_a[i], lst_b[i], 'zero', assert_var_flag)
+
+            elif i == len(lst_b)-1:
+                cin = cout[i-1]  #carry cin
+                cnf_temp,cout_temp,lst_result_temp = self.addition_matcher(lst_a[i], lst_b[i], cin, True)
             else:
                 cin = cout[i-1]  #carry cin
                 cnf_temp,cout_temp,lst_result_temp = self.addition_matcher(lst_a[i], lst_b[i], cin, assert_var_flag)
@@ -258,9 +263,35 @@ class PB2CNF():
                 lst_result[i]= lst_result_temp
                 cout[i] = cout_temp
                 cnf_addit.extend(cnf_temp)
+
+
             else:
                 raise ValueError("cout or result temp is somehow None: contact developer")
             
+
+        # cnf_overflow = []
+        # if lst_a[-1] == 'zero':
+        #     sign_a = self.aux_var_setter()
+        #     cnf_overflow.append([-sign_a])
+        # elif lst_a[-1] == 'one':
+        #     sign_a = self.aux_var_setter()
+        #     cnf_overflow.append([sign_a])
+        # else: sign_a = lst_a[-1]
+
+        # if lst_b[-1] == 'zero':
+        #     sign_b = self.aux_var_setter()
+        #     cnf_overflow.append([-sign_b])
+        # elif lst_b[-1] == 'one':
+        #     sign_b = self.aux_var_setter()
+        #     cnf_overflow.append([sign_b])
+        # else: sign_b = lst_b[-1]
+
+        
+        # cnf_overflow.append([-sign_a, -sign_b, lst_result[-1]])
+        # cnf_overflow.append([sign_a, sign_b, -lst_result[-1]])
+        # cnf_addit.extend(cnf_overflow)
+            
+        
         #bound the 
         # print(f"\nCNF is this: {cnf_addit} ")
         # print(f"Cout is this: {cout} ")
@@ -674,12 +705,7 @@ class PB2CNF():
         adder_model = [[] for i in range(lits_counts)]
 
 
-        # for i in range(lits_counts):
-        #     for j in range(sum_wordlength):
-        #         adder_model[i][0][j]=self.aux_var_setter()
-            
-
-        #print("CSD: ",weight_csd)
+        
 
         #shifting csd parts
         for i in range(lits_counts):
@@ -748,8 +774,8 @@ class PB2CNF():
             raise ValueError("literalls and weight are not in the same size!")
             
     def weight_bounds_validation(self, weight, wordlength, bounds, fracW):
-        max_integer_pos_value = 2**(wordlength-fracW-1)-1
-        max_integer_neg_value = -1*max_integer_pos_value+1 #its the same to keep the negation from getting overflown
+        max_integer_pos_value = 2**(wordlength-fracW-1)
+        max_integer_neg_value = -1*max_integer_pos_value #its the same to keep the negation from getting overflown
         #print(max_integer_pos_value)
         for w in weight:
             if int(w) > max_integer_pos_value or int(w) < max_integer_neg_value:
@@ -768,17 +794,20 @@ class PB2CNF():
 if __name__ == "__main__":
     #Example Use
     # lits = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24]]
-    lits = [[1,'zero','zero','zero'],[2,'zero','zero','zero'],[3,'zero','zero','zero']]
-    weight = [1,1,1]
-    bounds = 0
-    fracW = 0
+    lits= [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]]
+    weight= [134002]
+    bounds= 133246
+    fracW = 4
 
-    # top_var = max(max(lit_group) for lit_group in lits)
+    top_var = max(max(lit_group) for lit_group in lits)
     # print(top_var)
     # lits = [1, 2, 3, 4, 5, 6]
-    top_var = 4
+
     pb = PB2CNF(top_var=top_var)
-    cnf = pb.equal(weight,lits,bounds,fracW)
+    cnf = pb.atleast(weight,lits,bounds,fracW)
+
+
+
     # cnf = pb.equal_card_one(lits)
     print("cnf: ",cnf)
     # cnf=[]

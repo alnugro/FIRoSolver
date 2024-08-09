@@ -79,34 +79,35 @@ class VariableMapper:
         return self.var_to_int[var_name]
 
 
-# Create a global instance of VariableMapper
-half_order = 3
-wordlength = 4
-wordlength = 6
-adder_count = 5
-var_mapper = VariableMapper(half_order, wordlength, wordlength, adder_count)
+if __name__ == "__main__":
+    # Create a global instance of VariableMapper
+    half_order = 3
+    wordlength = 4
+    wordlength = 6
+    adder_count = 5
+    var_mapper = VariableMapper(half_order, wordlength, wordlength, adder_count)
 
-# Simplified functions to convert between variable names and integers
-def v2i(var_tuple):
-    return var_mapper.tuple_to_int(var_tuple)
+    # Simplified functions to convert between variable names and integers
+    def v2i(var_tuple):
+        return var_mapper.tuple_to_int(var_tuple)
 
-def i2v(var_int):
-    return var_mapper.int_to_var_name(var_int)
+    def i2v(var_int):
+        return var_mapper.int_to_var_name(var_int)
 
 
-# Example usage
-example_struct_var = ('h', 0, 0)
-example_struct_int = v2i(example_struct_var)
-print(f'Variable {example_struct_var} is mapped to integer {example_struct_int}')
-print(f'Integer {example_struct_int} is mapped back to variable {i2v(example_struct_int)}')
+    # Example usage
+    example_struct_var = ('h', 0, 0)
+    example_struct_int = v2i(example_struct_var)
+    print(f'Variable {example_struct_var} is mapped to integer {example_struct_int}')
+    print(f'Integer {example_struct_int} is mapped back to variable {i2v(example_struct_int)}')
 
-# Accessing variable name using integer
-int_example = 4
-accessed_var_name = i2v(int_example)
-print(f'Accessed variable name for integer {int_example} is {accessed_var_name}')
+    # Accessing variable name using integer
+    int_example = 4
+    accessed_var_name = i2v(int_example)
+    print(f'Accessed variable name for integer {int_example} is {accessed_var_name}')
 
-# Print the maximum integer value
-print(var_mapper.max_int_value)
+    # Print the maximum integer value
+    print(var_mapper.max_int_value)
 
-example_struct_var = ('h', 0, 0)
-example_struct_int = v2i(('h', 0, 0))
+    example_struct_var = ('h', 0, 0)
+    example_struct_int = v2i(('h', 0, 0))
