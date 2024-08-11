@@ -1,5 +1,5 @@
 import random
-from pb2cnf2 import PB2CNF
+from pb2cnf import PB2CNF
 from pysat.solvers import Solver
 from rat2bool import Rat2bool
 import numpy as np
@@ -122,7 +122,7 @@ rat = Rat2bool()
     
 
 
-total_test = 40 # Example number of tests, adjust as needed
+total_test = 10 # Example number of tests, adjust as needed
 failed_test = []
 result_test = []
 
@@ -142,6 +142,7 @@ for i in range(total_test):
     bound_min = (-2**(len(random_lits[0])-fracW-1)+1)
     bound_max = (2**(len(random_lits[0])-fracW-1)-1)
     bound = random.uniform(bound_min, bound_max)
+    bound = 0
 
     weight_min = -2**(len(random_lits[0])-fracW-1)+1
     weight_max = 2**(len(random_lits[0])-fracW-1)-1

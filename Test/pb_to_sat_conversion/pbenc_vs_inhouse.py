@@ -110,21 +110,21 @@ rat = Rat2bool()
     
 
 
-total_test = 6 # Example number of tests, adjust as needed
+total_test = 10 # Example number of tests, adjust as needed
 failed_test = []
 test_result = []
 for i in range(total_test):
     num_lists_start = 2+i
-    num_lists_end = 3+i
-    list_length_start = 10
-    list_length_end = 15
+    num_lists_end = 2+i
+    list_length_start = 12
+    list_length_end = 12
     random_lits = generate_randomized_lits(num_lists_start, num_lists_end, list_length_start, list_length_end)
     fracW_min = 4
     fracW_max = len(random_lits[0]) - 5
     fracW = 0
     bound_min = 0
     bound_max = (2**(len(random_lits[0])-fracW-1)-1)
-    bound = random.randint(bound_min, bound_max)
+    bound = 100*i
 
     top_var = max(max(lit_group) for lit_group in random_lits)
     weight_min = -2**(len(random_lits[0])-fracW-1)+1

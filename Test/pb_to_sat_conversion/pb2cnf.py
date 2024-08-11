@@ -325,6 +325,16 @@ class PB2CNF():
         cnf = self.run_pb2cnf(weight, lits, bounds, fracW, "equal")
         return cnf
     
+    def equal_card_one(self, lits):
+        cnf = []
+        cnf.append(lits)
+        cnf_temp = []
+        for i in range(len(lits)):
+            for j in range(i+1,len(lits)):
+                cnf_temp.append([-lits[i],-lits[j]])
+                print(cnf_temp)
+        cnf += cnf_temp
+        return cnf
     
 
     def remove_zeroes_weight(self, we, li):
@@ -360,7 +370,7 @@ class PB2CNF():
 
         #print(f"weight is : {weight}")
         #initialize Rational to boolean class
-        print(f"weight csd is : {weight_csd}")
+        # print(f"weight csd is : {weight_csd}")
     
 
         bounds_list = [bounds]

@@ -152,23 +152,6 @@ class FIRFilter:
             
         solver.add(PbLe(pb_gain_pairs, self.gain_upperbound_int))
         solver.add(PbGe(pb_gain_pairs, self.gain_lowerbound_int))
-
-
-        # i think this is not necessary its boolean anyway
-        # filter_bool_literalls=[]
-        # filter_bool_weights = []
-        
-        # for a in range(half_order + 1):
-        #     filter_bool_literalls.clear()
-        #     filter_bool_weights.clear()
-        #     for w in range(self.wordlength):
-        #         if w==self.wordlength-1:
-        #             filter_bool_weights.append(-1*2**w)
-        #         else: filter_bool_weights.append(2**w)
-        #         filter_bool_literalls.append(h[a][w])
-        #     filter_bool_pairs=[(filter_bool_literalls[i],filter_bool_weights[i]) for i in range(len(filter_bool_literalls))]
-        #     solver.add(PbLe(filter_bool_pairs, 2**self.wordlength))
-        #     solver.add(PbGe(filter_bool_pairs, 0))
             
 
             
@@ -741,10 +724,10 @@ class FIRFilter:
     
 # Test inputs
 filter_type = 0
-order_upper = 20
+order_upper = 15
 accuracy = 10
-adder_count = 20
-wordlength = 6
+adder_count = 30
+wordlength = 14
 
 # Initialize freq_upper and freq_lower with NaN values
 freqx_axis = np.linspace(0, 1, accuracy*order_upper) #according to Mr. Kumms paper
@@ -757,9 +740,9 @@ upper_half_point = int(0.6*(accuracy*order_upper))
 end_point = accuracy*order_upper
 
 freq_upper[0:lower_half_point] = 10
-freq_lower[0:lower_half_point] = -5
+freq_lower[0:lower_half_point] = 0
 
-freq_upper[upper_half_point:end_point] = -20
+freq_upper[upper_half_point:end_point] = -30
 freq_lower[upper_half_point:end_point] = -1000
 
 
