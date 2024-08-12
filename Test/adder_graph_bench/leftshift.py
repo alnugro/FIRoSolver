@@ -3,11 +3,14 @@ from z3 import *
 import matplotlib.pyplot as plt
 import time
 
+# set_param('verbose', 30)
+
+
 class bitshift():
     def __init__(self, out, wordlength, verbose=False):
         self.wordlength = wordlength
         self.out = out
-        self.N = 4
+        self.N = 11
         self.verbose = verbose
 
         # Input multiplexer
@@ -22,10 +25,11 @@ class bitshift():
 
         # Test case
         for i in range(1, self.N+1):
-            self.solver.add(self.l[i-1][4])
-            self.solver.add(Not(self.l[i-1][5]))
+            # self.solver.add(self.l[i-1][2])
+            # self.solver.add(Not(self.l[i-1][3]))
 
-            self.solver.add(self.gamma[i-1][4])
+            self.solver.add(self.gamma[i-1][0])
+            
 
         for i in range(1, self.N+1):
             gamma_sum = []
@@ -36,7 +40,7 @@ class bitshift():
                     self.solver.add(And(clause3_1, clause3_2))
 
                 gamma_sum.append((self.gamma[i-1][k], 1))
-
+            print(gamma_sum)
             self.solver.add(PbEq(gamma_sum, 1))
 
             for kf in range(1, self.wordlength-1):
@@ -76,6 +80,6 @@ class bitshift():
 
 if __name__ == '__main__':
     hm = (25, 23, 11, 25, 75)
-    wordlength = 6  # min wordlength would be 2
+    wordlength = 14 # min wordlength would be 2
     bitshift_instance = bitshift(hm, wordlength, verbose=True)
     bitshift_instance.run()

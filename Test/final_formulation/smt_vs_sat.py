@@ -524,7 +524,7 @@ class FIRFilter2:
 
 # Initialize global variable
 it = 4
-timeout = 10000  # 10 minutes in milliseconds
+timeout = 300000  # 10 minutes in milliseconds
 
 
 def generate_random_filter_params():
@@ -560,7 +560,7 @@ with open("z3_smt_vs_sat.txt", "w") as file:
     file.write("time_smt, result_smt, time_sat, result_sat, filter_type, order_upper, accuracy, adder_count, wordlength, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound\n")
 
 results = []
-for i in range(6):
+for i in range(50):
     print("running test: ", i)
     params = generate_random_filter_params()
     filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, accuracy, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound = params

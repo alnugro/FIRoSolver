@@ -259,17 +259,17 @@ class bitshift():
         if solver.check() == sat:
             print("its sat")
             model = solver.model()
-            for i in range(len(c)):
-                for w in range(wordlength):
-                    print(f'c[{i}][{w}] = {model[c[i][w]]}')
+            # for i in range(len(c)):
+            #     for w in range(wordlength):
+            #         print(f'c[{i}][{w}] = {model[c[i][w]]}')
 
-            for i in range(len(l)):
-                for w in range(wordlength):
-                    print(f'l[{i+1}][{w}] = {model[l[i][w]]}')
+            # for i in range(len(l)):
+            #     for w in range(wordlength):
+            #         print(f'l[{i+1}][{w}] = {model[l[i][w]]}')
 
-            for i in range(len(r)):
-                for w in range(wordlength):
-                    print(f'r[{i+1}][{w}] = {model[r[i][w]]}')
+            # for i in range(len(r)):
+            #     for w in range(wordlength):
+            #         print(f'r[{i+1}][{w}] = {model[r[i][w]]}')
 
             for i in range(len(alpha)):
                 for a in range(len(alpha[i])):
@@ -283,35 +283,35 @@ class bitshift():
                 for k in range(wordlength-1):
                     print(f'gamma[{i+1}][{k}] = {model[gamma[i][k]]}')
 
-            for i in range(len(s)):
-                for w in range(wordlength):
-                    print(f's[{i+1}][{w}] = {model[s[i][w]]}')
+            # for i in range(len(s)):
+            #     for w in range(wordlength):
+            #         print(f's[{i+1}][{w}] = {model[s[i][w]]}')
 
-            for i in range(len(delta)):
-                print(f'delta[{i+1}] = {model[delta[i]]}')
+            # for i in range(len(delta)):
+            #     print(f'delta[{i+1}] = {model[delta[i]]}')
 
-            for i in range(len(u)):
-                for w_idx in range(wordlength):
-                    print(f'u[{i+1}][{w_idx}] = {model[u[i][w_idx]]}')
+            # for i in range(len(u)):
+            #     for w_idx in range(wordlength):
+            #         print(f'u[{i+1}][{w_idx}] = {model[u[i][w_idx]]}')
 
-            for i in range(len(x)):
-                for w_idx in range(wordlength):
-                    print(f'x[{i+1}][{w_idx}] = {model[x[i][w_idx]]}')
+            # for i in range(len(x)):
+            #     for w_idx in range(wordlength):
+            #         print(f'x[{i+1}][{w_idx}] = {model[x[i][w_idx]]}')
 
             for i in range(len(epsilon)):
                 print(f'epsilon[{i+1}] = {model[epsilon[i]]}')
 
-            for i in range(len(y)):
-                for w in range(wordlength):
-                    print(f'y[{i+1}][{w}] = {model[y[i][w]]}')
+            # for i in range(len(y)):
+            #     for w in range(wordlength):
+            #         print(f'y[{i+1}][{w}] = {model[y[i][w]]}')
 
-            for i in range(len(z)):
-                for w in range(wordlength):
-                    print(f'z[{i+1}][{w}] = {model[z[i][w]]}')
+            # for i in range(len(z)):
+            #     for w in range(wordlength):
+            #         print(f'z[{i+1}][{w}] = {model[z[i][w]]}')
 
-            for i in range(len(cout)):
-                for w in range(wordlength):
-                    print(f'cout[{i+1}][{w}] = {model[cout[i][w]]}')
+            # for i in range(len(cout)):
+            #     for w in range(wordlength):
+            #         print(f'cout[{i+1}][{w}] = {model[cout[i][w]]}')
 
             for i in range(len(zeta)):
                 for k in range(wordlength-1):
@@ -325,5 +325,5 @@ class bitshift():
 
 if __name__ == '__main__':
     hm = (25, 23, 11,25,75)
-    wordlength = 6 #min wordlength would be 2
+    wordlength = 15 #min wordlength would be 2
     bitshift(hm, wordlength, verbose=True)
