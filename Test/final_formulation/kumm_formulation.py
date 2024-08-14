@@ -2,6 +2,7 @@ import numpy as np
 from z3 import *
 import matplotlib.pyplot as plt
 import time
+import re
 
 
 class SolverFunc():
@@ -41,7 +42,7 @@ class SolverFunc():
 
 
 class FIRFilter:
-    def __init__(self, filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, app=None):
+    def __init__(self, filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength, app=None):
         self.filter_type = filter_type
         self.order_upper = order_upper
         self.freqx_axis = freqx_axis
@@ -52,14 +53,17 @@ class FIRFilter:
         self.fig, (self.ax1, self.ax2) = plt.subplots(2,1)
         self.freq_upper_lin=0
         self.freq_lower_lin=0
-        self.coef_accuracy = 10**10
-        self.wordlength = 10
-        self.ignore_lowerbound_lin = ignore_lowerbound_lin*self.coef_accuracy
+        self.coef_accuracy = 10**3
+        self.ignore_lowerbound_lin = ignore_lowerbound
         self.A_M = adder_count
         self.wordlength=wordlength
-        self.verbose = True
+        self.verbose = False
         self.order_current = int(self.order_upper)
         self.half_order = (self.order_current // 2)
+        self.gain_upperbound= 1.4
+        self.gain_lowerbound= 1
+        self.gain_res = 0
+
 
 
     def runsolver(self):
@@ -74,14 +78,21 @@ class FIRFilter:
         # linearize the bounds
         self.freq_upper_lin = [int((sf.db_to_linear(f)) * self.coef_accuracy) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_upper]
         self.freq_lower_lin = [int((sf.db_to_linear(f)) * self.coef_accuracy) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_lower]
+        
+        self.ignore_lowerbound_np = np.array(self.ignore_lowerbound_lin, dtype=float)
+        self.ignore_lowerbound_lin = sf.db_to_linear(self.ignore_lowerbound_np)
+        self.ignore_lowerbound_lin = self.ignore_lowerbound_lin*self.coef_accuracy
 
 
 
         # declaring variables
         h_int = [Int(f'h_int_{i}') for i in range(half_order+1)]
+        gain = Real('gain')
 
         # Create a Z3 solver instance
         solver = Solver()
+        solver.add(gain <= self.gain_upperbound)
+        solver.add(gain >= self.gain_lowerbound)
 
         # Create the sum constraints
         for i in range(len(self.freqx_axis)):
@@ -97,13 +108,13 @@ class FIRFilter:
                 cm_const = sf.cm_handler(j, self.freqx_axis[i])
                 term_sum_exprs += h_int[j]*(2**(-1*self.wordlength)) * cm_const
                 print("this coef h", j, " is multiplied by ", cm_const)
-            solver.add(term_sum_exprs <= self.freq_upper_lin[i])
+            solver.add(term_sum_exprs <= gain*self.freq_upper_lin[i])
 
 
             if self.freq_lower_lin[i] < self.ignore_lowerbound_lin:
-                solver.add(term_sum_exprs >= -self.freq_upper_lin[i])
+                solver.add(term_sum_exprs >= gain*-self.freq_upper_lin[i])
                 continue
-            solver.add(term_sum_exprs >= self.freq_lower_lin[i])
+            solver.add(term_sum_exprs >= gain*self.freq_lower_lin[i])
             
 
 
@@ -175,10 +186,22 @@ class FIRFilter:
                 h_res=(model[h_int[i]].as_long())*(2**-self.wordlength)
                 self.h_res.append(h_res)
                 end_time = time.time()
-            self.validate(model, c_a, c_a_i, c_a_i_k, c_sh_a_i, sg_a_i, c_sh_sg_a_i, o_a_m_s_sg, sh_a_i_s, h_int)
+                # self.validate(model, c_a, c_a_i, c_a_i_k, c_sh_a_i, sg_a_i, c_sh_sg_a_i, o_a_m_s_sg, sh_a_i_s, h_int)
+                # Assuming model.eval(gain).as_decimal(5) returns a string representation of a decimal
+                gain_decimal_str = model.eval(gain).as_decimal(5)
 
+                # Clean the string by removing any non-numeric characters (except for '.', '-', and digits)
+                cleaned_gain_decimal_str = re.sub(r'[^0-9.-]', '', gain_decimal_str)
 
-            print(self.h_res)
+                try:
+                    # Convert the cleaned string to a float and then to np.float64
+                    self.gain_res = np.float64(float(cleaned_gain_decimal_str))
+                except ValueError:
+                    # Handle the case where the string is still not convertible to a float
+                    print(f"Error: Could not convert cleaned string '{cleaned_gain_decimal_str}' to float.")
+                    self.gain_res = np.nan  # or some other default value
+
+            print(f"gain: {self.gain_res}")
         else:
             print("Unsatisfiable")
             end_time = time.time()
@@ -310,8 +333,8 @@ class FIRFilter:
         freq_lower_lin_array = np.array(self.freq_lower_lin, dtype=np.float64)
 
         # Perform element-wise division
-        self.freq_upper_lin = (freq_upper_lin_array / self.coef_accuracy).tolist()
-        self.freq_lower_lin = (freq_lower_lin_array / self.coef_accuracy).tolist()
+        self.freq_upper_lin = (freq_upper_lin_array*self.gain_res / self.coef_accuracy).tolist()
+        self.freq_lower_lin = (freq_lower_lin_array*self.gain_res / self.coef_accuracy).tolist()
 
 
         #plot input
@@ -361,7 +384,7 @@ class FIRFilter:
 # Test inputs
 filter_type = 0
 order_upper = 6
-accuracy = 1
+accuracy = 3
 adder_count = 5
 wordlength = 4
 
@@ -384,10 +407,10 @@ freq_lower[upper_half_point:end_point] = -1000
 
 
 #beyond this bound lowerbound will be ignored
-ignore_lowerbound_lin = 0.0001
+ignore_lowerbound = -30
 
 # Create FIRFilter instance
-fir_filter = FIRFilter(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength)
+fir_filter = FIRFilter(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
 
 # Run solver and plot result
 fir_filter.runsolver()

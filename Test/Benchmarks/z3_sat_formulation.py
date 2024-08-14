@@ -579,10 +579,10 @@ class FIRFilterZ3:
         # print(filter_coeffs)
         # print(filter_literals)
 
-        satifiability = False
+        satifiability = 'unsat'
 
         if solver.check() == sat:
-            satifiability = True
+            satifiability = 'sat'
 
             print("solver sat")
             model = solver.model()
