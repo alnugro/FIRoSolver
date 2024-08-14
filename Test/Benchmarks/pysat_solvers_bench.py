@@ -510,18 +510,19 @@ class FIRFilterPysat:
         return f"{result}"
 
 # Initialize global variable
-it = 5
-timeout = 1  # 5 minutes in milliseconds
+it = 1
+timeout = 3600
 random_seed = 1
 random.seed(random_seed)
 
 
 def generate_random_filter_params():
     global it
+    iter = int(it)
     filter_type = 0
-    order_upper = it
+    order_upper = iter
     accuracy = random.choice([1, 2, 3, 4, 5])
-    adder_count = np.abs(it - (random.choice([1, 2, 3, 4, it - 4])))
+    adder_count = np.abs(iter - (random.choice([1, 2, 3, 4, iter - 4])))
     wordlength = random.choice([10, 12, 14, 16])
     upper_cutoff = random.choice([0.6, 0.7, 0.8, 0.9])
     lower_cutoff = random.choice([0.2, 0.3, 0.4, 0.5])
@@ -540,7 +541,7 @@ def generate_random_filter_params():
     freq_upper[upper_half_point:end_point] = stopband_upperbound
     freq_lower[upper_half_point:end_point] = stopband_lowerbound
     ignore_lowerbound_lin = -10
-    it += 1
+    it += 0.1
     return (filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, accuracy, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound)
 
 
@@ -557,7 +558,7 @@ if __name__ == '__main__':
         filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, accuracy, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound = params
         pysat = FIRFilterPysat(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength)
 
-        result_list = pysat.runsolver(timeout=5)  # Adjust the timeout as needed
+        result_list = pysat.runsolver(timeout=timeout)  # Adjust the timeout as needed
         results.append((result_list, *params))
         with open("pysat_solver_bench.txt", "a") as file:
             file.write(f"{result_list}, {filter_type}, {order_upper}, {accuracy}, {adder_count}, {wordlength}, {upper_cutoff}, {lower_cutoff}, {passband_upperbound}, {passband_lowerbound}, {stopband_upperbound}, {stopband_lowerbound}\n")
