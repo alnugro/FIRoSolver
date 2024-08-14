@@ -57,7 +57,7 @@ class FIRFilter:
         self.freq_upper_lin = 0
         self.freq_lower_lin = 0
 
-        self.solver_timeout = None
+        self.solver_timeout = 1
 
 
         self.order_current = int(self.order_upper)

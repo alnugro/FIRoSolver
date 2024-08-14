@@ -5,8 +5,9 @@ import time
 from sat_variable_handler import VariableMapper
 from pb2cnf import PB2CNF
 from rat2bool import Rat2bool
-import multiprocessing
-
+import random
+from pebble import ProcessPool, ProcessExpired
+from concurrent.futures import TimeoutError, CancelledError
 
 class SolverFunc():
     def __init__(self, filter_type, order):
@@ -74,7 +75,7 @@ class FIRFilterPysat:
         self.ignore_lowerbound = self.sf.db_to_linear(self.ignore_lowerbound_np) 
        
 
-    def runsolver_internal(self):
+    def runsolver_internal(self, solver_option):
         half_order = (self.order_current // 2)
         
         print("solver called")
@@ -96,7 +97,7 @@ class FIRFilterPysat:
         print("filter order:", self.order_current)
         print("ignore lower than:", self.ignore_lowerbound)
 
-        solver = Solver(name='cadical195')
+        solver = Solver(name=solver_option)
 
 
 
@@ -449,158 +450,117 @@ class FIRFilterPysat:
         print("solver stopped")
         duration = end_time - start_time
         print(f"Duration: {duration} seconds")
-
-        return duration, satifiability
-
-
-    def plot_result(self, result_coef):
-        print("result plotter called")
-        print(f"gain res in plotter: {self.gain_res}")
-        fir_coefficients = np.array([])
-        for i in range(len(result_coef)):
-            fir_coefficients = np.append(fir_coefficients, result_coef[(i+1)*-1])
-
-        for i in range(len(result_coef)-1):
-            fir_coefficients = np.append(fir_coefficients, result_coef[i+1])
-
-        print(fir_coefficients)
-
-        print("Fir coef in mp", fir_coefficients)
-
-        N = 5120  # Number of points for the FFT
-        frequency_response = np.fft.fft(fir_coefficients, N)
-        frequencies = np.fft.fftfreq(N, d=1.0)[:N//2]
-
-        magnitude_response = np.abs(frequency_response)[:N//2]
-
-        magnitude_response_db = 20 * np.log10(np.where(magnitude_response == 0, 1e-10, magnitude_response))
-
-        omega = frequencies * 2 * np.pi
-        normalized_omega = omega / np.max(omega)
-        self.ax1.set_ylim([-10, 10])
-
-        freq_upper_lin_array = np.array(self.freq_upper_lin, dtype=np.float64)
-        freq_lower_lin_array = np.array(self.freq_lower_lin, dtype=np.float64)
-
-        self.freq_upper_lin = (freq_upper_lin_array*self.gain_res).tolist()
-        self.freq_lower_lin = (freq_lower_lin_array*self.gain_res).tolist()
-
-        self.ax1.scatter(self.freqx_axis, self.freq_upper_lin, color='r', s=20, picker=5)
-        self.ax1.scatter(self.freqx_axis, self.freq_lower_lin, color='b', s=20, picker=5)
-
-        self.ax1.plot(normalized_omega, magnitude_response, color='y')
-
-        if self.app:
-            self.app.canvas.draw()
-
-    def plot_validation(self):
-        print("Validation plotter called")
-        half_order = (self.order_current // 2)
-        computed_frequency_response = []
         
-        for i in range(len(self.freqx_axis)):
-            omega = self.freqx_axis[i]
-            term_sum_exprs = 0
-            
-            for j in range(half_order+1):
-                cm_const = self.sf.cm_handler(j, omega)
-                term_sum_exprs += self.h_res[j] * cm_const
-            
-            computed_frequency_response.append(np.abs(term_sum_exprs))
 
-        self.ax1.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
-        self.ax2.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
+        return f"{duration},{satifiability}"
 
-        self.ax2.set_ylim(-10,10)
 
-        if self.app:
-            self.app.canvas.draw()
+    def runsolver(self, timeout):
+        solver_dict = {
+            'cadical103': None,
+            'cadical153': None,
+            'cadical195': None,
+            'cryptominisat5': None,
+            'gluecard30': None,
+            'gluecard41': None,
+            'glucose30': None,
+            'glucose41': None,
+            'glucose421': None,
+            'lingeling': None,
+            'maplechrono': None,
+            'maplecm': None,
+            'maplesat': None,
+            'mergesat30': None,
+            'minicard': None,
+            'minisat22': None,
+            'minisat-gh': None
+        }
+        self.num_instances = len(solver_dict)
+        
+        with ProcessPool(max_workers=self.num_instances) as pool:
+            futures = {}
+            for solver in solver_dict.keys():
+                future = pool.schedule(self.run_solver_with_timeout, args=[solver, timeout], timeout=timeout)
+                futures[future] = solver
 
-    def runsolver(self, timeout=0):
-        if timeout == 0:
-            return self.runsolver_internal()
+            for future in futures:
+                solver = futures[future]
+                try:
+                    result = future.result()  # Will wait for the result or the timeout
+                    solver_dict[solver] = result
+                except TimeoutError:
+                    solver_dict[solver] = f"{timeout},Timeout"
+                except ProcessExpired as error:
+                    solver_dict[solver] = f"{timeout},Expired: {error.exitcode}"
+                except CancelledError:
+                    solver_dict[solver] = f"{timeout},Cancelled"
+                except Exception as error:
+                    solver_dict[solver] = f"{timeout},Error: {str(error)}"
 
-        #added function to do timeout in PySat
+        # Build the final result string
+        end_result = ""
+        for solver in solver_dict:
+            end_result += f"{solver_dict[solver]},"
+        return end_result
 
-        # Use a manager to create shared data structures
-        manager = multiprocessing.Manager()
-        shared_h_res = manager.list()  # Shared list for h_res
-        shared_gain_res = manager.list()  # Shared list for gain_res
-        shared_result = manager.dict()  # Shared dictionary to store results
+    def run_solver_with_timeout(self, solver, timeout):
+        """Wrapper function to call `runsolver_internal` and handle timeouts."""
+        result = self.runsolver_internal(solver)
 
-        # Set up multiprocessing
-        process = multiprocessing.Process(target=run_solver_wrapper, args=(shared_h_res, shared_gain_res, shared_result, self))
-        process.start()
+        return f"{result}"
 
-        # Wait for the process to finish or timeout
-        process.join(timeout)
+# Initialize global variable
+it = 5
+timeout = 1  # 5 minutes in milliseconds
+random_seed = 1
+random.seed(random_seed)
 
-        if process.is_alive():
-            print("Solver timed out! Terminating...")
-            process.terminate()
-            process.join()  # Ensure the parent wait for the child
-            return timeout, 'timeout'
 
-        # If process finished within the timeout, return the results
-        self.h_res = list(shared_h_res)  
-        self.gain_res = list(shared_gain_res) 
-        print(f"gain res in process: {shared_gain_res}")
-
-        duration = shared_result.get('duration', None)
-        satisfiability = shared_result.get('satisfiability', 'unsat')
-        self.model = shared_result.get('model', None)
-        return duration, satisfiability
-
-def run_solver_wrapper(shared_h_res, shared_gain_res, shared_result, fir_filter):
-    """Wrapper function to call `runsolver_internal` and save the result."""
-    duration, satisfiability = fir_filter.runsolver_internal()
-
-    # Copy the results into the shared list to ensure they are updated
-    shared_h_res[:] = fir_filter.h_res
-    shared_gain_res[:] = [fir_filter.gain_res] 
-
-    shared_result['duration'] = duration
-    shared_result['satisfiability'] = satisfiability
-    shared_result['model'] = fir_filter.model if satisfiability == 'sat' else None
-
-if __name__ == "__main__":
-    # Test inputs
+def generate_random_filter_params():
+    global it
     filter_type = 0
-    order_upper = 10
-    accuracy = 1
-    adder_count = 10
-    wordlength = 14
-
-    # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, accuracy*order_upper) #according to Mr. Kumms paper
+    order_upper = it
+    accuracy = random.choice([1, 2, 3, 4, 5])
+    adder_count = np.abs(it - (random.choice([1, 2, 3, 4, it - 4])))
+    wordlength = random.choice([10, 12, 14, 16])
+    upper_cutoff = random.choice([0.6, 0.7, 0.8, 0.9])
+    lower_cutoff = random.choice([0.2, 0.3, 0.4, 0.5])
+    lower_half_point = int(lower_cutoff * (accuracy * order_upper))
+    upper_half_point = int(upper_cutoff * (accuracy * order_upper))
+    end_point = accuracy * order_upper
+    freqx_axis = np.linspace(0, 1, accuracy * order_upper)
     freq_upper = np.full(accuracy * order_upper, np.nan)
     freq_lower = np.full(accuracy * order_upper, np.nan)
+    passband_upperbound = random.choice([0, 1, 2, 3, 4, 5])
+    passband_lowerbound = random.choice([0, -1, -2])
+    stopband_upperbound = random.choice([-10,-20,-30, -40, -50])
+    stopband_lowerbound = -1000
+    freq_upper[0:lower_half_point] = passband_upperbound
+    freq_lower[0:lower_half_point] = passband_lowerbound
+    freq_upper[upper_half_point:end_point] = stopband_upperbound
+    freq_lower[upper_half_point:end_point] = stopband_lowerbound
+    ignore_lowerbound_lin = -10
+    it += 1
+    return (filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, accuracy, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound)
 
-    # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(accuracy*order_upper))
-    upper_half_point = int(0.6*(accuracy*order_upper))
-    end_point = accuracy*order_upper
 
-    freq_upper[0:lower_half_point] = 10
-    freq_lower[0:lower_half_point] = 0
+if __name__ == '__main__':
 
-    freq_upper[upper_half_point:end_point] = -30
-    freq_lower[upper_half_point:end_point] = -1000
+    # Write header
+    with open("pysat_solver_bench.txt", "w") as file:
+        file.write("cadical103_time, cadical103_result, cadical153_time, cadical153_result, cadical195_time, cadical195_result, cryptominisat5_time, cryptominisat5_result, gluecard30_time, gluecard30_result, gluecard41_time, gluecard41_result, glucose30_time, glucose30_result, glucose41_time, glucose41_result, glucose421_time, glucose421_result, lingeling_time, lingeling_result, maplechrono_time, maplechrono_result, maplecm_time, maplecm_result, maplesat_time, maplesat_result, mergesat30_time, mergesat30_result, minicard_time, minicard_result, minisat22_time, minisat22_result, minisat-gh_time, minisat-gh_result, filter_type, order_upper, accuracy, adder_count, wordlength, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound\n")
 
+    results = []
+    for i in range(1):
+        print("running test: ", i)
+        params = generate_random_filter_params()
+        filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, accuracy, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound = params
+        pysat = FIRFilterPysat(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength)
 
+        result_list = pysat.runsolver(timeout=5)  # Adjust the timeout as needed
+        results.append((result_list, *params))
+        with open("pysat_solver_bench.txt", "a") as file:
+            file.write(f"{result_list}, {filter_type}, {order_upper}, {accuracy}, {adder_count}, {wordlength}, {upper_cutoff}, {lower_cutoff}, {passband_upperbound}, {passband_lowerbound}, {stopband_upperbound}, {stopband_lowerbound}\n")
+        print("test ", i, " is completed")
 
-    #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
-
-    # Create FIRFilter instance
-    fir_filter = FIRFilterPysat(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
-
-    # Run solver and plot result
-    duration, satisfiability = fir_filter.runsolver(1)
-    print(duration)
-    print(satisfiability)
-    fir_filter.plot_result(fir_filter.h_res)
-    fir_filter.plot_validation()
-
-    # Show plot
-    plt.show()
+    print("Benchmark completed and results saved to pysat_solver_bench.txt")

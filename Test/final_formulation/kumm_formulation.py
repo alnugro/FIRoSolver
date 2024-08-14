@@ -116,12 +116,12 @@ class FIRFilter:
         c_a = [Int(f'c_a{a}') for a in range(self.A_M + 1)]
         solver.add(c_a[0] == 1)
 
-        c_sh_sg_a_i = [[Int(f'c_sh_sg_a_i{a}{i}') for i in range(2)] for a in range(self.A_M)]
+        c_sh_sg_a_i = [[Int(f'c_sh_sg_a_i{a}_{i}') for i in range(2)] for a in range(self.A_M)]
         for a in range(self.A_M):
             solver.add(c_a[a + 1] == c_sh_sg_a_i[a][0] + c_sh_sg_a_i[a][1])
 
-        c_a_i = [[Int(f'c_a_i{a}{i}') for i in range(2)] for a in range(self.A_M)]
-        c_a_i_k = [[[Bool(f'c_a_i_k{a}{i}{k}') for k in range(self.A_M + 1)] for i in range(2)] for a in range(self.A_M)]
+        c_a_i = [[Int(f'c_a_i{a}_{i}') for i in range(2)] for a in range(self.A_M)]
+        c_a_i_k = [[[Bool(f'c_a_i_k{a}_{i}_{k}') for k in range(self.A_M + 1)] for i in range(2)] for a in range(self.A_M)]
 
         for a in range(self.A_M):
             for i in range(2):
@@ -129,8 +129,8 @@ class FIRFilter:
                     solver.add(Implies(c_a_i_k[a][i][k], c_a_i[a][i] == c_a[k]))
                 solver.add(PbEq([(c_a_i_k[a][i][k], 1) for k in range(a + 1)], 1))
 
-        c_sh_a_i = [[Int(f'c_sh_a_i{a}{i}') for i in range(2)] for a in range(self.A_M)]
-        sh_a_i_s = [[[Bool(f'sh_a_i_s{a}{i}{s}') for s in range(2 * self.wordlength + 1)] for i in range(2)] for a in range(self.A_M)]
+        c_sh_a_i = [[Int(f'c_sh_a_i{a}_{i}') for i in range(2)] for a in range(self.A_M)]
+        sh_a_i_s = [[[Bool(f'sh_a_i_s{a}_{i}_{s}') for s in range(2 * self.wordlength + 1)] for i in range(2)] for a in range(self.A_M)]
 
         for a in range(self.A_M):
             for i in range(2):
@@ -143,7 +143,7 @@ class FIRFilter:
                     solver.add(Implies(sh_a_i_s[a][i][s], c_sh_a_i[a][i] == (2 ** shift) * c_a_i[a][i]))
                 solver.add(PbEq([(sh_a_i_s[a][i][s], 1) for s in range(2 * self.wordlength + 1)], 1))
 
-        sg_a_i = [[Bool(f'sg_a_i{a}{i}') for i in range(2)] for a in range(self.A_M)]
+        sg_a_i = [[Bool(f'sg_a_i{a}_{i}') for i in range(2)] for a in range(self.A_M)]
 
         for a in range(self.A_M):
             solver.add(sg_a_i[a][0] + sg_a_i[a][1] <= 1)
@@ -151,7 +151,7 @@ class FIRFilter:
                 solver.add(Implies(sg_a_i[a][i], -1 * c_sh_a_i[a][i] == c_sh_sg_a_i[a][i]))
                 solver.add(Implies(Not(sg_a_i[a][i]), c_sh_a_i[a][i] == c_sh_sg_a_i[a][i]))
 
-        o_a_m_s_sg = [[[[Bool(f'o_a_m_s_sg{a}{i}{s}{sg}') for sg in range(2)] for s in range(2 * self.wordlength + 1)] for i in range(self.half_order+1)] for a in range(self.A_M + 1)]
+        o_a_m_s_sg = [[[[Bool(f'o_a_m_s_sg{a}_{i}_{s}_{sg}') for sg in range(2)] for s in range(2 * self.wordlength + 1)] for i in range(self.half_order+1)] for a in range(self.A_M + 1)]
 
         for i in range(self.half_order+1):
             for a in range(self.A_M + 1):

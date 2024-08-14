@@ -332,7 +332,6 @@ class PB2CNF():
         for i in range(len(lits)):
             for j in range(i+1,len(lits)):
                 cnf_temp.append([-lits[i],-lits[j]])
-                print(cnf_temp)
         cnf += cnf_temp
         return cnf
     
