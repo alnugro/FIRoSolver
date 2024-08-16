@@ -6,19 +6,21 @@ from z3_sat_formulation import FIRFilterZ3
 from kumm_formulation import FIRFilterKumm
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError  # Correct import for TimeoutError
+import multiprocessing
 
 # Initialize global variable
 it = 4
-timeout = 4  # Timeout in seconds (5 minutes)
+timeout = 7200  # Timeout in seconds (5 minutes)
 random_seed = 1
 random.seed(random_seed)
 
 def generate_random_filter_params():
     global it
+    iter = int(it)
     filter_type = 0
-    order_upper = it
+    order_upper = iter
     accuracy = random.choice([1, 2, 3, 4, 5])
-    adder_count = np.abs(it - (random.choice([1, 2, 3, 4, it - 4])))
+    adder_count = np.abs(iter - (random.choice([1, 2, 3, 4, iter - 4])))
     wordlength = random.choice([10, 12, 14, 16])
     upper_cutoff = random.choice([0.6, 0.7, 0.8, 0.9])
     lower_cutoff = random.choice([0.2, 0.3, 0.4, 0.5])
@@ -37,13 +39,15 @@ def generate_random_filter_params():
     freq_upper[upper_half_point:end_point] = stopband_upperbound
     freq_lower[upper_half_point:end_point] = stopband_lowerbound
     ignore_lowerbound_lin = -20
-    it += 1
+    it += 0.3
     return (filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, accuracy, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound)
 
 def run_solver(solver_instance):
     return solver_instance.runsolver()
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
+
     # Write header
     with open("res_z3_vs_naive_vs_pysat.txt", "w") as file:
         file.write("time_smt, result_smt, time_sat, result_sat, time_naive, result_naive, filter_type, order_upper, accuracy, adder_count, wordlength, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound\n")
@@ -51,7 +55,7 @@ if __name__ == "__main__":
     results = []
 
     with ProcessPool(max_workers=3) as pool:  # Using a pool of 3 workers for parallel processing
-        for i in range(50):
+        for i in range(1000000):
             print("Running test: ", i)
             params = generate_random_filter_params()
             filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength, accuracy, upper_cutoff, lower_cutoff, passband_upperbound, passband_lowerbound, stopband_upperbound, stopband_lowerbound = params

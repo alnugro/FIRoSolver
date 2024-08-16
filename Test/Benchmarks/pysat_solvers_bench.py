@@ -261,7 +261,7 @@ class FIRFilterPysat:
         for clause in cnf6:
             solver.add_clause(clause)
 
-
+        gamma_lits = []
         # Left Shifter
         for i in range(1, self.N + 1):
             gamma_lits = []
@@ -347,7 +347,8 @@ class FIRFilterPysat:
             solver.add_clause([v2i(('epsilon', i)), -v2i(('x', i, self.wordlength - 1)), -v2i(('u', i, self.wordlength - 1)), v2i(('z', i, self.wordlength - 1))])
             solver.add_clause([-v2i(('epsilon', i)), v2i(('x', i, self.wordlength - 1)), -v2i(('u', i, self.wordlength - 1)), -v2i(('z', i, self.wordlength - 1))])
             solver.add_clause([-v2i(('epsilon', i)), -v2i(('x', i, self.wordlength - 1)), v2i(('u', i, self.wordlength - 1)), v2i(('z', i, self.wordlength - 1))])
-
+        
+        zeta_lits = []
         for i in range(1, self.N + 1):
             zeta_lits = []
             for k in range(self.wordlength - 1):

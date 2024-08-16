@@ -212,15 +212,99 @@ class FIRFilterKumm:
         print(f"Duration: {duration} seconds")
 
         return duration , satifiability
+    
+    def _print(self, msg):
+        if self.verbose:
+            print(msg)
+
+    def plot_result(self, result_coef):
+        print("result plotter called")
+        fir_coefficients = np.array([])
+        for i in range(len(result_coef)):
+            fir_coefficients = np.append(fir_coefficients, result_coef[(i+1)*-1])
+
+        for i in range(len(result_coef)-1):
+            fir_coefficients = np.append(fir_coefficients, result_coef[i+1])
+
+        print(fir_coefficients)
+
+        print("Fir coef in mp", fir_coefficients)
+
+        # Compute the FFT of the coefficients
+        N = 5120  # Number of points for the FFT
+        frequency_response = np.fft.fft(fir_coefficients, N)
+        frequencies = np.fft.fftfreq(N, d=1.0)[:N//2]  # Extract positive frequencies up to Nyquist
+
+        # Compute the magnitude and phase response for positive frequencies
+        magnitude_response = np.abs(frequency_response)[:N//2]
+
+        # Convert magnitude response to dB
+        magnitude_response_db = 20 * np.log10(np.where(magnitude_response == 0, 1e-10, magnitude_response))
+
+        # print("magdb in mp", magnitude_response_db)
+
+        # Normalize frequencies to range from 0 to 1
+        omega= frequencies * 2 * np.pi
+        normalized_omega = omega / np.max(omega)
+        self.ax1.set_ylim([-10, 10])
+        # Convert lists to numpy arrays
+        freq_upper_lin_array = np.array(self.freq_upper_lin, dtype=np.float64)
+        freq_lower_lin_array = np.array(self.freq_lower_lin, dtype=np.float64)
+
+        # Perform element-wise division
+        self.freq_upper_lin = (freq_upper_lin_array*self.gain_res / self.coef_accuracy).tolist()
+        self.freq_lower_lin = (freq_lower_lin_array*self.gain_res / self.coef_accuracy).tolist()
+
+
+        #plot input
+        self.ax1.scatter(self.freqx_axis, self.freq_upper_lin, color='r', s=20, picker=5)
+        self.ax1.scatter(self.freqx_axis, self.freq_lower_lin, color='b', s=20, picker=5)
+
+        # Plot the updated upper_ydata
+        self.ax1.plot(normalized_omega, magnitude_response, color='y')
+
+        if self.app:
+            self.app.canvas.draw()
+
+    def plot_validation(self):
+        print("Validation plotter called")
+        half_order = (self.order_current // 2)
+        sf = SolverFunc(self.filter_type, self.order_current, self.coef_accuracy)
+        # Array to store the results of the frequency response computation
+        computed_frequency_response = []
+        
+        # Recompute the frequency response for each frequency point
+        for i in range(len(self.freqx_axis)):
+            omega = self.freqx_axis[i]
+            term_sum_exprs = 0
+            
+            # Compute the sum of products of coefficients and the cosine/sine terms
+            for j in range(half_order+1):
+                cm_const = sf.cm_handler(j, omega)/self.coef_accuracy
+                term_sum_exprs += self.h_res[j] * cm_const
+            
+            # Append the computed sum expression to the frequency response list
+            computed_frequency_response.append(np.abs(term_sum_exprs))
+        
+        # Normalize frequencies to range from 0 to 1 for plotting purposes
+
+        # Plot the computed frequency response
+        self.ax1.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
+
+        self.ax2.set_ylim(-10,10)
+
+
+        if self.app:
+            self.app.canvas.draw()
 
     
 
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 10
-    accuracy = 10
-    adder_count = 10
+    order_upper = 6
+    accuracy = 5
+    adder_count = 2
     wordlength = 10
 
     # Initialize freq_upper and freq_lower with NaN values
@@ -229,22 +313,23 @@ if __name__ == "__main__":
     freq_lower = np.full(accuracy * order_upper, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(accuracy*order_upper))
-    upper_half_point = int(0.6*(accuracy*order_upper))
+    lower_half_point = int(0.3*(accuracy*order_upper))
+    upper_half_point = int(0.9*(accuracy*order_upper))
     end_point = accuracy*order_upper
 
     freq_upper[0:lower_half_point] = 5
-    freq_lower[0:lower_half_point] = 0
+    freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -30
+    freq_upper[upper_half_point:end_point] = -40
     freq_lower[upper_half_point:end_point] = -1000
+
 
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-    # Create FIRFilterKumm instance
+    # Create FIRFilter instance
     fir_filter = FIRFilterKumm(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
 
     # Run solver and plot result

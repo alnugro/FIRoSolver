@@ -545,7 +545,7 @@ class FIRFilter:
         connected_coefficient = half_order+1
 
         #solver connection
-        h = [[Bool(f'h{m}_{w}') for w in range(self.wordlength)] for m in range(half_order+1)]
+        # h = [[Bool(f'h{m}_{w}') for w in range(self.wordlength)] for m in range(half_order+1)]
         h0 = [Bool(f'h0{m}') for m in range(half_order+1)]
         t = [[Bool(f't{i}_{m}') for m in range(half_order+1)] for i in range(1, self.N+1)]
         e = [Bool(f'e{m}') for m in range(half_order+1)]
@@ -722,41 +722,44 @@ class FIRFilter:
     
 
     
-# Test inputs
-filter_type = 0
-order_upper = 15
-accuracy = 10
-adder_count = 30
-wordlength = 14
 
-# Initialize freq_upper and freq_lower with NaN values
-freqx_axis = np.linspace(0, 1, accuracy*order_upper) #according to Mr. Kumms paper
-freq_upper = np.full(accuracy * order_upper, np.nan)
-freq_lower = np.full(accuracy * order_upper, np.nan)
+if __name__ == "__main__":
+    # Test inputs
+    filter_type = 0
+    order_upper = 6
+    accuracy = 5
+    adder_count = 2
+    wordlength = 10
 
-# Manually set specific values for the elements of freq_upper and freq_lower in dB
-lower_half_point = int(0.4*(accuracy*order_upper))
-upper_half_point = int(0.6*(accuracy*order_upper))
-end_point = accuracy*order_upper
+    # Initialize freq_upper and freq_lower with NaN values
+    freqx_axis = np.linspace(0, 1, accuracy*order_upper) #according to Mr. Kumms paper
+    freq_upper = np.full(accuracy * order_upper, np.nan)
+    freq_lower = np.full(accuracy * order_upper, np.nan)
 
-freq_upper[0:lower_half_point] = 10
-freq_lower[0:lower_half_point] = 0
+    # Manually set specific values for the elements of freq_upper and freq_lower in dB
+    lower_half_point = int(0.3*(accuracy*order_upper))
+    upper_half_point = int(0.9*(accuracy*order_upper))
+    end_point = accuracy*order_upper
 
-freq_upper[upper_half_point:end_point] = -30
-freq_lower[upper_half_point:end_point] = -1000
+    freq_upper[0:lower_half_point] = 5
+    freq_lower[0:lower_half_point] = -1
+
+    freq_upper[upper_half_point:end_point] = -40
+    freq_lower[upper_half_point:end_point] = -1000
 
 
 
-#beyond this bound lowerbound will be ignored
-ignore_lowerbound_lin = 0.0001
 
-# Create FIRFilter instance
-fir_filter = FIRFilter(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound_lin, adder_count, wordlength)
+    #beyond this bound lowerbound will be ignored
+    ignore_lowerbound = -40
 
-# Run solver and plot result
-fir_filter.runsolver()
-fir_filter.plot_result(fir_filter.h_res)
-fir_filter.plot_validation()
+    # Create FIRFilter instance
+    fir_filter = FIRFilter(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
 
-# Show plot
-plt.show()
+    # Run solver and plot result
+    fir_filter.runsolver()
+    fir_filter.plot_result(fir_filter.h_res)
+    fir_filter.plot_validation()
+
+    # Show plot
+    plt.show()

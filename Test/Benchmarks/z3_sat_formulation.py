@@ -535,8 +535,7 @@ class FIRFilterZ3:
         connected_coefficient = half_order+1
 
         #solver connection
-        h = [[Bool(f'h{m}_{w}') for w in range(self.wordlength)] for m in range(half_order+1)]
-        h0 = [Bool(f'h0{m}') for m in range(half_order+1)]
+        hzero = [Bool(f'hzero{m}') for m in range(half_order+1)]
         t = [[Bool(f't{i}_{m}') for m in range(half_order+1)] for i in range(1, self.N+1)]
         e = [Bool(f'e{m}') for m in range(half_order+1)]
 
@@ -548,7 +547,7 @@ class FIRFilterZ3:
 
             for w in range(self.wordlength):
                 h_or_clause.append(h[m][w])
-            h_or_clause.append(h0[m])
+            h_or_clause.append(hzero[m])
             solver.add(Or(h_or_clause))
 
             for i in range(1, self.N+1):
@@ -564,9 +563,10 @@ class FIRFilterZ3:
             solver.add(Or(t_or_clauses))
 
             e_sum.append(e[m])
+            solver.add(e[m])
         
-        solver.add(AtMost(*e_sum,connected_coefficient))
-        solver.add(AtLeast(*e_sum,connected_coefficient))
+        # solver.add(AtMost(*e_sum,connected_coefficient))
+        # solver.add(AtLeast(*e_sum,connected_coefficient))
 
 
         
@@ -723,10 +723,10 @@ class FIRFilterZ3:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 10
-    accuracy = 10
-    adder_count = 10
-    wordlength = 10
+    order_upper = 20
+    accuracy = 5
+    adder_count = 8
+    wordlength = 15
 
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, accuracy*order_upper) #according to Mr. Kumms paper
@@ -739,11 +739,10 @@ if __name__ == "__main__":
     end_point = accuracy*order_upper
 
     freq_upper[0:lower_half_point] = 5
-    freq_lower[0:lower_half_point] = 0
+    freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -30
+    freq_upper[upper_half_point:end_point] = -10
     freq_lower[upper_half_point:end_point] = -1000
-
 
 
     #beyond this bound lowerbound will be ignored

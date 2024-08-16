@@ -235,10 +235,13 @@ class FIRFilterPysat:
 
         solver.add_clause([v2i(('c', 0, self.fracW))])
 
+        alpha_lits = []
+        beta_lits = []
+
         # Input multiplexer
         for i in range(1, self.N + 1):
-            alpha_lits = []
-            beta_lits = []
+            alpha_lits.clear()
+            beta_lits.clear()
             for a in range(i):
                 for word in range(self.wordlength):
                     solver.add_clause([-v2i(('alpha', i, a)), -v2i(('c', a, word)), v2i(('l', i, word))])
@@ -247,29 +250,30 @@ class FIRFilterPysat:
                     solver.add_clause([-v2i(('Beta', i, a)), v2i(('c', a, word)), -v2i(('r', i, word))])
 
                 alpha_lits.append(v2i(('alpha', i, a)))
-
                 beta_lits.append(v2i(('Beta', i, a)))
 
+            cnf5 = pb2cnf.equal_card_one(alpha_lits)
+            for clause in cnf5:
+                solver.add_clause(clause)
 
-        cnf5 = pb2cnf.equal_card_one(alpha_lits)
-        for clause in cnf5:
-            solver.add_clause(clause)
+            cnf6 = pb2cnf.equal_card_one(beta_lits)
+            for clause in cnf6:
+                solver.add_clause(clause)
 
-        cnf6 = pb2cnf.equal_card_one(beta_lits)
-
-        for clause in cnf6:
-            solver.add_clause(clause)
-
-
+        gamma_lits = []
         # Left Shifter
         for i in range(1, self.N + 1):
-            gamma_lits = []
+            gamma_lits.clear()
             for k in range(self.wordlength - 1):
                 for j in range(self.wordlength - 1 - k):
                     solver.add_clause([-v2i(('gamma', i, k)), -v2i(('l', i, j)), v2i(('s', i, j + k))])
                     solver.add_clause([-v2i(('gamma', i, k)), v2i(('l', i, j)), -v2i(('s', i, j + k))])
 
                 gamma_lits.append(v2i(('gamma', i, k)))
+            
+            cnf7 = pb2cnf.equal_card_one(gamma_lits)
+            for clauses in cnf7:
+                solver.add_clause(clauses)
 
             for kf in range(1, self.wordlength - 1):
                 for b in range(kf):
@@ -280,10 +284,8 @@ class FIRFilterPysat:
             solver.add_clause([-v2i(('l', i, self.wordlength - 1)), v2i(('s', i, self.wordlength - 1))])
             solver.add_clause([v2i(('l', i, self.wordlength - 1)), -v2i(('s', i, self.wordlength - 1))])
         
-        cnf7 = pb2cnf.equal_card_one(gamma_lits)
-        for clauses in cnf7:
-            solver.add_clause(clauses)
-
+            
+        #delta selector
         for i in range(1, self.N + 1):
             for word in range(self.wordlength):
                 solver.add_clause([-v2i(('delta', i)), -v2i(('s', i, word)), v2i(('x', i, word))])
@@ -295,7 +297,6 @@ class FIRFilterPysat:
                 solver.add_clause([v2i(('delta', i)), -v2i(('r', i, word)), v2i(('x', i, word))])
                 solver.add_clause([v2i(('delta', i)), v2i(('r', i, word)), -v2i(('x', i, word))])
 
-                solver.add_clause([v2i(('delta', i)), -v2i(('delta', i))])
 
         for i in range(1, self.N + 1):
             for word in range(self.wordlength):
@@ -346,15 +347,21 @@ class FIRFilterPysat:
             solver.add_clause([v2i(('epsilon', i)), -v2i(('x', i, self.wordlength - 1)), -v2i(('u', i, self.wordlength - 1)), v2i(('z', i, self.wordlength - 1))])
             solver.add_clause([-v2i(('epsilon', i)), v2i(('x', i, self.wordlength - 1)), -v2i(('u', i, self.wordlength - 1)), -v2i(('z', i, self.wordlength - 1))])
             solver.add_clause([-v2i(('epsilon', i)), -v2i(('x', i, self.wordlength - 1)), v2i(('u', i, self.wordlength - 1)), v2i(('z', i, self.wordlength - 1))])
-
+        
+        zeta_lits = []
         for i in range(1, self.N + 1):
-            zeta_lits = []
+            zeta_lits.clear()
             for k in range(self.wordlength - 1):
                 for j in range(self.wordlength - 1 - k):
                     solver.add_clause([-v2i(('zeta', i, k)), -v2i(('z', i, j + k)), v2i(('c', i, j))])
                     solver.add_clause([-v2i(('zeta', i, k)), v2i(('z', i, j + k)), -v2i(('c', i, j))])
 
                 zeta_lits.append(v2i(('zeta', i, k)))
+
+            cnf8 = pb2cnf.equal_card_one(zeta_lits)
+
+            for clauses in cnf8:
+                solver.add_clause(clauses)
 
             for kf in range(1, self.wordlength - 1):
                 for b in range(kf):
@@ -368,12 +375,10 @@ class FIRFilterPysat:
             # Bound ci,0 to be odd number 
             solver.add_clause([v2i(('c', i, 0))])
 
-        cnf8 = pb2cnf.equal_card_one(zeta_lits)
-
-        for clauses in cnf8:
-            solver.add_clause(clauses)
+            
 
         connected_coefficient = half_order + 1
+
         e_lits = []
         for m in range(half_order + 1):
             h_or_clause = []
@@ -394,9 +399,9 @@ class FIRFilterPysat:
 
             e_lits.append(v2i(('e', m)))
         
-        cnf9 = pb2cnf.equal([1], [e_lits],connected_coefficient,0)
-        for clauses in cnf9:
-            solver.add_clause(clauses)
+        # cnf9 = pb2cnf.equal([1], [e_lits],connected_coefficient,0)
+        for el in e_lits:
+            solver.add_clause([el])
         
 
         start_time = time.time()
@@ -442,6 +447,7 @@ class FIRFilterPysat:
 
             self.gain_res = gain_coef
             print("gain Coeffs: ", self.gain_res)
+            self.print_model_results(var_mapper, self.model)
         else:
             print("Unsatisfiable")
             end_time = time.time()
@@ -449,11 +455,28 @@ class FIRFilterPysat:
         print("solver stopped")
         duration = end_time - start_time
         print(f"Duration: {duration} seconds")
+        solver.delete()
 
         return duration, satifiability
+    
+    def print_model_results(self, var_mapper, model):
+        """
+        This function prints out all the variables in var_mapper along with their truth values
+        based on the model provided by the SAT solver.
+        
+        :param var_mapper: An instance of the VariableMapper class.
+        :param model: A list representing the model obtained from the SAT solver.
+        """
+        for var_int, var_name in var_mapper.int_to_var.items():
+            # Convert the variable integer index to the model's 0-based index
+            # A positive value in the model means True, negative means False.
+            value = model[var_int - 1] > 0  # model is 0-based, var_int is 1-based
+            print(f'{var_name}: {value}')
 
 
     def plot_result(self, result_coef):
+        if not self.h_res:
+            return
         print("result plotter called")
         print(f"gain res in plotter: {self.gain_res}")
         fir_coefficients = np.array([])
@@ -494,6 +517,9 @@ class FIRFilterPysat:
             self.app.canvas.draw()
 
     def plot_validation(self):
+        if not self.h_res:
+            return
+
         print("Validation plotter called")
         half_order = (self.order_current // 2)
         computed_frequency_response = []
@@ -566,10 +592,10 @@ def run_solver_wrapper(shared_h_res, shared_gain_res, shared_result, fir_filter)
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 10
-    accuracy = 1
-    adder_count = 10
-    wordlength = 14
+    order_upper = 20
+    accuracy = 5
+    adder_count = 8
+    wordlength = 15
 
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, accuracy*order_upper) #according to Mr. Kumms paper
@@ -577,15 +603,16 @@ if __name__ == "__main__":
     freq_lower = np.full(accuracy * order_upper, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(accuracy*order_upper))
-    upper_half_point = int(0.6*(accuracy*order_upper))
+    lower_half_point = int(0.3*(accuracy*order_upper))
+    upper_half_point = int(0.9*(accuracy*order_upper))
     end_point = accuracy*order_upper
 
-    freq_upper[0:lower_half_point] = 10
-    freq_lower[0:lower_half_point] = 0
+    freq_upper[0:lower_half_point] = 5
+    freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -30
+    freq_upper[upper_half_point:end_point] = -40
     freq_lower[upper_half_point:end_point] = -1000
+
 
 
 
@@ -596,11 +623,11 @@ if __name__ == "__main__":
     fir_filter = FIRFilterPysat(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
 
     # Run solver and plot result
-    duration, satisfiability = fir_filter.runsolver(1)
-    print(duration)
-    print(satisfiability)
+    fir_filter.runsolver()
     fir_filter.plot_result(fir_filter.h_res)
     fir_filter.plot_validation()
 
     # Show plot
     plt.show()
+
+    # 0.12361645698547363, unsat, 0.1798112392425537, sat, 0.48868274688720703, sat, 0, 6, 5, 2, 10, 0.9, 0.3, 5, -1, -40, -1000
