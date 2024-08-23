@@ -3,7 +3,7 @@ from pysat.solvers import Solver
 import matplotlib.pyplot as plt
 import time
 from sat_variable_handler import VariableMapper
-from pb2cnf import PB2CNF
+from backend.pb2cnf import PB2CNF
 from rat2bool import Rat2bool
 import random
 from pebble import ProcessPool, ProcessExpired

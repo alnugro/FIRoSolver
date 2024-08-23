@@ -1,3 +1,4 @@
+
 class VariableMapper:
     def __init__(self, half_order, wordlength, adder_wordlength, max_adder, adder_depth):
         self.variables = self._initialize_variables(half_order, wordlength, adder_wordlength, max_adder, adder_depth)

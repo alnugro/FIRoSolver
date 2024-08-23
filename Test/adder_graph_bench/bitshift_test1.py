@@ -54,8 +54,8 @@ class bitshift():
 
         #Left Shifter
         #k is the shift selector
-        gamma = [[Bool(f'gamma{i}{k}') for k in range(self.wordlength-1)] for i in range(1, self.N+1)]
-        s     = [[Bool(f's{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        gamma = [[Bool(f'gamma{i}_{k}') for k in range(self.wordlength-1)] for i in range(1, self.N+1)]
+        s     = [[Bool(f's{i}_{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
 
         for i in range(1, self.N+1):
@@ -86,8 +86,8 @@ class bitshift():
 
 
         delta = [Bool(f'delta{i}') for i in range(1, self.N+1)]
-        u     = [[Bool(f'u{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
-        x     = [[Bool(f'x{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        u     = [[Bool(f'u{i}_{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        x     = [[Bool(f'x{i}_{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
    
     
@@ -113,7 +113,7 @@ class bitshift():
                 solver.add(Or(delta[i-1], Not(delta[i-1])))
                 
         epsilon = [Bool(f'epsilon{i}') for i in range(1, self.N+1)]
-        y     = [[Bool(f'y{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        y     = [[Bool(f'y{i}_{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
 
         #xor
@@ -133,8 +133,8 @@ class bitshift():
         
 
         #ripple carry
-        z     = [[Bool(f'z{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
-        cout  = [[Bool(f'cout{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        z     = [[Bool(f'z{i}_{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
+        cout  = [[Bool(f'cout{i}_{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
         
         for i in range(1, self.N+1):

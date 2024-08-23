@@ -57,6 +57,15 @@ class PB2CNF():
                 print(cnf_temp)
         cnf += cnf_temp
         return cnf
+    
+    def equal_card(self,lits,bound):
+        ext_lits = []
+        weight = []
+        for lit in lits:
+            ext_lits.append([lit,'zero'])
+            weight.append(1)
+        cnf = self.run_pb2cnf(weight, ext_lits, bound, 0, "equal")
+        return cnf
 
     def remove_zeroes_weight(self, we, li):
         weight = we[:]  # Create a copy of the original weight list
@@ -703,9 +712,6 @@ class PB2CNF():
         lits_counts = len(lits)
 
         adder_model = [[] for i in range(lits_counts)]
-
-
-        
 
         #shifting csd parts
         for i in range(lits_counts):

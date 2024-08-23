@@ -357,7 +357,6 @@ class PB2CNF():
                 del lits[i]
                 #todo assert the deleted lits to 0
                 print(f"Lits and Weight at pos {i} are deleted, because it will go to 0 with given fracW")
-        print("deleted cnf",deleted_cnf)
         return weight, lits , deleted_cnf
 
 
@@ -374,12 +373,7 @@ class PB2CNF():
         sum_wordlength = 2*len(lits[0])
         lits_counts = len(lits)
         bounds *= -1
-
-        #print(f"weight is : {weight}")
-        #initialize Rational to boolean class
-        # print(f"weight csd is : {weight_csd}")
     
-
         bounds_list = [bounds]
         bounds_bool = self.r2b.frac2bool2s(bounds_list, wordlength, fracW).tolist()
 
@@ -388,10 +382,7 @@ class PB2CNF():
 
         adder_model, cnf_list_generator = self.adder_model_list_generator(weight_csd, lits)
         cnf_final += cnf_list_generator
-        
-        # print("Model ",adder_model)
 
-        #print("original, ",adder_model)
         for i in range(lits_counts):
             #add 1 to lsb if it was inversed and not added by zero. only the case if it were not bitshifted and multiplied by minus 1 or csd[0] = -1, so it is always on the adder_model[i][1] position
 
@@ -725,6 +716,7 @@ class PB2CNF():
     
         if int(bounds) > max_integer_pos_value or int(bounds) < max_integer_neg_value:
             raise ValueError(f"given wordlength for int is too short for given bounds: {bounds} \n keep them between -2**(wordlength-fracW-1)-1 and 2**(wordlength-fracW-1)-1 to avoid negation overflow")
+
  
 
         

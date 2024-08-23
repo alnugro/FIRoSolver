@@ -122,7 +122,7 @@ rat = Rat2bool()
     
 
 
-total_test = 10 # Example number of tests, adjust as needed
+total_test = 100 # Example number of tests, adjust as needed
 failed_test = []
 result_test = []
 

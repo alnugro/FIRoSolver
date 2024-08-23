@@ -302,25 +302,26 @@ class FIRFilterKumm:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 6
-    accuracy = 5
-    adder_count = 2
+    order_upper = 16
+    accuracy = 1
+    adder_count = 8
     wordlength = 10
 
+    space = int(accuracy*order_upper)
     # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, accuracy*order_upper) #according to Mr. Kumms paper
-    freq_upper = np.full(accuracy * order_upper, np.nan)
-    freq_lower = np.full(accuracy * order_upper, np.nan)
+    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    freq_upper = np.full(space, np.nan)
+    freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3*(accuracy*order_upper))
-    upper_half_point = int(0.9*(accuracy*order_upper))
-    end_point = accuracy*order_upper
+    lower_half_point = int(0.4*(space))
+    upper_half_point = int(0.6*(space))
+    end_point = space
 
     freq_upper[0:lower_half_point] = 5
     freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -40
+    freq_upper[upper_half_point:end_point] = -20
     freq_lower[upper_half_point:end_point] = -1000
 
 

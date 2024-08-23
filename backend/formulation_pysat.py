@@ -6,6 +6,8 @@ from sat_variable_handler import VariableMapper
 from pb2cnf import PB2CNF
 from rat2bool import Rat2bool
 import multiprocessing
+from solver_func import SolverFunc
+
 
 
 class SolverFunc():
@@ -39,7 +41,22 @@ class SolverFunc():
     
 
 class FIRFilterPysat:
-    def __init__(self, filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength, app=None):
+    def __init__(self, 
+                 filter_type, 
+                 order_upper, 
+                 freqx_axis, 
+                 freq_upper, 
+                 freq_lower, 
+                 ignore_lowerbound, 
+                 adder_count, 
+                 wordlength, 
+                 adder_depth,
+                 avail_dsp,
+                 adder_wordlength_ext,
+                 gain_upperbound,
+                 gain_lowerbound,
+                 intW,
+                 ):
         self.filter_type = filter_type
         self.order_upper = order_upper
         self.freqx_axis = freqx_axis
@@ -50,24 +67,22 @@ class FIRFilterPysat:
 
         self.max_adder = adder_count
         self.wordlength = wordlength
-        self.adder_wordlength = self.wordlength + 2  # New adder wordlength for bitshifting
+        self.adder_wordlength = self.wordlength + adder_wordlength_ext # New adder wordlength for bitshifting
         
 
-        self.app = app
-        self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1)
         self.freq_upper_lin = 0
         self.freq_lower_lin = 0
 
-        self.intW = 4
+        self.intW = intW
         self.fracW = self.wordlength - self.intW
 
-        self.gain_upperbound = 1.4
-        self.gain_lowerbound = 1
+        self.gain_upperbound = gain_upperbound
+        self.gain_lowerbound = gain_lowerbound
 
         self.ignore_lowerbound = ignore_lowerbound
 
-        self.adder_depth = 2
-        self.avail_dsp = 0
+        self.adder_depth = adder_depth
+        self.avail_dsp = avail_dsp
         self.result_model = {}
 
         self.order_current = int(self.order_upper)
@@ -81,7 +96,7 @@ class FIRFilterPysat:
     def runsolver_internal(self):
         half_order = (self.order_current // 2)
         
-        print("solver called")
+        print("Pysat solver called")
         var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.max_adder, self.adder_depth)
 
         def v2i(var_tuple):
@@ -94,14 +109,13 @@ class FIRFilterPysat:
         pb2cnf = PB2CNF(top_var)
         r2b = Rat2bool()
 
-        solver = Solver(name='cadical195')
+        solver = Solver(name='cadical103')
 
         #bound the gain to upper and lowerbound
         gain_literals = []
 
         for g in range(self.wordlength):
             gain_literals.append(v2i(('gain', g)))
-            # print("gain lits :", v2i(('gain', g)))
 
         #round it first to the given wordlength
         self.gain_upperbound = r2b.frac2round([self.gain_upperbound],self.wordlength,self.fracW)[0]
@@ -117,8 +131,6 @@ class FIRFilterPysat:
         for clause in cnf2:
             solver.add_clause(clause)
 
-        print(gain_literals)
-        print(self.fracW)
 
         filter_literals = []
         filter_weights = []
@@ -166,7 +178,7 @@ class FIRFilterPysat:
             #declare the lits for pb2cnf
             if self.freq_lower_lin[omega] < self.ignore_lowerbound:
                 gain_lower_prod = self.freq_upper_lin[omega].item()
-                print("ignored ", self.freq_lower_lin[omega], " in frequency = ", self.freqx_axis[omega])
+                # print("ignored ", self.freq_lower_lin[omega], " in frequency = ", self.freqx_axis[omega])
             else:
                 gain_lower_prod = -self.freq_lower_lin[omega].item()
 
@@ -383,9 +395,9 @@ class FIRFilterPysat:
         theta_lits = []
         iota_lits = []
 
-        for i in range(self.max_adder + 2):
+        for m in range(half_order + 1):
             theta_or = []
-            for m in range(half_order + 1):
+            for i in range(self.max_adder + 2):
                 for word in range(self.adder_wordlength):
                     solver.add_clause([-v2i(('theta', i, m)), -v2i(('iota', m)), -v2i(('c', i, word)), v2i(('t', m, word))])
                     solver.add_clause([-v2i(('theta', i, m)), -v2i(('iota', m)), v2i(('c', i, word)), -v2i(('t', m, word))])
@@ -469,8 +481,8 @@ class FIRFilterPysat:
                             solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('beta', i, a))])
                             solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('psi_beta', i, d - 1))])
 
-        start_time = time.time()
         print("solver running")
+        start_time = time.time()
 
         satifiability = 'unsat'
 
@@ -491,8 +503,8 @@ class FIRFilterPysat:
                         fir_coef += 2 ** (-1 * (self.fracW - w)) * bool_value
                     else:
                         fir_coef += 2 ** (w - self.fracW) * bool_value
-
                 self.h_res.append(fir_coef)
+                self.result_model[f"h[{m}]"] = fir_coef
             print("FIR Coeffs calculated: ", self.h_res)
 
             gain_coef = 0
@@ -505,7 +517,48 @@ class FIRFilterPysat:
                     gain_coef += 2 ** (g - self.fracW) * bool_value
 
             self.gain_res = gain_coef
+            self.result_model["gain"] = gain_coef
             print("gain Coeffs: ", self.gain_res)
+
+           # Store alpha and beta selectors
+            for i in range(1, self.max_adder + 1):
+                for a in range(i):
+                    self.result_model[f'alpha[{i}][{a}]'] = 1 if self.model[v2i(('alpha', i, a)) - 1] > 0 else 0
+                for a in range(i):
+                    self.result_model[f'beta[{i}][{a}]'] = 1 if self.model[v2i(('beta', i, a)) - 1] > 0 else 0
+
+            # Store gamma (left shift selectors)
+            for i in range(1, self.max_adder + 1):
+                for k in range(self.adder_wordlength - 1):
+                    self.result_model[f'gamma[{i}][{k}]'] = 1 if self.model[v2i(('gamma', i, k)) - 1] > 0 else 0
+
+            # Store delta selectors
+            for i in range(1, self.max_adder + 1):
+                self.result_model[f'delta[{i}]'] = 1 if self.model[v2i(('delta', i)) - 1] > 0 else 0
+
+            # Store epsilon selectors
+            for i in range(1, self.max_adder + 1):
+                self.result_model[f'epsilon[{i}]'] = 1 if self.model[v2i(('epsilon', i)) - 1] > 0 else 0
+
+            # Store zeta (right shift selectors)
+            for i in range(1, self.max_adder + 1):
+                for k in range(self.adder_wordlength - 1):
+                    self.result_model[f'zeta[{i}][{k}]'] = 1 if self.model[v2i(('zeta', i, k)) - 1] > 0 else 0
+
+            # Store phi (left shift selectors in result)
+            for i in range(half_order + 1):
+                for k in range(self.adder_wordlength - 1):
+                    self.result_model[f'phi[{i}][{k}]'] = 1 if self.model[v2i(('phi', i, k)) - 1] > 0 else 0
+
+            # Store theta array
+            for i in range(self.max_adder + 2):
+                for m in range(half_order + 1):
+                    self.result_model[f'theta[{i}][{m}]'] = 1 if self.model[v2i(('theta', i, m)) - 1] > 0 else 0
+
+            # Store iota array
+            for m in range(half_order + 1):
+                self.result_model[f'iota[{m}]'] = 1 if self.model[v2i(('iota', m)) - 1] > 0 else 0
+
         else:
             print("Unsatisfiable")
         
@@ -513,77 +566,19 @@ class FIRFilterPysat:
         duration = end_time - start_time
         print(f"Duration: {duration} seconds")
         solver.delete()
+        for item in self.result_model:
+            print(f"result of {item} is {self.result_model[item]}")
+
+        print(f"\n************PySAT Report****************")
+        print(f"Total number of main variables       : {top_var}")
+        print(f"Total number of auxiliary variables  : {pb2cnf.var-top_var}")
+        print(f"Total number of variables            : {pb2cnf.var}")        
+        print(f"Total number of constraints (clauses): {solver.nof_clauses()}\n" )
 
         return duration, satifiability
 
 
-    def print_model_results(self, var_mapper, model):
-        for var_int, var_name in var_mapper.int_to_var.items():
-            value = model[var_int - 1] > 0  # model is 0-based, var_int is 1-based
-            print(f'{var_name}: {value}')
-
-    def plot_result(self, result_coef):
-        if not self.h_res:
-            return
-        print("result plotter called")
-        print(f"gain res in plotter: {self.gain_res}")
-        fir_coefficients = np.array([])
-        for i in range(len(result_coef)):
-            fir_coefficients = np.append(fir_coefficients, result_coef[(i+1)*-1])
-
-        for i in range(len(result_coef)-1):
-            fir_coefficients = np.append(fir_coefficients, result_coef[i+1])
-
-        N = 5120  # Number of points for the FFT
-        frequency_response = np.fft.fft(fir_coefficients, N)
-        frequencies = np.fft.fftfreq(N, d=1.0)[:N//2]
-
-        magnitude_response = np.abs(frequency_response)[:N//2]
-        magnitude_response_db = 20 * np.log10(np.where(magnitude_response == 0, 1e-10, magnitude_response))
-
-        omega = frequencies * 2 * np.pi
-        normalized_omega = omega / np.max(omega)
-        self.ax1.set_ylim([-10, 10])
-
-        freq_upper_lin_array = np.array(self.freq_upper_lin, dtype=np.float64)
-        freq_lower_lin_array = np.array(self.freq_lower_lin, dtype=np.float64)
-
-        self.freq_upper_lin = (freq_upper_lin_array*self.gain_res).tolist()
-        self.freq_lower_lin = (freq_lower_lin_array*self.gain_res).tolist()
-
-        self.ax1.scatter(self.freqx_axis, self.freq_upper_lin, color='r', s=20, picker=5)
-        self.ax1.scatter(self.freqx_axis, self.freq_lower_lin, color='b', s=20, picker=5)
-
-        self.ax1.plot(normalized_omega, magnitude_response, color='y')
-
-        if self.app:
-            self.app.canvas.draw()
-
-    def plot_validation(self):
-        if not self.h_res:
-            return
-
-        print("Validation plotter called")
-        half_order = (self.order_current // 2)
-        computed_frequency_response = []
-        
-        for i in range(len(self.freqx_axis)):
-            omega = self.freqx_axis[i]
-            term_sum_exprs = 0
-            
-            for j in range(half_order+1):
-                cm_const = self.sf.cm_handler(j, omega)
-                term_sum_exprs += self.h_res[j] * cm_const
-            
-            computed_frequency_response.append(np.abs(term_sum_exprs))
-
-        self.ax1.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
-        self.ax2.plot([x/1 for x in self.freqx_axis], computed_frequency_response, color='green', label='Computed Frequency Response')
-
-        self.ax2.set_ylim(-10,10)
-
-        if self.app:
-            self.app.canvas.draw()
+    
 
     def runsolver(self, timeout=0):
         if timeout == 0:
@@ -625,31 +620,58 @@ def run_solver_wrapper(shared_h_res, shared_gain_res, shared_result, fir_filter)
 
 
 if __name__ == "__main__":
+    # Test inputs
     filter_type = 0
-    order_upper = 4
-    accuracy = 4
-    adder_count = 2
+    order_upper = 20
+    accuracy = 1
+    adder_count = 3
     wordlength = 10
+    
+    adder_depth = 2
+    avail_dsp = 0
+    adder_wordlength_ext = 2
+    gain_upperbound = 3
+    gain_lowerbound = 1
+    intW = 4
 
-    freqx_axis = np.linspace(0, 1, accuracy * order_upper)
-    freq_upper = np.full(accuracy * order_upper, np.nan)
-    freq_lower = np.full(accuracy * order_upper, np.nan)
+    space = int(accuracy*order_upper)
+    # Initialize freq_upper and freq_lower with NaN values
+    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    freq_upper = np.full(space, np.nan)
+    freq_lower = np.full(space, np.nan)
 
-    lower_half_point = int(0.2*(accuracy*order_upper))
-    upper_half_point = int(0.8*(accuracy*order_upper))
-    end_point = accuracy*order_upper
+    # Manually set specific values for the elements of freq_upper and freq_lower in dB
+    lower_half_point = int(0.5*(space))
+    upper_half_point = int(0.6*(space))
+    end_point = space
 
     freq_upper[0:lower_half_point] = 3
     freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -10
+    freq_upper[upper_half_point:end_point] = -40
     freq_lower[upper_half_point:end_point] = -1000
 
+
+    #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-    fir_filter = FIRFilterPysat(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
-    fir_filter.runsolver()
-    fir_filter.plot_result(fir_filter.h_res)
-    fir_filter.plot_validation()
+    # Create FIRFilter instance
+    fir_filter = FIRFilterPysat(
+                 filter_type, 
+                 order_upper, 
+                 freqx_axis, 
+                 freq_upper, 
+                 freq_lower, 
+                 ignore_lowerbound, 
+                 adder_count, 
+                 wordlength, 
+                 adder_depth,
+                 avail_dsp,
+                 adder_wordlength_ext,
+                 gain_upperbound,
+                 gain_lowerbound,
+                 intW,
+                 )
 
-    plt.show()
+    # Run solver and plot result
+    fir_filter.runsolver()
