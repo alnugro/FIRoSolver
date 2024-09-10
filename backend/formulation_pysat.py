@@ -43,7 +43,7 @@ class SolverFunc():
 class FIRFilterPysat:
     def __init__(self, 
                  filter_type, 
-                 order_upper, 
+                 order_current, 
                  freqx_axis, 
                  freq_upper, 
                  freq_lower, 
@@ -58,7 +58,7 @@ class FIRFilterPysat:
                  intW,
                  ):
         self.filter_type = filter_type
-        self.order_upper = order_upper
+        self.order_current = order_current
         self.freqx_axis = freqx_axis
         self.freq_upper = freq_upper
         self.freq_lower = freq_lower
@@ -85,12 +85,186 @@ class FIRFilterPysat:
         self.avail_dsp = avail_dsp
         self.result_model = {}
 
-        self.order_current = int(self.order_upper)
-        self.sf = SolverFunc(self.filter_type, self.order_current)
-        self.freq_upper_lin = [self.sf.db_to_linear(f) if not np.isnan(self.sf.db_to_linear(f)) else np.nan for f in self.freq_upper]
-        self.freq_lower_lin = [self.sf.db_to_linear(f) if not np.isnan(self.sf.db_to_linear(f)) else np.nan for f in self.freq_lower]
+
+    def run_barebone(self, solver_id):
+        half_order = (self.order_current // 2)
+
+        sf = SolverFunc(self.filter_type, self.order_current)
+        self.freq_upper_lin = [f if not np.isnan(f) else np.nan for f in self.freq_upper]
+        self.freq_lower_lin = [f if not np.isnan(f) else np.nan for f in self.freq_lower]
+
         self.ignore_lowerbound_np = np.array(self.ignore_lowerbound, dtype=float)
-        self.ignore_lowerbound = self.sf.db_to_linear(self.ignore_lowerbound_np)
+        self.ignore_lowerbound = sf.db_to_linear(self.ignore_lowerbound_np)
+        
+        var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.max_adder, self.adder_depth)
+
+        def v2i(var_tuple):
+            return var_mapper.tuple_to_int(var_tuple)
+
+        def i2v(var_int):
+            return var_mapper.int_to_var_name(var_int)
+        
+        top_var = var_mapper.max_int_value
+        pb2cnf = PB2CNF(top_var)
+        r2b = Rat2bool()
+
+        solver_list = ['cadical103', 'cadical153','cadical195','glucose421','glucose41','minisat-gh','minisat22','lingeling','gluecard30','glucose30','gluecard41','maplesat']
+        solver = Solver(name=solver_list[solver_id])
+
+        #bound the gain to upper and lowerbound
+        gain_literals = []
+
+        for g in range(self.wordlength):
+            gain_literals.append(v2i(('gain', g)))
+
+        #round it first to the given wordlength
+        self.gain_upperbound = r2b.frac2round([self.gain_upperbound],self.wordlength,self.fracW)[0]
+        self.gain_lowerbound = r2b.frac2round([self.gain_lowerbound],self.wordlength,self.fracW)[0]
+        
+        #weight is 1, because it is multiplied to nothing, lits is 2d thus the bracket
+        gain_weight = [1]
+        cnf1 = pb2cnf.atleast(gain_weight,[gain_literals],self.gain_lowerbound,self.fracW)
+        for clause in cnf1:
+            solver.add_clause(clause)
+
+        cnf2 = pb2cnf.atmost(gain_weight,[gain_literals],self.gain_upperbound,self.fracW)
+        for clause in cnf2:
+            solver.add_clause(clause)
+
+
+        filter_literals = []
+        filter_weights = []
+
+        gain_freq_upper_prod_weights = []
+        gain_freq_lower_prod_weights = []
+
+        gain_upper_literals = []
+        gain_lower_literals = []
+
+        for omega in range(len(self.freqx_axis)):
+            if np.isnan(self.freq_lower_lin[omega]):
+                continue
+
+            gain_literals.clear()
+            filter_literals.clear()
+            filter_weights.clear()
+
+            gain_freq_upper_prod_weights.clear()
+            gain_freq_lower_prod_weights.clear()
+            
+            gain_upper_literals.clear()
+            gain_lower_literals.clear()
+            
+
+            for m in range(half_order + 1):
+                filter_literals_temp = []
+                cm = sf.cm_handler(m, self.freqx_axis[omega])
+                for w in range(self.wordlength):
+                    h_var = v2i(('h', m, w))
+                    filter_literals_temp.append(h_var)
+                filter_literals.append(filter_literals_temp)
+                filter_weights.append(cm)
+
+            #gain starts here
+            gain_upper_literals_temp = []
+            gain_lower_literals_temp = []
+
+            #gain upperbound
+            gain_upper_prod = -self.freq_upper_lin[omega]
+            gain_freq_upper_prod_weights.append(gain_upper_prod)
+
+
+            #declare the lits for pb2cnf
+            if self.freq_lower_lin[omega] < self.ignore_lowerbound:
+                gain_lower_prod = self.freq_upper_lin[omega]
+            else:
+                gain_lower_prod = -self.freq_lower_lin[omega]
+
+            gain_freq_lower_prod_weights.append(gain_lower_prod)
+
+            for g in range(self.wordlength):
+                gain_var = v2i(('gain', g))
+                gain_upper_literals_temp.append(gain_var)
+                gain_lower_literals_temp.append(gain_var)
+
+            gain_upper_literals.append(gain_upper_literals_temp)
+            gain_lower_literals.append(gain_lower_literals_temp)
+            
+
+            #generate cnf for upperbound
+            filter_upper_pb_weights = filter_weights + gain_freq_upper_prod_weights
+            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.wordlength,self.fracW)
+
+            filter_upper_pb_literals = filter_literals + gain_upper_literals
+
+
+            cnf3 = pb2cnf.atmost(weight=filter_upper_pb_weights,lits=filter_upper_pb_literals,bounds=0,fracW=self.fracW)
+
+            for clause in cnf3:
+                solver.add_clause(clause)
+
+
+            #generate cnf for lowerbound
+            filter_lower_pb_weights = filter_weights + gain_freq_lower_prod_weights
+    
+
+            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.wordlength,self.fracW)
+
+            filter_lower_pb_literals = filter_literals + gain_lower_literals
+            
+            if len(filter_lower_pb_weights) != len(filter_lower_pb_literals):
+                raise Exception("sumtin wong with lower filter pb")
+            
+            cnf4 = pb2cnf.atleast(weight=filter_lower_pb_weights,lits=filter_lower_pb_literals,bounds=0,fracW=self.fracW)
+
+            for clause in cnf4:
+                solver.add_clause(clause)
+            
+        
+
+        print(f"Pysat: Barebone running with solver {solver_list[solver_id]}")
+
+        satifiability = 'unsat'
+
+        if solver.solve():
+            satifiability = 'sat'
+            self.model = solver.get_model()
+
+            for m in range(half_order + 1):
+                fir_coef = 0
+                for w in range(self.wordlength):
+                    var_index = v2i(('h', m, w)) - 1
+                    bool_value = self.model[var_index] > 0  # Convert to boolean
+
+                    if w == self.wordlength - 1:
+                        fir_coef += -2 ** (w - self.fracW) * bool_value
+                    elif w < self.fracW:
+                        fir_coef += 2 ** (-1 * (self.fracW - w)) * bool_value
+                    else:
+                        fir_coef += 2 ** (w - self.fracW) * bool_value
+                self.h_res.append(fir_coef)
+
+            print(f"fir coeffs: {self.h_res}")
+
+            gain_coef = 0
+            for g in range(self.wordlength):
+                var_index = v2i(('gain', g)) - 1
+                bool_value = self.model[var_index] > 0  # Convert to boolean
+                if g < self.fracW:
+                    gain_coef += 2 ** -(self.fracW - g) * bool_value
+                else:
+                    gain_coef += 2 ** (g - self.fracW) * bool_value
+
+            self.gain_res = gain_coef
+
+
+        else:
+            print("Unsatisfiable")
+
+        print(f"Pysat: Barebone done with solver {solver_list[solver_id]}")
+
+        
+        return satifiability,self.h_res,self.gain_res
        
 
     def runsolver_internal(self):
@@ -158,7 +332,7 @@ class FIRFilterPysat:
 
             for m in range(half_order + 1):
                 filter_literals_temp = []
-                cm = self.sf.cm_handler(m, self.freqx_axis[omega])
+                cm = sf.cm_handler(m, self.freqx_axis[omega])
                 for w in range(self.wordlength):
                     h_var = v2i(('h', m, w))
                     filter_literals_temp.append(h_var)
