@@ -272,7 +272,22 @@ class ParallelExecutor:
         return freq_upper,freq_lower
 
     
-    
+    def minimum_hm_finder(self,thread):
+        target_result = self.gurobi_instance_creator().run_minmax(thread,'find_min_coef')
+        if target_result['satisfiability'] == 'unsat':
+            raise ValueError("problem is unsat")
+        h_res = target_result['h_res']
+        nonzero_found_flag = False
+        nonzero_pos = 0
+        it = 0
+        while nonzero_found_flag == False:
+            it-=1
+            if h_res[it] == 0:
+                continue
+            else: nonzero_pos = it
+
+
+
     def gurobi_instance_creator(self):
         gurobi_instance = FIRFilterGurobi(
             filter_type=self.filter_type, 

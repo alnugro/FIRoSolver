@@ -50,6 +50,14 @@ class MainWindow(QMainWindow):
         self.mag_toolbar = QHBoxLayout(self.toolbar_wid)
         self.mag_toolbar.addWidget(self.toolbar)
 
+        self.input = {}
+
+        self.order_current = None
+        self.order_lower = None
+        self.order_upper = None
+
+        
+
 
 
 
@@ -109,7 +117,56 @@ class MainWindow(QMainWindow):
         self.filtering_but.clicked.connect(self.on_filtering_but_click)
         self.run_solver_but.clicked.connect(self.on_run_solver_but_click)
 
-    def get_data_dict(self):
+    def solver_get_input_data(self):
+        # Assigning variables to buffer variables first
+        # filter_type = self.filter_type_drop.currentIndex()
+        filter_type = 0
+        order_current = 0  # Example buffer value, adjust based on your logic
+        ignore_lowerbound = True
+        adder_count = 4
+        # wordlength = self.wordlength_box.value()
+        wordlength = 12
+        adder_depth = 3
+        avail_dsp = 2
+        adder_wordlength_ext = 1
+        gain_upperbound = 1.5
+        gain_lowerbound = 0.5
+        coef_accuracy = 0.001
+        intW = 4
+        gain_wordlength = 8
+        gain_intW = 3
+        gurobi_thread = 4
+        pysat_thread = 2
+        z3_thread = 2
+        timeout = 300  # Timeout in seconds
+        max_iteration = 1000
+        start_with_error_prediction = False
+
+        # Updating the input dictionary using buffer variables
+        self.input.update({
+            'filter_type': filter_type,
+            'order_current': order_current,
+            'ignore_lowerbound': ignore_lowerbound,
+            'adder_count': adder_count,
+            'wordlength': wordlength,
+            'adder_depth': adder_depth,
+            'avail_dsp': avail_dsp,
+            'adder_wordlength_ext': adder_wordlength_ext,
+            'gain_upperbound': gain_upperbound,
+            'gain_lowerbound': gain_lowerbound,
+            'coef_accuracy': coef_accuracy,
+            'intW': intW,
+            'gain_wordlength': gain_wordlength,
+            'gain_intW': gain_intW,
+            'gurobi_thread': gurobi_thread,
+            'pysat_thread': pysat_thread,
+            'z3_thread': z3_thread,
+            'timeout': timeout,
+            'max_iteration': max_iteration,
+            'start_with_error_prediction': start_with_error_prediction
+        })
+        
+    def get_ui_data_dict(self):
         data_dict = {
         "filter_type": self.filter_type_drop.currentIndex(),
         "order_upper": self.order_upper_box.value(),
@@ -123,7 +180,7 @@ class MainWindow(QMainWindow):
     }
         return data_dict
 
-
+    
 
     def on_mag_plotter_but_click(self):
         self.live_logger(f"Generating...")
@@ -223,8 +280,8 @@ class MainWindow(QMainWindow):
             return
 
         #update input data
-        self.magnitude_plotter.update_plotter_data(self.get_data_dict())
-        self.solver.update_plotter_data(self.get_data_dict())
+        self.magnitude_plotter.update_plotter_data(self.get_ui_data_dict())
+        self.solver.update_plotter_data(self.get_ui_data_dict())
 
         # Set bounds in solver from plotter
         self.solver.set_input_arg(self.magnitude_plotter.get_frequency_bounds())

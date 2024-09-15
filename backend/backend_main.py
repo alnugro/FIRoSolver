@@ -8,12 +8,11 @@ import multiprocessing
 from solver_func import SolverFunc
 from parallel_executor import ParallelExecutor
 
+
 class SolverBackend():
     def __init__(self, input):
         self.filter_type = input['filter_type']
-        self.order_upper = input['order_upper']
-        self.order_lower = input['order_lower']
-        self.order_current = 0
+        self.order_current = input['order_current']
 
         self.freqx_axis = np.array(input['freqx_axis'], dtype=np.float64)
         self.freq_upper= np.array(input['freq_upper'], dtype=np.float64) 
@@ -61,8 +60,6 @@ class SolverBackend():
         self.timeout = input['timeout']
         self.max_iteration = input['max_iteration']
         self.start_with_error_prediction = input['start_with_error_prediction']
-
-        self.gurobi_available = None
 
         self.input = input
 
@@ -120,7 +117,7 @@ class SolverBackend():
         self.freq_lower_pysat_lin = copy.deepcopy(self.freq_lower_gurobi_lin)
 
 
-        #run gurobi test if its available
+        #run gurobi test to find out if its available
         if self.gurobi_thread > 0:
             self.gurobi_test()
 

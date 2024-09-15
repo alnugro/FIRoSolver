@@ -144,12 +144,109 @@ class FIRFilterGurobi:
             #print("gain Coeffs: ", self.gain_res)
                       
         else:
-            print("Unsatisfiable")
+            print("Gurobi: Unsatisfiable")
 
         model.dispose()  # Dispose of the model
         del model
 
         return satisfiability, self.h_res, self.gain_res
+    
+    def run_minmax(self,thread, minmax_option):
+        target_result = {}
+        self.order_current = int(self.order)
+        half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
+        
+        print("Gurobi solver called")
+        sf = SolverFunc(self.filter_type, self.order_current)
+
+        # print("filter order:", self.order_current)
+        # print("ignore lower than:", self.ignore_lowerbound)
+        
+        # print(f"before {self.freq_lower_lin}")
+
+         # linearize the bounds
+        self.freq_upper_lin = [int((f)*(10**self.coef_accuracy)) if not np.isnan(f) else np.nan for f in self.freq_upper_lin]
+        self.freq_lower_lin = [int((f)*(10**self.coef_accuracy)) if not np.isnan(f) else np.nan for f in self.freq_lower_lin]
+        self.ignore_lowerbound_np = np.array(self.ignore_lowerbound, dtype=float)
+
+        self.ignore_lowerbound_lin = sf.db_to_linear(self.ignore_lowerbound_np)
+        self.ignore_lowerbound_lin = self.ignore_lowerbound_lin*(10**self.coef_accuracy)
+
+        # print(f"after {self.freq_lower_lin}")
+        
+        model = gp.Model("presolve_model")
+        model.setParam('Threads', thread)
+        model.setParam('OutputFlag', 0)
+
+        h_upperbound = ((2**(self.intW-1))-1)+(1-2**-self.fracW)
+        h_lowerbound = -2**(self.intW-1)
+        h = [model.addVar(vtype=GRB.CONTINUOUS,lb=h_lowerbound, ub=h_upperbound, name=f'h_{a}') for a in range(half_order + 1)]
+        gain = model.addVar(vtype=GRB.CONTINUOUS, lb=self.gain_lowerbound, ub=self.gain_upperbound, name="gain")
+
+        for omega in range(len(self.freqx_axis)):
+            if np.isnan(self.freq_lower_lin[omega]):
+                continue
+
+            h_sum_temp = 0
+
+            for m in range(half_order+1):
+                cm = sf.cm_handler(m, self.freqx_axis[omega])
+                cm_word_prod= int(cm*(10** self.coef_accuracy))
+                h_sum_temp += h[m]*cm_word_prod
+
+            model.update()
+            # print(f"sum temp is{h_sum_temp}")
+            model.addConstr(h_sum_temp <= gain*self.freq_upper_lin[omega])
+            
+            
+            if self.freq_lower_lin[omega] < self.ignore_lowerbound_lin:
+                model.addConstr(h_sum_temp >= gain*-self.freq_upper_lin[omega])
+            else:
+                model.addConstr(h_sum_temp >= gain*self.freq_lower_lin[omega])
+        
+        if minmax_option == 'find_min_coef':
+            print("Gurobi MinMax: find_min_coef")
+            h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+            h_zero_sum = 0
+            for m in range(half_order + 1):
+                model.addGenConstrIndicator(h_zero[m], True, h[m] == 0)
+                h_zero_sum += h_zero[m]
+            model.setObjective(h_zero_sum, GRB.MAXIMIZE)
+
+
+        print("Gurobi: Barebone running")
+        model.optimize()
+        satisfiability = 'unsat'
+
+        if model.status == GRB.OPTIMAL:
+            satisfiability = 'sat'
+
+            for m in range(half_order + 1):
+                fir_coef = 0
+                h_value = h[m].X
+                self.h_res.append(h_value)
+            print("FIR Coeffs calculated: ",self.h_res)
+
+            self.gain_res = gain.x
+            print("gain Coeffs: ", self.gain_res)
+            if minmax_option == 'find_min_coef':
+                target_result.update({
+                    'satisfiability' : 'sat',
+                    'h_res' : self.h_res
+                })
+                
+
+                      
+        else:
+            print("Gurobi: Unsatisfiable")
+            target_result.update({
+                    'satisfiability' : 'unsat',
+                })
+
+        model.dispose()  # Dispose of the model
+        del model
+
+        return target_result
 
 
 
@@ -555,7 +652,7 @@ class FIRFilterGurobi:
             print("gain Coeffs: ", self.gain_res)
                       
         else:
-            print("Unsatisfiable")
+            print("Gurobi: Unsatisfiable")
             end_time = time.time()
 
         print("solver stopped")
@@ -582,7 +679,7 @@ class FIRFilterGurobi:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_current = 20
+    order_current = 12
     accuracy = 1
     adder_count = 3
     wordlength = 10
@@ -590,7 +687,7 @@ if __name__ == "__main__":
     adder_depth = 2
     avail_dsp = 0
     adder_wordlength_ext = 2
-    gain_upperbound = 3
+    gain_upperbound = 2
     gain_lowerbound = 1
     coef_accuracy = 4
     intW = 4
@@ -609,7 +706,7 @@ if __name__ == "__main__":
     freq_upper[0:lower_half_point] = 3
     freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -10
+    freq_upper[upper_half_point:end_point] = -30
     freq_lower[upper_half_point:end_point] = -1000
 
 
@@ -624,7 +721,6 @@ if __name__ == "__main__":
         return freq_upper_lin, freq_lower_lin
     
     freq_upper, freq_lower = db_to_lin_conversion(freq_upper, freq_lower)
-
 
     # Create FIRFilter instance
     fir_filter = FIRFilterGurobi(
@@ -648,5 +744,6 @@ if __name__ == "__main__":
     # Run solver and plot result
     # fir_filter.run_barebone(1)
     
-    fir_filter.run_barebone(1)
+    # fir_filter.run_barebone(1)
+    fir_filter.run_minmax(1,'find_min_coef')
     
