@@ -1,9 +1,8 @@
 import numpy as np
 
 class SolverFunc():
-    def __init__(self,filter_type, order):
+    def __init__(self,filter_type):
         self.filter_type=filter_type
-        self.half_order = (order//2)
         self.overflow_count = 0
 
     def db_to_linear(self,db_arr):

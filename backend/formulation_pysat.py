@@ -2,11 +2,17 @@ import numpy as np
 from pysat.solvers import Solver
 import matplotlib.pyplot as plt
 import time
-from sat_variable_handler import VariableMapper
-from pb2cnf import PB2CNF
-from rat2bool import Rat2bool
 import multiprocessing
-from solver_func import SolverFunc
+try:
+    from .sat_variable_handler import VariableMapper
+    from .pb2cnf import PB2CNF
+    from .rat2bool import Rat2bool
+    from .solver_func import SolverFunc
+except: 
+    from sat_variable_handler import VariableMapper
+    from pb2cnf import PB2CNF
+    from rat2bool import Rat2bool
+    from solver_func import SolverFunc
 
 
 

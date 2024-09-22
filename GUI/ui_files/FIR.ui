@@ -310,7 +310,7 @@
           <bool>false</bool>
          </property>
          <property name="currentIndex">
-          <number>0</number>
+          <number>3</number>
          </property>
          <widget class="QWidget" name="tab_2">
           <attribute name="title">
@@ -2675,23 +2675,23 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QWidget" name="widget_16" native="true">
+                  <widget class="QWidget" name="widget_17" native="true">
                    <property name="maximumSize">
                     <size>
                      <width>16777215</width>
                      <height>30</height>
                     </size>
                    </property>
-                   <layout class="QHBoxLayout" name="horizontalLayout_15">
+                   <layout class="QHBoxLayout" name="horizontalLayout_16">
                     <item>
-                     <widget class="QLabel" name="label_22">
+                     <widget class="QLabel" name="label_23">
                       <property name="text">
-                       <string>Filter Order Lower Bound</string>
+                       <string>Filter Order Upper Bound</string>
                       </property>
                      </widget>
                     </item>
                     <item>
-                     <widget class="QSpinBox" name="order_lower_box">
+                     <widget class="QSpinBox" name="order_upper_box">
                       <property name="minimumSize">
                        <size>
                         <width>0</width>
@@ -2710,23 +2710,23 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QWidget" name="widget_17" native="true">
+                  <widget class="QWidget" name="widget_26" native="true">
                    <property name="maximumSize">
                     <size>
                      <width>16777215</width>
                      <height>30</height>
                     </size>
                    </property>
-                   <layout class="QHBoxLayout" name="horizontalLayout_16">
+                   <layout class="QHBoxLayout" name="horizontalLayout_27">
                     <item>
-                     <widget class="QLabel" name="label_23">
+                     <widget class="QLabel" name="label_28">
                       <property name="text">
-                       <string>Filter Order Upper Bound</string>
+                       <string>Bound Accuracy Multiplier</string>
                       </property>
                      </widget>
                     </item>
                     <item>
-                     <widget class="QSpinBox" name="order_upper_box">
+                     <widget class="QSpinBox" name="bound_accuracy">
                       <property name="minimumSize">
                        <size>
                         <width>0</width>

@@ -2,16 +2,21 @@ import numpy as np
 from z3 import *
 import matplotlib.pyplot as plt
 import time
-from solver_func import SolverFunc
+
+try:
+    from .solver_func import SolverFunc
+except:
+    from solver_func import SolverFunc
+
 
 class FIRFilterZ3:
     def __init__(self, 
                  filter_type, 
-                 order_upper, 
+                 order_current, 
                  freqx_axis, 
-                 freq_upper, 
-                 freq_lower, 
-                 ignore_lowerbound, 
+                 upperbound_lin, 
+                 lowerbound_lin, 
+                 ignore_lowerbound_lin, 
                  adder_count, 
                  wordlength, 
                  adder_depth,
@@ -24,21 +29,18 @@ class FIRFilterZ3:
                  gain_wordlength,
                  gain_intW
                  ):
+        
         self.filter_type = filter_type
-        self.order_upper = order_upper
+        self.order_current = order_current
         self.freqx_axis = freqx_axis
-        self.freq_upper = freq_upper
-        self.freq_lower = freq_lower
+        self.upperbound_lin = upperbound_lin
+        self.lowerbound_lin = lowerbound_lin
         self.h_res = []
         self.gain_res = 0
 
         self.wordlength = wordlength
         self.max_adder = adder_count
         self.adder_wordlength = self.wordlength + adder_wordlength_ext
-
-
-        self.freq_upper_lin=0
-        self.freq_lower_lin=0
 
         self.coef_accuracy = coef_accuracy
         self.intW = intW
@@ -54,27 +56,26 @@ class FIRFilterZ3:
         self.gain_bound_accuracy = 2 #2 floating points
 
 
-        self.ignore_lowerbound = ignore_lowerbound
+        self.ignore_lowerbound_lin = ignore_lowerbound_lin
 
         self.adder_depth = adder_depth
         self.avail_dsp = avail_dsp
         self.result_model = {}
 
-    def run_barebone(self, seed):
+    def run_barebone(self , seed , z3_option = None, h_zero_count = None):
+        self.h_res = []
+        self.gain_res = 0
+
         ctx = z3.Context()
 
-        self.order_current = int(self.order_upper)
         half_order = (self.order_current // 2)
         
-        sf = SolverFunc(self.filter_type, self.order_current)
+        sf = SolverFunc(self.filter_type)
 
         # linearize the bounds
-        self.freq_upper_lin = [int(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.freq_upper]
-        self.freq_lower_lin = [int(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.freq_lower]
-        self.ignore_lowerbound_np = np.array(self.ignore_lowerbound, dtype=float)
-
-        self.ignore_lowerbound_lin = sf.db_to_linear(self.ignore_lowerbound_np)
-        self.ignore_lowerbound_lin = self.ignore_lowerbound_lin*(10**self.coef_accuracy)*(2**self.fracW)
+        internal_upperbound_lin = [math.ceil(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
+        internal_lowerbound_lin = [math.floor(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
+        internal_ignore_lowerbound = self.ignore_lowerbound_lin*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))
 
 
         solver = Solver(ctx=ctx)
@@ -88,8 +89,8 @@ class FIRFilterZ3:
 
 
         #bounds the gain
-        self.gain_upperbound_int = int(self.gain_upperbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
-        self.gain_lowerbound_int = int(self.gain_lowerbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
+        self.gain_upperbound_int = math.ceil(self.gain_upperbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
+        self.gain_lowerbound_int = math.floor(self.gain_lowerbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
 
         # print(self.gain_upperbound_int)
         # print(self.gain_lowerbound_int)
@@ -109,8 +110,8 @@ class FIRFilterZ3:
             
         filter_literals = []
         filter_coeffs = []
-        gain_freq_upper_prod_coeffs = []
-        gain_freq_lower_prod_coeffs = []
+        gain_upperbound_lin_prod_coeffs = []
+        gain_lowerbound_lin_prod_coeffs = []
 
         filter_upper_pb_pairs = []
         filter_lower_pb_pairs = []
@@ -120,7 +121,7 @@ class FIRFilterZ3:
 
 
         for omega in range(len(self.freqx_axis)):
-            if np.isnan(self.freq_lower_lin[omega]):
+            if np.isnan(internal_lowerbound_lin[omega]):
                 continue
 
             #clearing each list like this make the programm run faster, instead of decalring new one each time
@@ -128,8 +129,8 @@ class FIRFilterZ3:
             filter_literals.clear()
             filter_coeffs.clear()
 
-            gain_freq_upper_prod_coeffs.clear()
-            gain_freq_lower_prod_coeffs.clear()
+            gain_upperbound_lin_prod_coeffs.clear()
+            gain_lowerbound_lin_prod_coeffs.clear()
 
             filter_upper_pb_pairs.clear()
             filter_lower_pb_pairs.clear()
@@ -148,24 +149,24 @@ class FIRFilterZ3:
                     filter_literals.extend(filter_literals_temp)
 
             for g in range(self.gain_wordlength):
-                gain_upper_prod = int(-1 * (2**g) * self.freq_upper_lin[omega])
-                gain_upper_literalls_temp, gain_freq_upper_prod_coeffs_temp = sf.overflow_handler(gain_upper_prod,gain[g])
-                gain_freq_upper_prod_coeffs.extend(gain_freq_upper_prod_coeffs_temp)
+                gain_upper_prod = int(-1 * (2**g) * internal_upperbound_lin[omega])
+                gain_upper_literalls_temp, gain_upperbound_lin_prod_coeffs_temp = sf.overflow_handler(gain_upper_prod,gain[g])
+                gain_upperbound_lin_prod_coeffs.extend(gain_upperbound_lin_prod_coeffs_temp)
                 gain_upper_literalls.extend(gain_upper_literalls_temp)
 
-                if self.freq_lower_lin[omega] < self.ignore_lowerbound_lin:
-                    gain_lower_prod=int((2**g) * self.freq_upper_lin[omega])
-                    gain_lower_literalls_temp, gain_freq_lower_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
-                    gain_freq_lower_prod_coeffs.extend(gain_freq_lower_prod_coeffs_temp)
+                if internal_lowerbound_lin[omega] < internal_ignore_lowerbound:
+                    gain_lower_prod=int((2**g) * internal_upperbound_lin[omega])
+                    gain_lower_literalls_temp, gain_lowerbound_lin_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
+                    gain_lowerbound_lin_prod_coeffs.extend(gain_lowerbound_lin_prod_coeffs_temp)
                     gain_lower_literalls.extend(gain_lower_literalls_temp)
-                    # print("ignored ",self.freq_lower_lin[omega], " in frequency = ", self.freqx_axis[omega])
+                    # print("ignored ",internal_lowerbound_lin[omega], " in frequency = ", self.freqx_axis[omega])
                 else:
-                    gain_lower_prod=int(-1 *(2**g) * self.freq_lower_lin[omega])
-                    gain_lower_literalls_temp, gain_freq_lower_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
-                    gain_freq_lower_prod_coeffs.extend(gain_freq_lower_prod_coeffs_temp)
+                    gain_lower_prod=int(-1 *(2**g) * internal_lowerbound_lin[omega])
+                    gain_lower_literalls_temp, gain_lowerbound_lin_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
+                    gain_lowerbound_lin_prod_coeffs.extend(gain_lowerbound_lin_prod_coeffs_temp)
                     gain_lower_literalls.extend(gain_lower_literalls_temp)
 
-            filter_upper_pb_coeffs=filter_coeffs+gain_freq_upper_prod_coeffs
+            filter_upper_pb_coeffs=filter_coeffs+gain_upperbound_lin_prod_coeffs
             filter_upper_pb_literalls=filter_literals+gain_upper_literalls
 
 
@@ -173,15 +174,12 @@ class FIRFilterZ3:
                 raise("sumtin wong with upper filter pb")
 
 
-            
-
             #z3 only take pairs
             filter_upper_pb_pairs = [(filter_upper_pb_literalls[i],filter_upper_pb_coeffs[i],) for i in range(len(filter_upper_pb_literalls))]
             solver.add(PbLe(filter_upper_pb_pairs, 0))
 
             
-           
-            filter_lower_pb_coeffs=filter_coeffs+gain_freq_lower_prod_coeffs
+            filter_lower_pb_coeffs=filter_coeffs+gain_lowerbound_lin_prod_coeffs
             filter_lower_pb_literalls=filter_literals+gain_lower_literalls
 
 
@@ -196,12 +194,25 @@ class FIRFilterZ3:
 
             #end omega loop
 
+        if z3_option == 'try_h_zero_count':
+            print("z3_presolve: try_h_zero_count")
+            if h_zero_count == None:
+                raise TypeError("z3 barebone: h_zero_count cant be empty when try_h_zero_count is chosen")
+            h_zero_sum = []
+            h_zero = [Bool(f'h_zero_{m}', ctx=ctx) for m in range(half_order+1)]
+            for m in range(half_order+1):
+                for word in range(self.wordlength):
+                    solver.add(Or(Not(h_zero[m]),Not(h[m][word]))) 
+                h_zero_sum.append(h_zero[m])
+            solver.add(AtLeast(*h_zero_sum,h_zero_count))
+
+
         print(f"Z3: Barebone running with seed {seed}")
-        satifiability = 'unsat'
+        satisfiability = 'unsat'
 
         if solver.check() == sat:
 
-            satifiability = 'sat'
+            satisfiability = 'sat'
 
             model = solver.model()
 
@@ -238,37 +249,37 @@ class FIRFilterZ3:
 
         else:
             print("Unsatisfiable")
-            end_time = time.time()
 
         print(f"Z3: Barebone done solving with seed {seed}")
+        print(satisfiability)
+        print(self.h_res)
+        print(self.gain_res)
 
-        return satifiability,self.h_res,self.gain_res
-
-
-
+        return satisfiability, self.h_res , self.gain_res
 
 
     def runsolver(self):
-        self.order_current = int(self.order_upper)
+        self.h_res = []
+        self.gain_res = 0
+
+        self.order_current = int(self.order_current)
         half_order = (self.order_current // 2)
         
         print("solver called")
-        sf = SolverFunc(self.filter_type, self.order_current)
-
         print("filter order:", self.order_current)
-        print("ignore lower than:", self.ignore_lowerbound)
+        print("ignore lower than:", self.ignore_lowerbound_lin)
         # linearize the bounds
-        self.freq_upper_lin = [int((sf.db_to_linear(f))*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_upper]
-        self.freq_lower_lin = [int((sf.db_to_linear(f))*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(sf.db_to_linear(f)) else np.nan for f in self.freq_lower]
-        self.ignore_lowerbound_np = np.array(self.ignore_lowerbound, dtype=float)
+        internal_upperbound_lin = [math.ceil(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
+        internal_lowerbound_lin = [math.floor(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
+        internal_ignore_lowerbound = self.ignore_lowerbound_lin*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))
 
-        self.ignore_lowerbound_lin = sf.db_to_linear(self.ignore_lowerbound_np)
-        self.ignore_lowerbound_lin = self.ignore_lowerbound_lin*(10**self.coef_accuracy)*(2**self.fracW)
 
         h = [[Bool(f'h_{a}_{w}') for w in range(self.wordlength)] for a in range(half_order+1)]
         gain= [Bool(f'gain_{g}') for g in range(self.gain_wordlength)]
 
         solver = Solver()
+
+        sf = SolverFunc(self.filter_type)
 
 
         gain_coeffs = []
@@ -297,8 +308,8 @@ class FIRFilterZ3:
             
         filter_literals = []
         filter_coeffs = []
-        gain_freq_upper_prod_coeffs = []
-        gain_freq_lower_prod_coeffs = []
+        gain_upperbound_lin_prod_coeffs = []
+        gain_lowerbound_lin_prod_coeffs = []
 
         filter_upper_pb_pairs = []
         filter_lower_pb_pairs = []
@@ -308,7 +319,7 @@ class FIRFilterZ3:
 
 
         for omega in range(len(self.freqx_axis)):
-            if np.isnan(self.freq_lower_lin[omega]):
+            if np.isnan(internal_lowerbound_lin[omega]):
                 continue
 
             #clearing each list like this make the programm run faster, instead of decalring new one each time
@@ -316,8 +327,8 @@ class FIRFilterZ3:
             filter_literals.clear()
             filter_coeffs.clear()
 
-            gain_freq_upper_prod_coeffs.clear()
-            gain_freq_lower_prod_coeffs.clear()
+            gain_upperbound_lin_prod_coeffs.clear()
+            gain_lowerbound_lin_prod_coeffs.clear()
 
             filter_upper_pb_pairs.clear()
             filter_lower_pb_pairs.clear()
@@ -336,24 +347,24 @@ class FIRFilterZ3:
                     filter_literals.extend(filter_literals_temp)
 
             for g in range(self.gain_wordlength):
-                gain_upper_prod = int(-1 * (2**g) * self.freq_upper_lin[omega])
-                gain_upper_literalls_temp, gain_freq_upper_prod_coeffs_temp = sf.overflow_handler(gain_upper_prod,gain[g])
-                gain_freq_upper_prod_coeffs.extend(gain_freq_upper_prod_coeffs_temp)
+                gain_upper_prod = int(-1 * (2**g) * internal_upperbound_lin[omega])
+                gain_upper_literalls_temp, gain_upperbound_lin_prod_coeffs_temp = sf.overflow_handler(gain_upper_prod,gain[g])
+                gain_upperbound_lin_prod_coeffs.extend(gain_upperbound_lin_prod_coeffs_temp)
                 gain_upper_literalls.extend(gain_upper_literalls_temp)
 
-                if self.freq_lower_lin[omega] < self.ignore_lowerbound_lin:
-                    gain_lower_prod=int((2**g) * self.freq_upper_lin[omega])
-                    gain_lower_literalls_temp, gain_freq_lower_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
-                    gain_freq_lower_prod_coeffs.extend(gain_freq_lower_prod_coeffs_temp)
+                if internal_lowerbound_lin[omega] < internal_ignore_lowerbound:
+                    gain_lower_prod=int((2**g) * internal_upperbound_lin[omega])
+                    gain_lower_literalls_temp, gain_lowerbound_lin_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
+                    gain_lowerbound_lin_prod_coeffs.extend(gain_lowerbound_lin_prod_coeffs_temp)
                     gain_lower_literalls.extend(gain_lower_literalls_temp)
-                    print("ignored ",self.freq_lower_lin[omega], " in frequency = ", self.freqx_axis[omega])
+                    print("ignored ",internal_lowerbound_lin[omega], " in frequency = ", self.freqx_axis[omega])
                 else:
-                    gain_lower_prod=int(-1 *(2**g) * self.freq_lower_lin[omega])
-                    gain_lower_literalls_temp, gain_freq_lower_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
-                    gain_freq_lower_prod_coeffs.extend(gain_freq_lower_prod_coeffs_temp)
+                    gain_lower_prod=int(-1 *(2**g) * internal_lowerbound_lin[omega])
+                    gain_lower_literalls_temp, gain_lowerbound_lin_prod_coeffs_temp = sf.overflow_handler(gain_lower_prod,gain[g])
+                    gain_lowerbound_lin_prod_coeffs.extend(gain_lowerbound_lin_prod_coeffs_temp)
                     gain_lower_literalls.extend(gain_lower_literalls_temp)
 
-            filter_upper_pb_coeffs=filter_coeffs+gain_freq_upper_prod_coeffs
+            filter_upper_pb_coeffs=filter_coeffs+gain_upperbound_lin_prod_coeffs
             filter_upper_pb_literalls=filter_literals+gain_upper_literalls
 
             # print("coeffs: ",filter_upper_pb_coeffs)
@@ -372,7 +383,7 @@ class FIRFilterZ3:
 
             
            
-            filter_lower_pb_coeffs=filter_coeffs+gain_freq_lower_prod_coeffs
+            filter_lower_pb_coeffs=filter_coeffs+gain_lowerbound_lin_prod_coeffs
             filter_lower_pb_literalls=filter_literals+gain_lower_literalls
 
             # print("coeffs: ",filter_lower_pb_coeffs)
@@ -673,7 +684,6 @@ class FIRFilterZ3:
         iota = [Bool(f'iota_{m}') for m in range(half_order+1)]
         t = [[Bool(f't_{m}_{w}') for w in range(self.adder_wordlength)] for m in range(half_order+1)]
         
-
         
         iota_sum = []
         for m in range(half_order+1):
@@ -791,11 +801,11 @@ class FIRFilterZ3:
         # print(filter_coeffs)
         # print(filter_literals)
 
-        satifiability = 'unsat'
+        satisfiability = 'unsat'
 
         if solver.check() == sat:
 
-            satifiability = 'sat'
+            satisfiability = 'sat'
 
             print("solver sat")
             model = solver.model()
@@ -908,13 +918,13 @@ class FIRFilterZ3:
         print(f"Total number of variables            : ")
         print(f"Total number of constraints (clauses): {len(solver.assertions())}\n" )
 
-        return duration , satifiability
+        return duration , satisfiability
 
 
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 20
+    order_current = 10
     accuracy = 1
     adder_count = 3
     wordlength = 10
@@ -922,36 +932,50 @@ if __name__ == "__main__":
     adder_depth = 2
     avail_dsp = 0
     adder_wordlength_ext = 2
-    gain_upperbound = 3
+    gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
     intW = 4
 
-    space = int(accuracy*order_upper)
+    gain_wordlength = 6
+    gain_intW = 2
+
+    space = int(accuracy*order_current)
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.5*(space))
+    lower_half_point = int(0.4*(space))
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 3
-    freq_lower[0:lower_half_point] = -1
+    freq_upper[0:lower_half_point] = 21
+    freq_lower[0:lower_half_point] = -19
 
-    freq_upper[upper_half_point:end_point] = -40
+    freq_upper[upper_half_point:end_point] = -30
     freq_lower[upper_half_point:end_point] = -1000
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
+
+    def db_to_lin_conversion(freq_upper, freq_lower, ignore_lowerbound):
+        sf = SolverFunc(filter_type)
+        upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
+        lowerbound_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
+        ignore_lowerbound_np = np.array(ignore_lowerbound, dtype=float)
+        ignore_lowerbound = sf.db_to_linear(ignore_lowerbound_np)
+        return upperbound_lin, lowerbound_lin, ignore_lowerbound
+    
+    freq_upper, freq_lower,ignore_lowerbound = db_to_lin_conversion(freq_upper, freq_lower,ignore_lowerbound)
+
     # Create FIRFilter instance
     fir_filter = FIRFilterZ3(
                  filter_type, 
-                 order_upper, 
+                 order_current, 
                  freqx_axis, 
                  freq_upper, 
                  freq_lower, 
@@ -965,9 +989,10 @@ if __name__ == "__main__":
                  gain_lowerbound,
                  coef_accuracy,
                  intW,
+                 gain_wordlength,
+                 gain_intW
                  )
 
-    # Run solver and plot result
-    fir_filter.runsolver()
+    fir_filter.run_barebone(1,'try_h_zero_count',1)
     
     

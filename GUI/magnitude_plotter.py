@@ -14,7 +14,6 @@ class MagnitudePlotter:
         #input data from user
         self.filter_type = None
         self.order_upper = None
-        self.order_lower = None
         self.wordlength = None
         self.sampling_rate = None
         self.flatten_value = None
@@ -87,8 +86,8 @@ class MagnitudePlotter:
         for row in table_data:
             magnitude, lower_bound, upper_bound, start_freq, end_freq = row
 
-            # Generate points between start and end frequencies with 10^-8 distance between each points
-            freqs = np.arange(start_freq, end_freq, 0.001)
+            # Generate points between start and end frequencies with some distance between each points
+            freqs = np.linspace(start_freq, end_freq, 200)
             midpoint=end_freq-start_freq
 
             line_magnitude, = self.ax.plot(freqs, np.full(freqs.shape, magnitude), 'gainsboro')  # Plot magnitude
@@ -121,22 +120,28 @@ class MagnitudePlotter:
         if self.app:
             self.app.canvas.draw()
 
+ 
     def get_frequency_bounds(self):
-        bounds_dict = {}
-        for i in range(self.order_lower, self.order_upper + 1):
-            bounds_dict[i]=self.set_bounds_for_solver(i)
-        return bounds_dict
-
-    def set_bounds_for_solver(self, filter_order):
-        self.step = filter_order*16
-        print("step is : ",self.step)
+        self.step = 50000
         xdata = np.linspace(0, 1, self.step)
         upper_ydata = np.full(xdata.shape, np.nan)
         lower_ydata = np.full(xdata.shape, np.nan)
+        
+        #array to save the transition band
+        cutoffs_x = []
+        cutoffs_upper_ydata = []
+        cutoffs_lower_ydata = []
+
          
         for draggable_line in self.draggable_lines_upper:
             current_xdata = draggable_line.get_xdata()
             current_ydata = draggable_line.get_ydata()
+
+            cutoffs_x.append(current_xdata[0])
+            cutoffs_x.append(current_xdata[-1])
+            
+            cutoffs_upper_ydata.append(current_ydata[0])
+            cutoffs_upper_ydata.append(current_ydata[-1])
 
             # Interpolate current_ydata to match self.upper_xdata
             interpolated_current_ydata = np.interp(xdata, current_xdata, current_ydata, left=np.nan, right=np.nan)
@@ -148,12 +153,15 @@ class MagnitudePlotter:
             current_xdata = draggable_line.get_xdata()
             current_ydata = draggable_line.get_ydata()
 
+            cutoffs_lower_ydata.append(current_ydata[0])
+            cutoffs_lower_ydata.append(current_ydata[-1])
+
             # Interpolate current_ydata to match self.lower_xdata
             interpolated_current_ydata = np.interp(xdata, current_xdata, current_ydata, left=np.nan, right=np.nan)
 
             # Update lower_ydata with the interpolated values
             lower_ydata = np.where(np.isnan(lower_ydata), interpolated_current_ydata, lower_ydata)
-        return [xdata, upper_ydata, lower_ydata]
+        return xdata, upper_ydata, lower_ydata ,cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata
 
     
     

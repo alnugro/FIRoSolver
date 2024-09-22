@@ -1,6 +1,11 @@
 import numpy as np
-from rat2bool import Rat2bool
 from pysat.solvers import Solver
+
+try:
+    from .rat2bool import Rat2bool
+except:
+    from rat2bool import Rat2bool
+
 
 
 '''''

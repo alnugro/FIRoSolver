@@ -5,64 +5,87 @@ import copy
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError  # Correct import for TimeoutError
 import multiprocessing
-from solver_func import SolverFunc
-from parallel_executor import ParallelExecutor
+from .solver_func import SolverFunc
+from .error_predictor import ErrorPredictor
+from .solver_presolve import OrderCompressor
 
 
 class SolverBackend():
-    def __init__(self, input):
-        self.filter_type = input['filter_type']
-        self.order_current = input['order_current']
+    def __init__(self, input_data):
+        # Explicit declaration of instance variables with default values (if applicable)
+        self.filter_type = None
+        self.order_upperbound = None
 
-        self.freqx_axis = np.array(input['freqx_axis'], dtype=np.float64)
-        self.freq_upper= np.array(input['freq_upper'], dtype=np.float64) 
-        self.freq_lower= np.array(input['freq_lower'], dtype=np.float64) 
+        self.ignore_lowerbound = None
+        self.wordlength = None
+        self.adder_depth = None
+        self.avail_dsp = None
+        self.adder_wordlength_ext = None
+        self.gain_upperbound = None
+        self.gain_lowerbound = None
+        self.coef_accuracy = None
+        self.intW = None
 
-        self.freqx_axis_gurobi = np.array([], dtype=np.float64) 
-        self.freq_upper_gurobi = np.array([], dtype=np.float64) 
-        self.freq_lower_gurobi = np.array([], dtype=np.float64) 
+        self.gain_wordlength = None
+        self.gain_intW = None
 
-        self.freqx_axis_z3= np.array([], dtype=np.float64)
-        self.freq_upper_z3= np.array([], dtype=np.float64)
-        self.freq_lower_z3= np.array([], dtype=np.float64)
+        self.gurobi_thread = None
+        self.pysat_thread = None
+        self.z3_thread = None
 
-        self.freqx_axis_pysat = np.array([], dtype=np.float64) 
-        self.freq_upper_pysat = np.array([], dtype=np.float64)
-        self.freq_lower_pysat = np.array([], dtype=np.float64)
+        self.timeout = None
+        self.start_with_error_prediction = None
 
-        self.freq_upper_gurobi_lin = np.array([], dtype=np.float64) 
-        self.freq_lower_gurobi_lin = np.array([], dtype=np.float64)
+        self.original_xdata = None
+        self.original_upperbound_lin = None
+        self.original_lowerbound_lin = None
 
-        self.freq_upper_z3_lin = np.array([], dtype=np.float64) 
-        self.freq_lower_z3_lin = np.array([], dtype=np.float64)
+        self.cutoffs_x = None
+        self.cutoffs_upper_ydata_lin = None
+        self.cutoffs_lower_ydata_lin = None
 
-        self.freq_upper_pysat_lin = np.array([], dtype=np.float64) 
-        self.freq_lower_pysat_lin = np.array([], dtype=np.float64)
+        self.solver_accuracy_multiplier = None
 
-        self.ignore_lowerbound = input['ignore_lowerbound']
-        self.adder_count = input['adder_count']
-        self.wordlength = input['wordlength']
-        self.adder_depth = input['adder_depth']
-        self.avail_dsp = input['avail_dsp']
-        self.adder_wordlength_ext = input['adder_wordlength_ext']
-        self.gain_upperbound = input['gain_upperbound']
-        self.gain_lowerbound = input['gain_lowerbound']
-        self.coef_accuracy = input['coef_accuracy']
-        self.intW = input['intW']
-
-        self.gain_wordlength = input['gain_wordlength']
-        self.gain_intW = input['gain_intW']
+        # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
+        for key, value in input_data.items():
+            if hasattr(self, key):  # Only set attributes that exist in the class
+                setattr(self, key, value)
         
-        self.gurobi_thread = input['gurobi_thread']
-        self.pysat_thread = input['pysat_thread']
-        self.z3_thread = input['z3_thread']
+        #declare data that is local to backend
+        self.input = input_data  
 
-        self.timeout = input['timeout']
-        self.max_iteration = input['max_iteration']
-        self.start_with_error_prediction = input['start_with_error_prediction']
+        #initiate different bounds, for error predictor later
+        self.upperbound_gurobi_lin = None
+        self.lowerbound_gurobi_lin = None
+        
+        self.upperbound_z3_lin = None
+        self.lowerbound_z3_lin = None
 
-        self.input = input
+        self.upperbound_pysat_lin = None
+        self.lowerbound_pysat_lin = None
 
+
+    
+    def compress_solver_order(self):
+        #interpolate original data first
+        xdata, upperbound_lin, lowerbound_lin = self.interpolate_bounds_to_order(self.order_upperbound)
+
+        #update input data with interpolated data
+        self.input.update({
+            'xdata' : xdata,
+            'upperbound_lin': upperbound_lin,
+            'lowerbound_lin':lowerbound_lin
+        })
+        #always run order compressor first
+        compressor = OrderCompressor(self.input)
+        if self.gurobi_thread > 0:
+            
+            #if gurobi is available then use gurobi, because it is way faster to find the minimum solver order
+            min_order, h_res = compressor.run_order_compressor_gurobi()
+        else:
+            pass
+        
+            
 
     def gurobi_test(self):
         try:
@@ -99,44 +122,53 @@ class SolverBackend():
     def gurobi_presolve(self):
         pass
 
-    def db_to_lin_conversion(self, freq_upper, freq_lower):
-        sf = SolverFunc(self.filter_type, self.order_current)
-        freq_upper_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
-        freq_lower_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
-
-        return freq_upper_lin, freq_lower_lin
-    
-    
-    def run_backend(self):
-        self.freq_upper_gurobi_lin, self.freq_lower_gurobi_lin = self.db_to_lin_conversion(self.freq_upper, self.freq_lower)
+    def interpolate_bounds_to_order(self, order_current):
+        # Ensure step is an integer
+        self.step = int(order_current * self.solver_accuracy_multiplier)
         
-        self.freq_upper_z3_lin = copy.deepcopy(self.freq_upper_gurobi_lin)
-        self.freq_lower_z3_lin = copy.deepcopy(self.freq_lower_gurobi_lin)
+        # Create xdata with self.step points between 0 and 1
+        xdata = np.linspace(0, 1, self.step)
 
-        self.freq_upper_pysat_lin = copy.deepcopy(self.freq_upper_gurobi_lin)
-        self.freq_lower_pysat_lin = copy.deepcopy(self.freq_lower_gurobi_lin)
+        # Interpolate upper and lower bounds to the user multiplier
+        upper_ydata_lin = np.interp(xdata, self.original_xdata, self.original_upperbound_lin)
+        lower_ydata_lin = np.interp(xdata, self.original_xdata, self.original_lowerbound_lin)
+
+        for x_index, x in enumerate(self.cutoffs_x):
+            if x in xdata:
+                continue
+            xdata_index = np.searchsorted(xdata, x)
+            xdata = np.insert(xdata, xdata_index, x)
+            upper_ydata_lin = np.insert(upper_ydata_lin, xdata_index, self.cutoffs_upper_ydata_lin[x_index])
+            lower_ydata_lin = np.insert(lower_ydata_lin, xdata_index, self.cutoffs_lower_ydata_lin[x_index])
+
+        return xdata, upper_ydata_lin, lower_ydata_lin
+
+    
+    
+    # def run_backend(self):
+        
 
 
-        #run gurobi test to find out if its available
-        if self.gurobi_thread > 0:
-            self.gurobi_test()
+    #     #run gurobi test to find out if its available
+    #     if self.gurobi_thread > 0:
+    #         self.gurobi_test()
 
-        parallel_exec_instance = ParallelExecutor(self.input,
-                                         self.freq_upper_gurobi_lin, 
-                                         self.freq_lower_gurobi_lin,
-                                         self.freq_upper_z3_lin, 
-                                         self.freq_lower_z3_lin, 
-                                         self.freq_upper_pysat_lin,
-                                         self.freq_lower_pysat_lin)
+    #     parallel_exec_instance = ParallelExecutor(self.input,
+    #                                      self.upperbound_gurobi_lin, 
+    #                                      self.lowerbound_gurobi_lin,
+    #                                      self.upperbound_z3_lin, 
+    #                                      self.lowerbound_z3_lin, 
+    #                                      self.upperbound_pysat_lin,
+    #                                      self.lowerbound_pysat_lin)
 
-        #iterate the order from smallest to highest
-        self.order_current = self.order_lower
-        while self.order_current <= self.order_upper:
-            print(f"current {self.order_current}")
-            print(f"upper {self.order_upper}")
-            if self.start_with_error_prediction:
-                self.freq_upper_gurobi_lin, self.freq_lower_gurobi_lin, self.freq_upper_z3_lin, self.freq_lower_z3_lin, self.freq_upper_pysat_lin, self.freq_lower_pysat_lin = parallel_exec_instance.execute_parallel_error_prediction(self.order_current)
-            self.order_current += 1
+    #     #iterate the order from smallest to highest
+    #     self.order_current = self.order_lower
+    #     while self.order_current <= self.order_upper:
+    #         print(f"current {self.order_current}")
+    #         print(f"upper {self.order_upper}")
+    #         if self.start_with_error_prediction:
+    #             self.upperbound_gurobi_lin, self.lowerbound_gurobi_lin, self.upperbound_z3_lin, self.lowerbound_z3_lin, self.upperbound_pysat_lin, self.lowerbound_pysat_lin = parallel_exec_instance.execute_parallel_error_prediction(self.order_current)
+    #         self.order_current += 1
                 
 
 if __name__ == "__main__":
@@ -203,7 +235,6 @@ if __name__ == "__main__":
         'pysat_thread': 2,
         'z3_thread': 3,
         'timeout': 1000,
-        'max_iteration': 500,
         'start_with_error_prediction': True
     }
 
