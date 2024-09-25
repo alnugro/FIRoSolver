@@ -1,7 +1,7 @@
 import sys
 import random
 import matplotlib.pyplot as plt
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QWidget
+from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QWidget, QLabel
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 
@@ -21,8 +21,12 @@ class PlotWindow(QMainWindow):
         self.canvas = FigureCanvas(self.figure)
         self.toolbar = NavigationToolbar(self.canvas, self)
 
+        # Label to display mouse coordinates
+        self.coord_label = QLabel("Mouse coordinates: (x, y)", self)
+
         plot_layout = QVBoxLayout()
         plot_layout.addWidget(self.canvas)
+        plot_layout.addWidget(self.coord_label)  # Add the label to the layout
 
         button_layout = QVBoxLayout()
         button_layout.addWidget(self.toolbar)
@@ -46,6 +50,9 @@ class PlotWindow(QMainWindow):
         main_layout.addLayout(plot_layout)
         main_layout.addLayout(button_layout)
 
+        # Connect the canvas' motion event to the method that updates the coordinates
+        self.canvas.mpl_connect("motion_notify_event", self.on_mouse_move)
+
     def plot_data(self):
         self.ax.clear()
         data = [random.random() for _ in range(25)]
@@ -60,6 +67,14 @@ class PlotWindow(QMainWindow):
 
     def home(self):
         self.toolbar.home()
+
+    def on_mouse_move(self, event):
+        """Update the label with the current mouse coordinates."""
+        if event.inaxes:  # Only if the mouse is over the plot area
+            x, y = event.xdata, event.ydata
+            self.coord_label.setText(f"Mouse coordinates: ({x:.2f}, {y:.2f})")
+        else:
+            self.coord_label.setText("Mouse coordinates: (x, y)")  # Reset when outside plot area
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

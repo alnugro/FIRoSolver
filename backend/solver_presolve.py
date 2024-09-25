@@ -1,4 +1,4 @@
-from pebble import ProcessPool, ProcessExpired
+from pebble import ProcessPool, ProcessExpired, ThreadPool
 from concurrent.futures import TimeoutError, CancelledError, wait, ALL_COMPLETED
 import traceback
 import time
@@ -73,6 +73,47 @@ class Presolver:
         self.half_order = (self.order_upperbound // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2) - 1
         self.max_zero_reduced = 0
 
+    def minmax_h_zero_worker_func(self,input_m):
+        """Function to be executed in parallel."""
+        print(f"running with input :{input_m}")
+
+        gurobi_instance = FIRFilterGurobi(
+            self.filter_type, 
+            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.xdata, 
+            self.upperbound_lin, 
+            self.lowerbound_lin, 
+            self.ignore_lowerbound, 
+            0, 
+            self.wordlength,
+            0,
+            0,
+            0,
+            self.gain_upperbound,
+            self.gain_lowerbound,
+            self.coef_accuracy,
+            self.intW
+            )
+        
+        target_result_max = gurobi_instance.run_barebone_real(self.gurobi_thread, 'maximize_h',self.max_h_zero_for_minmax, input_m)
+        target_result_min = gurobi_instance.run_barebone_real(self.gurobi_thread, 'minimize_h',self.max_h_zero_for_minmax, input_m)
+        
+        print(f"input is done:{input_m}")
+
+        return target_result_max, target_result_min,input_m
+
+    def run_minmax_h_zero_threadpool(self, half_order_list):
+        with ThreadPool(self.gurobi_thread) as pool:
+            future = pool.map(self.minmax_h_zero_worker_func, half_order_list)
+            iterator = future.result()
+            try:
+                for res in iterator:
+                    target_result_max, target_result_min, input_m = res
+                    self.h_max[input_m]= (target_result_max['target_h_res'])
+                    self.h_min[input_m]= (target_result_min['target_h_res'])
+            except Exception as error:
+                print("Error:", error)
+
 
     def run_presolve_gurobi(self, h_zero_input = None):
         presolve_result = {}
@@ -104,14 +145,14 @@ class Presolver:
                 raise ValueError("Gurobi_Presolve: problem is unsat")
             
             max_h_zero = target_result['max_h_zero']
-
+            
             #decrease the h_zero by one if its not satisfiable
             solve_with_h_zero_sum_sat_flag = False
             while solve_with_h_zero_sum_sat_flag == False:
                 target_result = gurobi_instance.run_barebone(self.gurobi_thread,'try_h_zero_count' ,max_h_zero)
                 if target_result['satisfiability'] == 'unsat':
                     max_h_zero -= 1
-                    print("\n.......h_zero was not satisfiable......\n")
+                    print("\n.......calculated h_zero was not satisfiable......\n")
                     self.max_zero_reduced +=1
 
                 else: 
@@ -129,27 +170,29 @@ class Presolver:
 
 
         print("\nFinding Minimum and Maximum For each Filter Coefficients......\n")
-        h_min = []
-        h_max = []
+        half_order_list = [m for m in range(self.half_order + 1 )]
+        self.h_max = []
+        self.h_min = []
 
-        for m in range(self.half_order + 1 ):
-            target_result_max = gurobi_instance.run_barebone_real(self.gurobi_thread, 'maximize_h',max_h_zero, m)
-            target_result_min = gurobi_instance.run_barebone_real(self.gurobi_thread, 'minimize_h',max_h_zero, m)
+        self.max_h_zero_for_minmax = max_h_zero
 
-            h_max.append(target_result_max['target_h_res'])
-            h_min.append(target_result_min['target_h_res'])
-
+        self.h_max = [None for m in range(self.half_order + 1 )] 
+        self.h_min = [None for m in range(self.half_order + 1 )]
+        #run h_zero minmax finder using threadpool
+        self.run_minmax_h_zero_threadpool( half_order_list)
 
         presolve_result.update({
             'max_zero' : max_h_zero,
             'min_gain' : min_gain,
-            'hmax' : h_max,
-            'hmin' : h_min,
+            'hmax' : self.h_max,
+            'hmin' : self.h_min,
             'max_zero_reduced' : self.max_zero_reduced,
             'h_res':self.h_res,
             'gain_res': self.gain_res
         })
         print(presolve_result)
+
+        self.max_h_zero_for_minmax = None
 
 
         return presolve_result
@@ -157,15 +200,15 @@ class Presolver:
     def run_presolve_z3_pysat(self):
         presolve_result = {}
 
-        if self.z3_thread == None:
+        if self.z3_thread == 0:
             self.z3_thread = self.pysat_thread
 
         print("run_presolve_z3_pysat")
-        #check first if the problem is even satisfiable
-        self.execute_z3_pysat()
+        # #check first if the problem is even satisfiable
+        # self.execute_z3_pysat()
 
-        if self.z3_pysat_satisfiability == 'unsat':
-            raise ValueError("problem is unsat")
+        # if self.z3_pysat_satisfiability == 'unsat':
+        #     raise ValueError("problem is unsat")
         
       
         #binary search to find the h_zero count sat transition point
@@ -222,7 +265,7 @@ class Presolver:
     def execute_z3_pysat(self, solver_options=None,h_zero_count = None):
         pools = []  # To store active pools for cleanup
         futures_z3 = []  # List to store Z3 futures
-
+        
         try:
             # Conditionally create the Z3 pool
             if self.z3_thread > 0:
@@ -265,6 +308,8 @@ class Presolver:
                     if f is not future and not f.done():  # Check if `f` is a `Future`
                         f.cancel()
                         print(f"{solver_name} process cancelled")
+                
+
 
                 self.z3_pysat_satisfiability = satisfiability
                 self.z3_gain_res = gain_res
@@ -272,7 +317,7 @@ class Presolver:
 
             except ValueError as e:
                 if str(e) == "problem is unsat":
-                    raise ValueError(f"problem is unsat from the solver: {solver_name}")
+                    raise ValueError("problem is unsat")
             except CancelledError:
                 print(f"{solver_name} task was cancelled.")
             except TimeoutError:
@@ -281,7 +326,7 @@ class Presolver:
                 print(f"{solver_name} process {error.pid} expired.")
             except Exception as error:
                 print(f"{solver_name} task raised an exception: {error}")
-                traceback.print_exc()  # Print the full traceback to get more details
+                # traceback.print_exc()  # Print the full traceback to get more details
 
 
         return callback
@@ -315,24 +360,24 @@ class Presolver:
 
 
 if __name__ == "__main__":
-     # Test inputs
+    # Test inputs
     filter_type = 0
-    order_current = 14
+    order_current = 10
     accuracy = 1
     adder_count = 3
-    wordlength = 15
+    wordlength = 10
     
     adder_depth = 2
     avail_dsp = 0
     adder_wordlength_ext = 2
-    gain_upperbound = 3
+    gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
     intW = 4
 
-    space = int(accuracy*order_current)
+    space = 200
     # Initialize freq_upper and freq_lower with NaN values
-    xdata = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
@@ -341,55 +386,74 @@ if __name__ == "__main__":
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 3
-    freq_lower[0:lower_half_point] = -1
+    freq_upper[0:lower_half_point] = 21
+    freq_lower[0:lower_half_point] = -19
 
-    freq_upper[upper_half_point:end_point] = -40
+    freq_upper[upper_half_point:end_point] = -30
     freq_lower[upper_half_point:end_point] = -1000
+
+
+    cutoffs_x = []
+    cutoffs_upper_ydata = []
+    cutoffs_lower_ydata = []
+
+    cutoffs_x.append(freqx_axis[0])
+    cutoffs_x.append(freqx_axis[lower_half_point-1])
+    cutoffs_x.append(freqx_axis[upper_half_point])
+    cutoffs_x.append(freqx_axis[end_point-1])
+
+    cutoffs_upper_ydata.append(freq_upper[0])
+    cutoffs_upper_ydata.append(freq_upper[lower_half_point-1])
+    cutoffs_upper_ydata.append(freq_upper[upper_half_point])
+    cutoffs_upper_ydata.append(freq_upper[end_point-1])
+
+    cutoffs_lower_ydata.append(freq_lower[0])
+    cutoffs_lower_ydata.append(freq_lower[lower_half_point-1])
+    cutoffs_lower_ydata.append(freq_lower[upper_half_point])
+    cutoffs_lower_ydata.append(freq_lower[end_point-1])
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-    def db_to_lin_conversion(freq_upper, freq_lower):
-        sf = SolverFunc(filter_type)
-        upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
-        freq_lower_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
+    #linearize the bound
+    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
 
-        return upperbound_lin, freq_lower_lin
-    
-
-    #convert db to lin
-    freq_upper_lin, freq_lower_lin = db_to_lin_conversion(freq_upper, freq_lower)
+    cutoffs_upper_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_upper_ydata]
+    cutoffs_lower_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_lower_ydata]
 
 
     input_data = {
         'filter_type': filter_type,
         'order_upperbound': order_current,
-        'xdata': xdata,
-        'upperbound_lin': freq_upper_lin,
-        'lowerbound_lin': freq_lower_lin,
-        'ignore_lowerbound': ignore_lowerbound,
-        'adder_count': adder_count,
-        'wordlength': wordlength,
-        'adder_depth': adder_depth,
-        'avail_dsp': avail_dsp,
-        'adder_wordlength_ext': adder_wordlength_ext,
-        'gain_upperbound': gain_upperbound,
-        'gain_lowerbound': gain_lowerbound,
-        'coef_accuracy': coef_accuracy,
-        'intW': intW,
-        'gurobi_thread': 1,
-        'z3_thread': 10,
-        'pysat_thread': 3,
-        'timeout': 1000,
-        'max_iteration': 500,
-        'start_with_error_prediction': True,
-        'gain_wordlength': 6,
-        'gain_intW' : 4
+        'xdata': freqx_axis,
+        'upperbound_lin': upperbound_lin,
+        'lowerbound_lin': lowerbound_lin,
+        'ignore_lowerbound': ignore_lowerbound_lin,
+        'cutoffs_x': cutoffs_x,
+        'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
+        'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
+        'wordlength': 15,
+        'adder_depth': 0,
+        'avail_dsp': 0,
+        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
+        'gain_wordlength' : 6,
+        'gain_intW' : 2,
+        'gain_upperbound': 3,
+        'gain_lowerbound': 1,
+        'coef_accuracy': 6,
+        'intW': 6,
+        'gurobi_thread': 0,
+        'pysat_thread': 1,
+        'z3_thread': 0,
+        'timeout': 0,
+        'start_with_error_prediction': False,
+        'solver_accuracy_multiplier': 6,
     }
 
     # Create an instance of SolverBackend
     presolver = Presolver(input_data)
-    presolver.run_presolve_gurobi()
-    # presolver.run_presolve_z3_pysat()
+    # presolver.run_presolve_gurobi()
+    presolver.run_presolve_z3_pysat()

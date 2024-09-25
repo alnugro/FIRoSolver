@@ -5,9 +5,14 @@ import copy
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError  # Correct import for TimeoutError
 import multiprocessing
-from .solver_func import SolverFunc
-from .error_predictor import ErrorPredictor
-from .solver_presolve import OrderCompressor
+try:
+    from .solver_func import SolverFunc
+    from .bound_error_handler import BoundErrorHandler
+    from .solver_presolve import Presolver
+except:
+    from solver_func import SolverFunc
+    from bound_error_handler import BoundErrorHandler
+    from solver_presolve import Presolver
 
 
 class SolverBackend():
@@ -64,11 +69,19 @@ class SolverBackend():
         self.upperbound_pysat_lin = None
         self.lowerbound_pysat_lin = None
 
+        self.sf = SolverFunc(self.input)
+
+    def db_to_linear(self,value):
+        linear_value = 10 ** (value / 20)
+        return linear_value
+
+
 
     
-    def compress_solver_order(self):
+    def solver_presolve(self):
         #interpolate original data first
-        xdata, upperbound_lin, lowerbound_lin = self.interpolate_bounds_to_order(self.order_upperbound)
+        
+        xdata, upperbound_lin, lowerbound_lin = self.sf.interpolate_bounds_to_order(self.order_upperbound)
 
         #update input data with interpolated data
         self.input.update({
@@ -76,15 +89,19 @@ class SolverBackend():
             'upperbound_lin': upperbound_lin,
             'lowerbound_lin':lowerbound_lin
         })
-        #always run order compressor first
-        compressor = OrderCompressor(self.input)
+
+        presolve_result_gurobi = None
+        presolve_result_z3 = None
+
+        #always run presolver first
+        presolver = Presolver(self.input)
         if self.gurobi_thread > 0:
-            
-            #if gurobi is available then use gurobi, because it is way faster to find the minimum solver order
-            min_order, h_res = compressor.run_order_compressor_gurobi()
+            #if gurobi is available then use gurobi, because it is way faster to find the minimum solver order and can be used to find minmax variables
+            presolve_result_gurobi = presolver.run_presolve_gurobi()
         else:
-            pass
+            presolve_result_z3 = presolver.run_presolve_z3_pysat()
         
+        return presolve_result_gurobi, presolve_result_z3
             
 
     def gurobi_test(self):
@@ -109,39 +126,20 @@ class SolverBackend():
 
             # Check if an optimal solution was found
             if model.status == GRB.OPTIMAL:
-                return True
-            else: return False
+                print("\nGurobi Test completed.......\n")
+
+        
+            else: 
+                raise ImportError("Gurobi is somehow broken, simple test should be sat: probably contact Gurobi")
+
+            
 
         except Exception as e:
-            print(f"Gurobi encountered an error: {e}")
-            raise ModuleNotFoundError(f"Gurobi encountered an error: {e}")
+            raise ImportError(f"Gurobi encountered an error: {e}")
 
-    def no_gurobi_presolve(self):
-        pass
 
-    def gurobi_presolve(self):
-        pass
 
-    def interpolate_bounds_to_order(self, order_current):
-        # Ensure step is an integer
-        self.step = int(order_current * self.solver_accuracy_multiplier)
-        
-        # Create xdata with self.step points between 0 and 1
-        xdata = np.linspace(0, 1, self.step)
-
-        # Interpolate upper and lower bounds to the user multiplier
-        upper_ydata_lin = np.interp(xdata, self.original_xdata, self.original_upperbound_lin)
-        lower_ydata_lin = np.interp(xdata, self.original_xdata, self.original_lowerbound_lin)
-
-        for x_index, x in enumerate(self.cutoffs_x):
-            if x in xdata:
-                continue
-            xdata_index = np.searchsorted(xdata, x)
-            xdata = np.insert(xdata, xdata_index, x)
-            upper_ydata_lin = np.insert(upper_ydata_lin, xdata_index, self.cutoffs_upper_ydata_lin[x_index])
-            lower_ydata_lin = np.insert(lower_ydata_lin, xdata_index, self.cutoffs_lower_ydata_lin[x_index])
-
-        return xdata, upper_ydata_lin, lower_ydata_lin
+    
 
     
     
@@ -174,70 +172,124 @@ class SolverBackend():
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_lower = 4
-    order_upper = 4
+    order_current = 10
     accuracy = 1
     adder_count = 3
-    wordlength = 14
+    wordlength = 10
     
     adder_depth = 2
     avail_dsp = 0
     adder_wordlength_ext = 2
-    gain_upperbound = 3
+    gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
     intW = 4
 
-    space = int(accuracy*order_upper)
+    space = 400
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.5*(space))
+    lower_half_point = int(0.4*(space))
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 3
-    freq_lower[0:lower_half_point] = -1
+    freq_upper[0:lower_half_point] = 21
+    freq_lower[0:lower_half_point] = -19
 
-    freq_upper[upper_half_point:end_point] = -20
+    freq_upper[upper_half_point:end_point] = -30
     freq_lower[upper_half_point:end_point] = -1000
+
+
+    cutoffs_x = []
+    cutoffs_upper_ydata = []
+    cutoffs_lower_ydata = []
+
+    cutoffs_x.append(freqx_axis[0])
+    cutoffs_x.append(freqx_axis[lower_half_point-1])
+    cutoffs_x.append(freqx_axis[upper_half_point])
+    cutoffs_x.append(freqx_axis[end_point-1])
+
+    cutoffs_upper_ydata.append(freq_upper[0])
+    cutoffs_upper_ydata.append(freq_upper[lower_half_point-1])
+    cutoffs_upper_ydata.append(freq_upper[upper_half_point])
+    cutoffs_upper_ydata.append(freq_upper[end_point-1])
+
+    cutoffs_lower_ydata.append(freq_lower[0])
+    cutoffs_lower_ydata.append(freq_lower[lower_half_point-1])
+    cutoffs_lower_ydata.append(freq_lower[upper_half_point])
+    cutoffs_lower_ydata.append(freq_lower[end_point-1])
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-    
+    input_data_sf = {
+        'filter_type': filter_type,
+        'order_upperbound': order_current,
+        'original_xdata': freqx_axis,
+        'cutoffs_x': cutoffs_x,
+        'wordlength': 15,
+        'adder_depth': 0,
+        'avail_dsp': 0,
+        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
+        'gain_wordlength' : 6,
+        'gain_intW' : 2,
+        'gain_upperbound': 3,
+        'gain_lowerbound': 1,
+        'coef_accuracy': 6,
+        'intW': 6,
+        'gurobi_thread': 1,
+        'pysat_thread': 0,
+        'z3_thread': 1,
+        'timeout': 0,
+        'start_with_error_prediction': False,
+        'solver_accuracy_multiplier': 6,
+    }
+
+
+    sf = SolverFunc(input_data_sf)
+    upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
+    ignore_lowerbound_np = np.array(ignore_lowerbound, dtype=float)
+    ignore_lowerbound_lin = sf.db_to_linear(ignore_lowerbound_np)
+
+    cutoffs_upper_ydata_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in cutoffs_upper_ydata]
+    cutoffs_lower_ydata_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in cutoffs_lower_ydata]
+
 
 
     input_data = {
         'filter_type': filter_type,
-        'order_upper': order_upper,
-        'order_lower': order_lower,
-        'freqx_axis': freqx_axis,
-        'freq_upper': freq_upper,
-        'freq_lower': freq_lower,
-        'ignore_lowerbound': ignore_lowerbound,
-        'adder_count': adder_count,
-        'wordlength': wordlength,
-        'adder_depth': adder_depth,
-        'avail_dsp': avail_dsp,
-        'adder_wordlength_ext': adder_wordlength_ext,
+        'order_upperbound': order_current,
+        'original_xdata': freqx_axis,
+        'original_upperbound_lin': upperbound_lin,
+        'original_lowerbound_lin': lowerbound_lin,
+        'ignore_lowerbound': ignore_lowerbound_lin,
+        'cutoffs_x': cutoffs_x,
+        'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
+        'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
+        'wordlength': 15,
+        'adder_depth': 0,
+        'avail_dsp': 0,
+        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
         'gain_wordlength' : 6,
         'gain_intW' : 2,
-        'gain_upperbound': gain_upperbound,
-        'gain_lowerbound': gain_lowerbound,
-        'coef_accuracy': coef_accuracy,
-        'intW': intW,
-        'gurobi_thread': 1,
-        'pysat_thread': 2,
-        'z3_thread': 3,
-        'timeout': 1000,
-        'start_with_error_prediction': True
+        'gain_upperbound': 3,
+        'gain_lowerbound': 1,
+        'coef_accuracy': 6,
+        'intW': 6,
+        'gurobi_thread': 0,
+        'pysat_thread': 0,
+        'z3_thread': 1,
+        'timeout': 0,
+        'start_with_error_prediction': False,
+        'solver_accuracy_multiplier': 6,
     }
 
     # Create an instance of SolverBackend
     solver_backend_instance = SolverBackend(input_data)
-    solver_backend_instance.run_backend()
+    solver_backend_instance.solver_presolve()
+    # solver_backend_instance.gurobi_test()

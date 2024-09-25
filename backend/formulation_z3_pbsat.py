@@ -62,6 +62,15 @@ class FIRFilterZ3:
         self.avail_dsp = avail_dsp
         self.result_model = {}
 
+    def get_solver_func_dict(self):
+        input_data_sf = {
+        'filter_type': self.filter_type,
+        'order_upperbound': self.order_current,
+        }
+
+        return input_data_sf
+
+
     def run_barebone(self , seed , z3_option = None, h_zero_count = None):
         self.h_res = []
         self.gain_res = 0
@@ -70,7 +79,7 @@ class FIRFilterZ3:
 
         half_order = (self.order_current // 2)
         
-        sf = SolverFunc(self.filter_type)
+        sf = SolverFunc(self.get_solver_func_dict())
 
         # linearize the bounds
         internal_upperbound_lin = [math.ceil(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
@@ -94,6 +103,19 @@ class FIRFilterZ3:
 
         # print(self.gain_upperbound_int)
         # print(self.gain_lowerbound_int)
+
+        # print("Running Gurobi with the following parameters:")
+        # print(f"h_zero_count: {h_zero_count}")
+        # print(f"filter_type: {self.filter_type}")
+        # print(f"order_current: {self.order_current}")
+        # print(f"freqx_axis: {self.freqx_axis}")
+        # print(f"upperbound_lin: {internal_upperbound_lin}")
+        # print(f"lowerbound_lin: {internal_lowerbound_lin}")
+        # print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
+        # print(f"gain_upperbound: {self.gain_upperbound}")
+        # print(f"gain_lowerbound: {self.gain_lowerbound}")
+        # print(f"wordlength: {self.wordlength}")
+        # print(f"fracW: {self.fracW}")
 
         
 
@@ -279,7 +301,7 @@ class FIRFilterZ3:
 
         solver = Solver()
 
-        sf = SolverFunc(self.filter_type)
+        sf = SolverFunc(self.get_solver_func_dict())
 
 
         gain_coeffs = []
@@ -924,23 +946,22 @@ class FIRFilterZ3:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_current = 10
-    accuracy = 1
-    adder_count = 3
-    wordlength = 10
-    
-    adder_depth = 2
-    avail_dsp = 0
-    adder_wordlength_ext = 2
+    order_current = 14
+    accuracy = 6
+    wordlength = 16
     gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
-    intW = 4
+    intW = 6
 
-    gain_wordlength = 6
-    gain_intW = 2
+    adder_count = 3
+    adder_depth = 2
+    avail_dsp = 0
+    adder_wordlength_ext = 2
+    
+    
 
-    space = int(accuracy*order_current)
+    space = order_current * accuracy
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
@@ -951,34 +972,28 @@ if __name__ == "__main__":
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 21
-    freq_lower[0:lower_half_point] = -19
+    freq_upper[0:lower_half_point] = 6
+    freq_lower[0:lower_half_point] = 0
 
-    freq_upper[upper_half_point:end_point] = -30
+    freq_upper[upper_half_point:end_point] = -20
     freq_lower[upper_half_point:end_point] = -1000
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-
-    def db_to_lin_conversion(freq_upper, freq_lower, ignore_lowerbound):
-        sf = SolverFunc(filter_type)
-        upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
-        lowerbound_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
-        ignore_lowerbound_np = np.array(ignore_lowerbound, dtype=float)
-        ignore_lowerbound = sf.db_to_linear(ignore_lowerbound_np)
-        return upperbound_lin, lowerbound_lin, ignore_lowerbound
-    
-    freq_upper, freq_lower,ignore_lowerbound = db_to_lin_conversion(freq_upper, freq_lower,ignore_lowerbound)
+    #linearize the bound
+    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
 
     # Create FIRFilter instance
     fir_filter = FIRFilterZ3(
                  filter_type, 
                  order_current, 
                  freqx_axis, 
-                 freq_upper, 
-                 freq_lower, 
+                 upperbound_lin, 
+                 lowerbound_lin, 
                  ignore_lowerbound, 
                  adder_count, 
                  wordlength, 
@@ -989,8 +1004,8 @@ if __name__ == "__main__":
                  gain_lowerbound,
                  coef_accuracy,
                  intW,
-                 gain_wordlength,
-                 gain_intW
+                 7,
+                 2
                  )
 
     fir_filter.run_barebone(1,'try_h_zero_count',1)

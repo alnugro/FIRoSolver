@@ -726,12 +726,12 @@
                 </item>
                 <item row="0" column="1">
                  <property name="text">
-                  <string>20</string>
+                  <string>-2</string>
                  </property>
                 </item>
                 <item row="0" column="2">
                  <property name="text">
-                  <string>20</string>
+                  <string>2</string>
                  </property>
                 </item>
                 <item row="0" column="3">
@@ -741,7 +741,7 @@
                 </item>
                 <item row="0" column="4">
                  <property name="text">
-                  <string>0.3</string>
+                  <string>0.4</string>
                  </property>
                 </item>
                 <item row="1" column="0">
@@ -751,17 +751,17 @@
                 </item>
                 <item row="1" column="1">
                  <property name="text">
-                  <string>20</string>
+                  <string>-60</string>
                  </property>
                 </item>
                 <item row="1" column="2">
                  <property name="text">
-                  <string>20</string>
+                  <string>-20</string>
                  </property>
                 </item>
                 <item row="1" column="3">
                  <property name="text">
-                  <string>0.7</string>
+                  <string>0.6</string>
                  </property>
                 </item>
                 <item row="1" column="4">

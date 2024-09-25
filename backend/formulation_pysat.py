@@ -15,37 +15,6 @@ except:
     from solver_func import SolverFunc
 
 
-
-class SolverFunc():
-    def __init__(self, filter_type, order):
-        self.filter_type = filter_type
-        self.half_order = (order // 2)
-        self.overflow_count = 0
-
-    def db_to_linear(self, db_arr):
-        nan_mask = np.isnan(db_arr)
-        linear_array = np.zeros_like(db_arr)
-        linear_array[~nan_mask] = 10 ** (db_arr[~nan_mask] / 20)
-        linear_array[nan_mask] = np.nan
-        return linear_array
-    
-    def cm_handler(self, m, omega):
-        if self.filter_type == 0:
-            if m == 0:
-                return 1
-            return 2 * np.cos(np.pi * omega * m)
-        
-        if self.filter_type == 1:
-            return 2 * np.cos(omega * np.pi * (m + 0.5))
-
-        if self.filter_type == 2:
-            return 2 * np.sin(omega * np.pi * (m - 1))
-
-        if self.filter_type == 3:
-            return 2 * np.sin(omega * np.pi * (m + 0.5))
-        
-    
-
 class FIRFilterPysat:
     def __init__(self, 
                  filter_type, 
@@ -63,11 +32,12 @@ class FIRFilterPysat:
                  gain_lowerbound,
                  intW,
                  ):
+        
         self.filter_type = filter_type
         self.order_current = order_current
         self.freqx_axis = freqx_axis
-        self.freq_upper = freq_upper
-        self.freq_lower = freq_lower
+        self.upperbound = freq_upper
+        self.lowerbound = freq_lower
         self.h_res = []
         self.gain_res = 0
 
@@ -76,8 +46,8 @@ class FIRFilterPysat:
         self.adder_wordlength = self.wordlength + adder_wordlength_ext # New adder wordlength for bitshifting
         
 
-        self.freq_upper_lin = 0
-        self.freq_lower_lin = 0
+        self.upperbound_lin = 0
+        self.lowerbound_lin = 0
 
         self.intW = intW
         self.fracW = self.wordlength - self.intW
@@ -85,22 +55,43 @@ class FIRFilterPysat:
         self.gain_upperbound = gain_upperbound
         self.gain_lowerbound = gain_lowerbound
 
-        self.ignore_lowerbound = ignore_lowerbound
+        self.ignore_lowerbound_lin = ignore_lowerbound
 
         self.adder_depth = adder_depth
         self.avail_dsp = avail_dsp
         self.result_model = {}
 
+    def get_solver_func_dict(self):
+        input_data_sf = {
+        'filter_type': self.filter_type,
+        'order_upperbound': self.order_current,
+        }
+
+        return input_data_sf
+
 
     def run_barebone(self, solver_id):
+
         half_order = (self.order_current // 2)
 
-        sf = SolverFunc(self.filter_type, self.order_current)
-        self.freq_upper_lin = [f if not np.isnan(f) else np.nan for f in self.freq_upper]
-        self.freq_lower_lin = [f if not np.isnan(f) else np.nan for f in self.freq_lower]
+        sf = SolverFunc(self.get_solver_func_dict())
+        internal_upperbound_lin = [f if not np.isnan(f) else np.nan for f in self.upperbound]
+        internal_lowerbound_lin = [f if not np.isnan(f) else np.nan for f in self.lowerbound]
 
-        self.ignore_lowerbound_np = np.array(self.ignore_lowerbound, dtype=float)
-        self.ignore_lowerbound = sf.db_to_linear(self.ignore_lowerbound_np)
+        internal_ignore_lowerbound = self.ignore_lowerbound_lin
+
+       
+        # print(f"filter_type: {self.filter_type}")
+        # print(f"order_current: {self.order_current}")
+        # print(f"freqx_axis: {self.freqx_axis}")
+        # print(f"upperbound_lin: {internal_upperbound_lin}")
+        # print(f"lowerbound_lin: {internal_lowerbound_lin}")
+        # print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
+        # print(f"gain_upperbound: {self.gain_upperbound}")
+        # print(f"gain_lowerbound: {self.gain_lowerbound}")
+        # print(f"wordlength: {self.wordlength}")
+        # print(f"fracW: {self.fracW}")
+
         
         var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.max_adder, self.adder_depth)
 
@@ -115,6 +106,8 @@ class FIRFilterPysat:
         r2b = Rat2bool()
 
         solver_list = ['cadical103', 'cadical153','cadical195','glucose421','glucose41','minisat-gh','minisat22','lingeling','gluecard30','glucose30','gluecard41','maplesat']
+        print(f"Pysat: Barebone running with solver {solver_list[solver_id]}")
+
         solver = Solver(name=solver_list[solver_id])
 
         #bound the gain to upper and lowerbound
@@ -124,8 +117,8 @@ class FIRFilterPysat:
             gain_literals.append(v2i(('gain', g)))
 
         #round it first to the given wordlength
-        self.gain_upperbound = r2b.frac2round([self.gain_upperbound],self.wordlength,self.fracW)[0]
-        self.gain_lowerbound = r2b.frac2round([self.gain_lowerbound],self.wordlength,self.fracW)[0]
+        self.gain_upperbound = r2b.frac2round([self.gain_upperbound],self.wordlength,self.fracW,True)[0]
+        self.gain_lowerbound = r2b.frac2round([self.gain_lowerbound],self.wordlength,self.fracW,True)[0]
         
         #weight is 1, because it is multiplied to nothing, lits is 2d thus the bracket
         gain_weight = [1]
@@ -148,7 +141,7 @@ class FIRFilterPysat:
         gain_lower_literals = []
 
         for omega in range(len(self.freqx_axis)):
-            if np.isnan(self.freq_lower_lin[omega]):
+            if np.isnan(internal_lowerbound_lin[omega]):
                 continue
 
             gain_literals.clear()
@@ -176,15 +169,15 @@ class FIRFilterPysat:
             gain_lower_literals_temp = []
 
             #gain upperbound
-            gain_upper_prod = -self.freq_upper_lin[omega]
+            gain_upper_prod = -internal_upperbound_lin[omega]
             gain_freq_upper_prod_weights.append(gain_upper_prod)
 
 
             #declare the lits for pb2cnf
-            if self.freq_lower_lin[omega] < self.ignore_lowerbound:
-                gain_lower_prod = self.freq_upper_lin[omega]
+            if internal_lowerbound_lin[omega] < internal_ignore_lowerbound:
+                gain_lower_prod = internal_upperbound_lin[omega]
             else:
-                gain_lower_prod = -self.freq_lower_lin[omega]
+                gain_lower_prod = -internal_lowerbound_lin[omega]
 
             gain_freq_lower_prod_weights.append(gain_lower_prod)
 
@@ -199,7 +192,7 @@ class FIRFilterPysat:
 
             #generate cnf for upperbound
             filter_upper_pb_weights = filter_weights + gain_freq_upper_prod_weights
-            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.wordlength,self.fracW)
+            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.wordlength,self.fracW,True)
 
             filter_upper_pb_literals = filter_literals + gain_upper_literals
 
@@ -214,7 +207,7 @@ class FIRFilterPysat:
             filter_lower_pb_weights = filter_weights + gain_freq_lower_prod_weights
     
 
-            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.wordlength,self.fracW)
+            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.wordlength,self.fracW,True)
 
             filter_lower_pb_literals = filter_literals + gain_lower_literals
             
@@ -228,8 +221,7 @@ class FIRFilterPysat:
             
         
 
-        print(f"Pysat: Barebone running with solver {solver_list[solver_id]}")
-
+        
         satifiability = 'unsat'
 
         if solver.solve():
@@ -298,8 +290,8 @@ class FIRFilterPysat:
             gain_literals.append(v2i(('gain', g)))
 
         #round it first to the given wordlength
-        self.gain_upperbound = r2b.frac2round([self.gain_upperbound],self.wordlength,self.fracW)[0]
-        self.gain_lowerbound = r2b.frac2round([self.gain_lowerbound],self.wordlength,self.fracW)[0]
+        self.gain_upperbound = r2b.frac2round([self.gain_upperbound],self.wordlength,self.fracW,True)[0]
+        self.gain_lowerbound = r2b.frac2round([self.gain_lowerbound],self.wordlength,self.fracW,True)[0]
         
         #weight is 1, because it is multiplied to nothing, lits is 2d thus the bracket
         gain_weight = [1]
@@ -322,7 +314,7 @@ class FIRFilterPysat:
         gain_lower_literals = []
 
         for omega in range(len(self.freqx_axis)):
-            if np.isnan(self.freq_lower_lin[omega]):
+            if np.isnan(internal_lowerbound_lin[omega]):
                 continue
 
             gain_literals.clear()
@@ -350,17 +342,17 @@ class FIRFilterPysat:
             gain_lower_literals_temp = []
 
             #gain upperbound
-            gain_upper_prod = -self.freq_upper_lin[omega].item()
+            gain_upper_prod = -internal_upperbound_lin[omega].item()
             gain_freq_upper_prod_weights.append(gain_upper_prod)
 
             #gain lowerbound
 
             #declare the lits for pb2cnf
-            if self.freq_lower_lin[omega] < self.ignore_lowerbound:
-                gain_lower_prod = self.freq_upper_lin[omega].item()
-                # print("ignored ", self.freq_lower_lin[omega], " in frequency = ", self.freqx_axis[omega])
+            if internal_lowerbound_lin[omega] < internal_ignore_lowerbound:
+                gain_lower_prod = internal_upperbound_lin[omega].item()
+                # print("ignored ", internal_lowerbound_lin[omega], " in frequency = ", self.freqx_axis[omega])
             else:
-                gain_lower_prod = -self.freq_lower_lin[omega].item()
+                gain_lower_prod = -internal_lowerbound_lin[omega].item()
 
             gain_freq_lower_prod_weights.append(gain_lower_prod)
 
@@ -375,7 +367,7 @@ class FIRFilterPysat:
 
             #generate cnf for upperbound
             filter_upper_pb_weights = filter_weights + gain_freq_upper_prod_weights
-            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.wordlength,self.fracW)
+            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.wordlength,self.fracW,True)
 
             filter_upper_pb_literals = filter_literals + gain_upper_literals
 
@@ -395,7 +387,7 @@ class FIRFilterPysat:
             filter_lower_pb_weights = filter_weights + gain_freq_lower_prod_weights
     
 
-            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.wordlength,self.fracW)
+            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.wordlength,self.fracW,True)
 
             filter_lower_pb_literals = filter_literals + gain_lower_literals
             
@@ -799,50 +791,82 @@ def run_solver_wrapper(shared_h_res, shared_gain_res, shared_result, fir_filter)
     shared_result['model'] = fir_filter.model if satisfiability == 'sat' else None
 
 
+
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 20
+    order_current = 10
     accuracy = 1
     adder_count = 3
-    wordlength = 10
+    wordlength = 16
     
     adder_depth = 2
     avail_dsp = 0
     adder_wordlength_ext = 2
-    gain_upperbound = 3
+    gain_upperbound = 4
     gain_lowerbound = 1
+    coef_accuracy = 4
     intW = 4
 
-    space = int(accuracy*order_upper)
+    space = accuracy * order_current
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.5*(space))
+    lower_half_point = int(0.4*(space))
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 3
-    freq_lower[0:lower_half_point] = -1
+    freq_upper[0:lower_half_point] = 21
+    freq_lower[0:lower_half_point] = -19
 
-    freq_upper[upper_half_point:end_point] = -40
+    freq_upper[upper_half_point:end_point] = -30
     freq_lower[upper_half_point:end_point] = -1000
+
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
+    input_data_sf = {
+        'filter_type': filter_type,
+        'order_upperbound': order_current,
+        'original_xdata': freqx_axis,
+        'wordlength': 15,
+        'adder_depth': 0,
+        'avail_dsp': 0,
+        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
+        'gain_wordlength' : 6,
+        'gain_intW' : 2,
+        'gain_upperbound': 3,
+        'gain_lowerbound': 1,
+        'coef_accuracy': 6,
+        'intW': 6,
+        'gurobi_thread': 0,
+        'pysat_thread': 0,
+        'z3_thread': 1,
+        'timeout': 0,
+        'start_with_error_prediction': False,
+        'solver_accuracy_multiplier': 6,
+    }
+
+
+    sf = SolverFunc(input_data_sf)
+    upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
+    ignore_lowerbound_np = np.array(ignore_lowerbound, dtype=float)
+    ignore_lowerbound_lin = sf.db_to_linear(ignore_lowerbound_np)
+
     # Create FIRFilter instance
     fir_filter = FIRFilterPysat(
                  filter_type, 
-                 order_upper, 
+                 order_current, 
                  freqx_axis, 
-                 freq_upper, 
-                 freq_lower, 
-                 ignore_lowerbound, 
+                 upperbound_lin, 
+                 lowerbound_lin, 
+                 ignore_lowerbound_lin, 
                  adder_count, 
                  wordlength, 
                  adder_depth,
@@ -854,4 +878,5 @@ if __name__ == "__main__":
                  )
 
     # Run solver and plot result
-    fir_filter.runsolver()
+    # fir_filter.runsolver()
+    fir_filter.run_barebone(0)

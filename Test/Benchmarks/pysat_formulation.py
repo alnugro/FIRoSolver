@@ -625,29 +625,42 @@ def run_solver_wrapper(shared_h_res, shared_gain_res, shared_result, fir_filter)
 
 
 if __name__ == "__main__":
+    # Test inputs
     filter_type = 0
-    order_upper = 4
-    accuracy = 4
-    adder_count = 2
-    wordlength = 10
+    order_current = 10
+    accuracy = 3
+    adder_count = 5
+    wordlength = 15
+    
+    adder_depth = 2
+    avail_dsp = 0
+    adder_wordlength_ext = 2
+    gain_upperbound = 4
+    gain_lowerbound = 1
+    coef_accuracy = 6
+    intW = 4
 
-    freqx_axis = np.linspace(0, 1, accuracy * order_upper)
-    freq_upper = np.full(accuracy * order_upper, np.nan)
-    freq_lower = np.full(accuracy * order_upper, np.nan)
+    space = order_current * accuracy
+    # Initialize freq_upper and freq_lower with NaN values
+    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    freq_upper = np.full(space, np.nan)
+    freq_lower = np.full(space, np.nan)
 
-    lower_half_point = int(0.2*(accuracy*order_upper))
-    upper_half_point = int(0.8*(accuracy*order_upper))
-    end_point = accuracy*order_upper
+    # Manually set specific values for the elements of freq_upper and freq_lower in dB
+    lower_half_point = int(0.4*(space))
+    upper_half_point = int(0.6*(space))
+    end_point = space
 
-    freq_upper[0:lower_half_point] = 3
-    freq_lower[0:lower_half_point] = -1
+    freq_upper[0:lower_half_point] = 10
+    freq_lower[0:lower_half_point] = 0
 
-    freq_upper[upper_half_point:end_point] = -10
+    freq_upper[upper_half_point:end_point] = -5
     freq_lower[upper_half_point:end_point] = -1000
+    
 
     ignore_lowerbound = -40
 
-    fir_filter = FIRFilterPysat(filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
+    fir_filter = FIRFilterPysat(filter_type, order_current, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength)
     fir_filter.runsolver()
     fir_filter.plot_result(fir_filter.h_res)
     fir_filter.plot_validation()

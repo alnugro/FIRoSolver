@@ -45,7 +45,7 @@ class SolverFunc():
 
 
 class FIRFilterGurobi:
-    def __init__(self, filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength, app=None):
+    def __init__(self, filter_type, order_upper, freqx_axis, freq_upper, freq_lower, ignore_lowerbound, adder_count, wordlength,timeout = None, app=None):
         self.filter_type = filter_type
         self.order_upper = order_upper
         self.freqx_axis = freqx_axis
@@ -78,15 +78,20 @@ class FIRFilterGurobi:
 
         self.ignore_lowerbound = ignore_lowerbound
 
-        self.adder_depth = 2
+        self.adder_depth = 0
         self.avail_dsp = 0
         self.adder_wordlength = self.wordlength + 2
         self.result_model = {}
+
+        self.timeout = timeout
 
 
 
 
     def runsolver(self):
+        self.freq_upper_lin= None
+        self.freq_lower_lin=None
+
         self.order_current = int(self.order_upper)
         half_order = (self.order_current // 2)
         
@@ -110,6 +115,10 @@ class FIRFilterGurobi:
         gain = model.addVar(vtype=GRB.CONTINUOUS, lb=self.gain_lowerbound, ub=self.gain_upperbound, name="gain")
 
         model.setObjective(0, GRB.MINIMIZE)
+
+        if self.timeout != None:
+            model.Params.TimeLimit = self.timeout
+
 
 
         for omega in range(len(self.freqx_axis)):
@@ -413,9 +422,15 @@ class FIRFilterGurobi:
         # print(filter_coeffs)
         # print(filter_literals)
 
-        satifiability = 'unsat'
 
-        if model.status == GRB.OPTIMAL:
+        if model.Status == GRB.TIME_LIMIT:
+            end_time = time.time()
+
+            satifiability = 'Timeout'
+
+        elif model.status == GRB.OPTIMAL:
+            end_time = time.time()
+
             satifiability = 'sat'
 
             print("solver sat")
@@ -480,7 +495,6 @@ class FIRFilterGurobi:
                 self.result_model[f'iota[{m}]'] = iota[m].X
 
 
-            end_time = time.time()
             
             
             
@@ -488,12 +502,16 @@ class FIRFilterGurobi:
             print("gain Coeffs: ", self.gain_res)
                       
         else:
+            satifiability = 'unsat'
             print("Unsatisfiable")
             end_time = time.time()
 
         print("solver stopped")
         duration = end_time - start_time
         print(f"Duration: {duration} seconds")
+
+        model.dispose()  # Dispose of the model
+        del model
 
         return duration , satifiability
 
@@ -590,8 +608,8 @@ class FIRFilterGurobi:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 6
-    accuracy = 1
+    order_upper = 30
+    accuracy = 2
     adder_count = 3
     wordlength = 10
 
@@ -602,7 +620,7 @@ if __name__ == "__main__":
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3*(space))
+    lower_half_point = int(0.5*(space))
     upper_half_point = int(0.6*(space))
     end_point = space
 

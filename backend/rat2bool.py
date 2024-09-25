@@ -80,13 +80,20 @@ class Rat2bool():
 
 
 
-    def frac2bool2s(self, frac, nbits, nfrac):
+    def frac2bool2s(self, frac, nbits, nfrac, check_input = False):
+        
         # print("i am called")
         # print(f"frac is this {frac}")
         ntaps = len(frac)  # number of coefficients
         A = np.zeros((ntaps, nbits), dtype=int)
         
         for i in range(ntaps):  # coefficient index (row index)
+            if check_input:
+                if int(frac[i]) > (2**(nbits-nfrac-1))-1:
+                    raise ValueError(f"rat2bool: intW is too small for the given frac: {frac[i]}, please increase intW")
+                if int(frac[i]) < -2**(nbits-nfrac-1):
+                    raise ValueError(f"rat2bool: intW is too small for the given frac: {frac[i]}, please increase intW")
+
             num = frac[i]
             scale_factor = 1 << nfrac
             
@@ -99,13 +106,19 @@ class Rat2bool():
             
             # Format the number as a binary string with leading zeros
             bin_str = f'{scaled_num:0{nbits}b}'
+
+            # print(f"bin str bef {bin_str}")
+            bin_str = bin_str.replace('-', '')
+            # print(f"bin str after {bin_str}")
             
             # Ensure the binary string has the correct length
             if len(bin_str) > nbits:
                 bin_str = bin_str[-nbits:]
-
-            bin_str = bin_str.replace('-', '')
+            # elif len(bin_str) < nbits:
+            #     # Pad the binary string with leading zeros if it's too short
+            #     bin_str = bin_str.ljust(nbits, '0')
             
+
             # Reverse the binary string to match the MSB on the right convention
             A[i, :] = np.array([bit for bit in bin_str[::-1]])
 
@@ -149,8 +162,8 @@ class Rat2bool():
             return lst  # No shifting needed if n is 0 or negative
         return [0] * n + lst[:-n]
     
-    def frac2round(self, frac, nbits, nfrac):
-        bool = self.frac2bool2s(frac,nbits,nfrac)
+    def frac2round(self, frac, nbits, nfrac, check_input = False):
+        bool = self.frac2bool2s(frac,nbits,nfrac, check_input)
         frac_round = self.bool2s2frac(bool,nfrac)
         return frac_round
     
@@ -169,21 +182,23 @@ class Rat2bool():
                     sum += bool_weight*bool_value
             frac.append(sum)
         return frac
+    
+
                 
 
 if __name__ == "__main__":
     # Example usage:
     b = 0
 
-    b_frac = [3.8]  # example input coefficients
-    nbits = 10  # number of bits
-    nfrac = 3 # bits for fractional
+    b_frac = [-11.220184543019636]  # example input coefficients
+    nbits = 20  # number of bits
+    nfrac = 14 # bits for fractional
     boolean = Rat2bool()
     
-    test = [-5]
-    test_res = boolean.frac2bool2s(test,5,0)
+    # test = [-5]
+    # test_res = boolean.frac2bool2s(test,5,0)
 
-    print ("Result ",test_res)
+    # print ("Result ",test_res)
 
     
     
@@ -201,9 +216,10 @@ if __name__ == "__main__":
     # calculated_values = boolean.csd2frac(Y, nfrac)
     # print("Reconstructed values from CSD:\n", calculated_values)
 
-    # twos_complement = boolean.frac2bool2s(b_frac, nbits, nfrac)
-    # print("Boolean representation (frac2bool with two's complement):\n", twos_complement)
-    # calculated_values_twos_complement = boolean.bool2s2frac(twos_complement, nfrac)
-    # print("Reconstructed values from boolean (frac2bool with two's complement):\n", calculated_values_twos_complement)
+    twos_complement = boolean.frac2bool2s(b_frac, nbits, nfrac)
+    # twos_complement= [[0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1]]
+    print("Boolean representation (frac2bool with two's complement):\n", twos_complement)
+    calculated_values_twos_complement = boolean.bool2s2frac(twos_complement, nfrac)
+    print("Reconstructed values from boolean (frac2bool with two's complement):\n", calculated_values_twos_complement)
 
     # print(boolean.bool2str(twos_complement[0]))

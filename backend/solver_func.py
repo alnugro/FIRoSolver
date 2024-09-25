@@ -1,8 +1,25 @@
 import numpy as np
 
 class SolverFunc():
-    def __init__(self,filter_type):
-        self.filter_type=filter_type
+    def __init__(self,input_data):
+        self.filter_type = None
+        self.order_upperbound = None
+
+        self.original_xdata = None
+        self.original_upperbound_lin = None
+        self.original_lowerbound_lin = None
+
+        self.cutoffs_x = None
+        self.cutoffs_upper_ydata_lin = None
+        self.cutoffs_lower_ydata_lin = None
+
+        self.solver_accuracy_multiplier = None
+
+        # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
+        for key, value in input_data.items():
+            if hasattr(self, key):  # Only set attributes that exist in the class
+                setattr(self, key, value)
+        
         self.overflow_count = 0
 
     def db_to_linear(self,db_arr):
@@ -65,6 +82,27 @@ class SolverFunc():
             overflow_lit.append(literal)
 
         return overflow_lit, overflow_coef
+    
+    def interpolate_bounds_to_order(self, order_current):
+        # Ensure step is an integer
+        self.step = int(order_current * self.solver_accuracy_multiplier)
+        
+        # Create xdata with self.step points between 0 and 1
+        xdata = np.linspace(0, 1, self.step)
+
+        # Interpolate upper and lower bounds to the user multiplier
+        upper_ydata_lin = np.interp(xdata, self.original_xdata, self.original_upperbound_lin)
+        lower_ydata_lin = np.interp(xdata, self.original_xdata, self.original_lowerbound_lin)
+
+        for x_index, x in enumerate(self.cutoffs_x):
+            if x in xdata:
+                continue
+            xdata_index = np.searchsorted(xdata, x)
+            xdata = np.insert(xdata, xdata_index, x)
+            upper_ydata_lin = np.insert(upper_ydata_lin, xdata_index, self.cutoffs_upper_ydata_lin[x_index])
+            lower_ydata_lin = np.insert(lower_ydata_lin, xdata_index, self.cutoffs_lower_ydata_lin[x_index])
+
+        return xdata, upper_ydata_lin, lower_ydata_lin
 
 
 

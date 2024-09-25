@@ -31,6 +31,8 @@ class FIRFilterGurobi:
                  intW,
                  ):
         
+        
+        
         self.filter_type = filter_type
         self.order = order
         self.freqx_axis = freqx_axis
@@ -58,7 +60,15 @@ class FIRFilterGurobi:
         self.adder_wordlength = self.wordlength + adder_wordlength_ext
         self.result_model = {}
 
-    def run_barebone(self, thread, minmax_option, h_zero_count = None):
+    def get_solver_func_dict(self):
+        input_data_sf = {
+        'filter_type': self.filter_type,
+        'order_upperbound': self.order,
+        }
+
+        return input_data_sf
+
+    def run_barebone(self, thread, minmax_option = None, h_zero_count = None):
         
 
         self.h_res = []
@@ -68,31 +78,32 @@ class FIRFilterGurobi:
         half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
         
         print("Gurobi solver called")
-        sf = SolverFunc(self.filter_type)
+        sf = SolverFunc(self.get_solver_func_dict())
 
+        # print(f"upperbound_lin: {self.upperbound_lin}")
+        # print(f"lowerbound_lin: {self.lowerbound_lin}")
 
 
          # linearize the bounds
-        internal_upperbound_lin = [math.ceil((f)*(10**self.coef_accuracy)*(2**(self.fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
-        internal_lowerbound_lin = [math.floor((f)*(10**self.coef_accuracy)*(2**(self.fracW))) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
+        internal_upperbound_lin = [math.floor((f)*(10**self.coef_accuracy)*(2**(self.fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
+        internal_lowerbound_lin = [math.ceil((f)*(10**self.coef_accuracy)*(2**(self.fracW))) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
         internal_ignore_lowerbound = self.ignore_lowerbound*(10**self.coef_accuracy)*(2**self.fracW)
 
 
-        # print("Running Gurobi with the following parameters:")
-        # print(f"thread: {thread}")
-        # print(f"minmax_option: {minmax_option}")
-        # print(f"h_zero_count: {h_zero_count}")
-        # print(f"h_target: {h_target}")
-        # print(f"filter_type: {self.filter_type}")
-        # print(f"order_current: {self.order}")
-        # print(f"freqx_axis: {self.freqx_axis}")
-        # print(f"upperbound_lin: {internal_upperbound_lin}")
-        # print(f"lowerbound_lin: {internal_lowerbound_lin}")
-        # print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
-        # print(f"gain_upperbound: {self.gain_upperbound}")
-        # print(f"gain_lowerbound: {self.gain_lowerbound}")
-        # print(f"wordlength: {self.wordlength}")
-        # print(f"fracW: {self.fracW}")
+        print("Running Gurobi with the following parameters:")
+        print(f"thread: {thread}")
+        print(f"minmax_option: {minmax_option}")
+        print(f"h_zero_count: {h_zero_count}")
+        print(f"filter_type: {self.filter_type}")
+        print(f"order_current: {self.order}")
+        print(f"freqx_axis: {self.freqx_axis}")
+        print(f"upperbound_lin: {internal_upperbound_lin}")
+        print(f"lowerbound_lin: {internal_lowerbound_lin}")
+        print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
+        print(f"gain_upperbound: {self.gain_upperbound}")
+        print(f"gain_lowerbound: {self.gain_lowerbound}")
+        print(f"wordlength: {self.wordlength}")
+        print(f"fracW: {self.fracW}")
         
         model = gp.Model()
         model.setParam('Threads', thread)
@@ -129,6 +140,7 @@ class FIRFilterGurobi:
                 model.addConstr(h_sum_temp >= gain*internal_lowerbound_lin[omega])
 
         if minmax_option == 'try_h_zero_count':
+            model.setObjective(0, GRB.MINIMIZE)
             if h_zero_count == None:
                 raise TypeError("Gurobi: h_zero_count in Barebone cant be empty when try_h_zero_count is chosen")
 
@@ -139,6 +151,9 @@ class FIRFilterGurobi:
                     model.addGenConstrIndicator(h_zero[m], True, h[m][w] == 0)
                 h_zero_sum += h_zero[m]
             model.addConstr(h_zero_sum >= h_zero_count)
+        else:
+            model.setObjective(0, GRB.MINIMIZE)
+
 
 
             
@@ -166,11 +181,17 @@ class FIRFilterGurobi:
                         fir_coef += 2**(w-self.fracW) * (1 if bool_value else 0)
                 
                 self.h_res.append(fir_coef)
-            print("FIR Coeffs calculated: ",self.h_res)
+            # print("FIR Coeffs calculated: ",self.h_res)
 
             self.gain_res=gain.x
             #print("gain Coeffs: ", self.gain_res)
             if minmax_option == 'try_h_zero_count':
+                target_result.update({
+                        'satisfiability' : satisfiability,
+                        'h_res' : self.h_res,
+                        'gain_res' : self.gain_res,
+                    })
+            else:
                 target_result.update({
                         'satisfiability' : satisfiability,
                         'h_res' : self.h_res,
@@ -189,6 +210,8 @@ class FIRFilterGurobi:
         model.terminate()  # Dispose of the model
         del model
 
+        print(target_result)
+
         return target_result
     
     def run_barebone_real(self,thread, minmax_option, h_zero_count = None, h_target = None):
@@ -199,25 +222,32 @@ class FIRFilterGurobi:
         half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
         
         print("Gurobi solver called")
-        sf = SolverFunc(self.filter_type)
+        sf = SolverFunc(self.get_solver_func_dict())
+
+        # print(f"upperbound_lin: {self.upperbound_lin}")
+        # print(f"lowerbound_lin: {self.lowerbound_lin}")
 
          # linearize the bounds
         internal_upperbound_lin = [math.floor((f)*(10**self.coef_accuracy)) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
         internal_lowerbound_lin = [math.ceil((f)*(10**self.coef_accuracy)) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
         internal_ignore_lowerbound = self.ignore_lowerbound*(10**self.coef_accuracy)
 
-        # print("filter order:", self.order_current)
-        # print(" filter_type:", self.filter_type)
-        # print("freqx_axis:", self.freqx_axis)
-        # print("ignore lower than:", internal_ignore_lowerbound)
+        print("Running Gurobi with the following parameters:")
+        print(f"thread: {thread}")
+        print(f"minmax_option: {minmax_option}")
+        print(f"h_zero_count: {h_zero_count}")
+        print(f"filter_type: {self.filter_type}")
+        print(f"order_current: {self.order}")
+        print(f"freqx_axis: {self.freqx_axis}")
+        print(f"upperbound_lin: {internal_upperbound_lin}")
+        print(f"lowerbound_lin: {internal_lowerbound_lin}")
+        print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
+        print(f"gain_upperbound: {self.gain_upperbound}")
+        print(f"gain_lowerbound: {self.gain_lowerbound}")
+        print(f"wordlength: {self.wordlength}")
+        print(f"fracW: {self.fracW}")
         
-        # print(f"lower {internal_lowerbound_lin}")
-        # print(f"upper {internal_upperbound_lin}")
-        # print(f"coef_accuracy {self.coef_accuracy}")
-        # print(f"gain_upperbound {self.gain_upperbound}")
-        # print(f"gain_lowerbound {self.gain_lowerbound}")
 
-        # print(f"after {internal_lowerbound_lin}")
         
         model = gp.Model(f"presolve_model_{minmax_option}")
         model.setParam('Threads', thread)
@@ -294,6 +324,9 @@ class FIRFilterGurobi:
             elif minmax_option == 'minimize_h':
                 model.setObjective(h[h_target], GRB.MINIMIZE)
 
+        elif minmax_option == None:
+            model.setObjective(0, GRB.MINIMIZE)
+
 
         print("Gurobi: MinMax running")
         model.optimize()
@@ -332,6 +365,11 @@ class FIRFilterGurobi:
                     'satisfiability' : satisfiability,
                     'target_h_res' : h[h_target].X,
                 })
+            elif minmax_option == None:
+                target_result.update({
+                    'satisfiability' : satisfiability,
+                    'h_res' : self.h_res,
+                })
                       
         else:
             print("Gurobi: Unsatisfiable")
@@ -353,7 +391,7 @@ class FIRFilterGurobi:
         half_order = (self.order_current // 2) if filter_type == 0 or filter_type == 2 else (self.order_current // 2) - 1
         
         print("solver called")
-        sf = SolverFunc(self.filter_type)
+        sf = SolverFunc(self.get_solver_func_dict())
 
         print("filter order:", self.order_current)
         # linearize the bounds
@@ -774,20 +812,22 @@ class FIRFilterGurobi:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_current = 10
-    accuracy = 1
-    adder_count = 3
-    wordlength = 10
-    
-    adder_depth = 2
-    avail_dsp = 0
-    adder_wordlength_ext = 2
+    order_current = 20
+    accuracy = 2
+    wordlength = 14
     gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
     intW = 4
 
-    space = int(accuracy*order_current)
+    adder_count = 3
+    adder_depth = 2
+    avail_dsp = 0
+    adder_wordlength_ext = 2
+    
+    
+
+    space = order_current * accuracy
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
@@ -798,35 +838,31 @@ if __name__ == "__main__":
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 21
-    freq_lower[0:lower_half_point] = -19
+    freq_upper[0:lower_half_point] = 3
+    freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -30
+    freq_upper[upper_half_point:end_point] = -20
     freq_lower[upper_half_point:end_point] = -1000
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-
-    def db_to_lin_conversion(freq_upper, freq_lower, ignore_lowerbound):
-        sf = SolverFunc(filter_type)
-        upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
-        lowerbound_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
-        ignore_lowerbound_np = np.array(ignore_lowerbound, dtype=float)
-        ignore_lowerbound = sf.db_to_linear(ignore_lowerbound_np)
-        return upperbound_lin, lowerbound_lin, ignore_lowerbound
+    #linearize the bound
+    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
     
-    freq_upper, freq_lower,ignore_lowerbound = db_to_lin_conversion(freq_upper, freq_lower,ignore_lowerbound)
+    
 
     # Create FIRFilter instance
     fir_filter = FIRFilterGurobi(
                  filter_type, 
                  order_current, 
                  freqx_axis, 
-                 freq_upper, 
-                 freq_lower, 
-                 ignore_lowerbound, 
+                 upperbound_lin, 
+                 lowerbound_lin, 
+                 ignore_lowerbound_lin, 
                  adder_count, 
                  wordlength, 
                  adder_depth,
@@ -839,12 +875,11 @@ if __name__ == "__main__":
                  )
 
     # Run solver and plot result
-    # fir_filter.run_barebone(1)
     
-    # target_result = fir_filter.run_barebone(1,'maximize_h',None, 0)
+    target_result = fir_filter.run_barebone(0,None,None)
     # target_result = fir_filter.run_barebone(1,'minimize_h',None, 0)
     
-    target_result = fir_filter.run_barebone_real(1,'maximize_h',0, 1)
+    # target_result = fir_filter.run_barebone_real(0,None)
     # target_result = fir_filter.run_barebone_real(1,'maximize_h', 0)
 
 

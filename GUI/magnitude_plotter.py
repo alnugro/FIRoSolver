@@ -1,8 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.signal import medfilt
 from matplotlib.patches import Rectangle
-from .draggable_plotter import DraggablePlotter
+
+try:
+    from .draggable_plotter import DraggablePlotter
+except:
+    from draggable_plotter import DraggablePlotter
+
 
 class MagnitudePlotter:
     def __init__(self, app=None):
@@ -87,12 +91,13 @@ class MagnitudePlotter:
             magnitude, lower_bound, upper_bound, start_freq, end_freq = row
 
             # Generate points between start and end frequencies with some distance between each points
+            #default accuracy is 200 for ease of creating plotter
             freqs = np.linspace(start_freq, end_freq, 200)
             midpoint=end_freq-start_freq
 
-            line_magnitude, = self.ax.plot(freqs, np.full(freqs.shape, magnitude), 'gainsboro')  # Plot magnitude
-            line_upper_bound, = self.ax.plot(freqs, np.full(freqs.shape, magnitude + upper_bound), 'salmon')  # Plot upper bound
-            line_lower_bound, = self.ax.plot(freqs, np.full(freqs.shape, magnitude - lower_bound), 'aqua')  # Plot lower bound
+            line_magnitude, = self.ax.plot(freqs, np.full(freqs.shape, magnitude), 'gainsboro',linewidth=2.5)  # Plot magnitude
+            line_upper_bound, = self.ax.plot(freqs, np.full(freqs.shape, upper_bound), 'salmon',linewidth=2.5)  # Plot upper bound
+            line_lower_bound, = self.ax.plot(freqs, np.full(freqs.shape, lower_bound), 'aqua',linewidth=2.5)  # Plot lower bound
 
             self.draggable_lines_mag.append(DraggablePlotter(line_magnitude, self, 'gainsboro',midpoint))
             self.draggable_lines_upper.append(DraggablePlotter(line_upper_bound, self, 'salmon',midpoint))
@@ -100,11 +105,11 @@ class MagnitudePlotter:
 
 
             #highest x and y to limit y
-            if highest_upper < magnitude+upper_bound:
-                highest_upper = magnitude+upper_bound + 10
+            if highest_upper < upper_bound:
+                highest_upper = upper_bound + 10
 
-            if lowest_lower > magnitude-lower_bound:
-                lowest_lower=magnitude-lower_bound - 10
+            if lowest_lower > lower_bound:
+                lowest_lower=lower_bound - 10
             
         self.ax.set_ylim([lowest_lower, highest_upper])
 

@@ -1,17 +1,33 @@
 import sys
+import os
 import traceback
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QComboBox, QSpinBox, QTextEdit, QTableWidget, QTableWidgetItem, QWidget, QFrame
+from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QComboBox, QSpinBox, QTextEdit, QTableWidget, QTableWidgetItem, QWidget, QFrame, QMessageBox
 from PyQt6.QtCore import Qt
+from PyQt6.uic import loadUi
+from time import sleep
+
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from PyQt6.uic import loadUi
+
 import numpy as np
-from .magnitude_plotter import MagnitudePlotter
-from .custom_navigation_toolbar import CustomNavigationToolbar
-from .live_logger import LiveLogger
-from .ui_backend_mediator import BackendMediator
 
 from concurrent.futures import ThreadPoolExecutor
+
+try:
+    from .magnitude_plotter import MagnitudePlotter
+    from .custom_navigation_toolbar import CustomNavigationToolbar
+    from .live_logger import LiveLogger
+    from .backend_mediator import BackendMediator
+    from .ui_func import UIFunc
+
+except:
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+    from magnitude_plotter import MagnitudePlotter
+    from custom_navigation_toolbar import CustomNavigationToolbar
+    from live_logger import LiveLogger
+    from GUI.backend_mediator import BackendMediator
+    from ui_func import UIFunc
+
 
 
 
@@ -68,7 +84,7 @@ class MainWindow(QMainWindow):
 
     def widget_connect(self):
         #widget to add
-        self.interpolate_transition_band_but = False
+        self.interpolate_transition_band_but = True
         self.start_with_error_prediction_but = True
         self.solver_accuracy_multiplier_box = 6 #according to Mr. Kumm this should be 16
         self.ignore_lowerbound_box = -10
@@ -332,56 +348,28 @@ class MainWindow(QMainWindow):
                 continue
             raise ValueError(f"Bounds is not the same at {i}, upper: {upper_ydata[i]} and lower: {lower_ydata[i]}. Contact Developer")
         
-        self.mediator  = BackendMediator(self, xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
+        ui_functionality = UIFunc(self, xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
         
         #do this if transition band interpolation is chosen
         if self.interpolate_transition_band_but:
-            self.mediator.interpolate_transition_band()
+            upper_ydata, lower_ydata = ui_functionality.interpolate_transition_band()
 
-        self.mediator.start_solver()
+        
+        initial_input_dictionary = ui_functionality.solver_input_dict_generator()
+        
+        #create the parallel mediator for the ui
+        self.mediator  = BackendMediator(initial_input_dictionary)
+        
+        # Connect signals to slots
+        self.mediator.log_message.connect(self.logger.plog)
+        self.mediator.exception_message.connect(self.show_error_dialog)
 
-
-
-        # print(f"xdata {xdata}")
-        # print(f"upper {upper_ydata}")
-        # print(f"lower {lower_ydata}")
-        # self.solver.update_plotter_data(self.get_ui_data_dict())
-
-        # Set bounds in solver from plotter
-        # self.solver.set_input_arg(self.magnitude_plotter.get_frequency_bounds())
-
-        # try:    
-        #     future = self.executor.submit(self.solver.run_solver)
-        #     future.add_done_callback(self.solver_done)
-
-        # except Exception as e:
-        #     self.logger.plog(f"Backend Error: {e}")
-        #     print(f"Backend Error: {e}")
-        #     traceback.print_exc()
+        #start backend
+        self.mediator.start()
 
 
+        # sleep(10)
 
-    # def solver_done(self, future):
-    #     self.solver_is_running = False
-    #     self.logger.plog("Solving Done, see Result!")
-
-    #     try:
-    #         # Check if the future resulted in an exception
-    #         exception = future.exception()
-    #         if exception:
-    #             raise exception
-
-    #         # Retrieve the result from the solver
-    #         result = self.solver.get_result()
-
-    #         # Plot the result using MagnitudePlotter
-    #         self.magnitude_plotter.plot_result(result)
-
-    #     except Exception as e:
-    #         # Capture and print detailed exception information
-    #         self.logger.plog(f"Error during result processing: {e}")
-    #         print(f"Error during result processing: {e}")
-    #         traceback.print_exc()
         
 
     def input_parser_tuple(self):
@@ -406,7 +394,17 @@ class MainWindow(QMainWindow):
         if self.wordlength_box.value() == 0:
             self.logger.plog(f"Maximum Wordlength can't be 0")
             return 1
-        return 0             
+        return 0
+
+    def show_error_dialog(self, error_msg_str):
+        # Create a QMessageBox for exception or error
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Icon.Critical)
+        msg_box.setWindowTitle("An exception occurred!")
+        msg_box.setText(error_msg_str)  # Set the actual error message string here
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+
+        msg_box.exec()  # Display the pop-up dialog             
 
 
 if __name__ == "__main__":

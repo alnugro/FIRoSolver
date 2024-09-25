@@ -3,6 +3,7 @@ import gurobipy as gp
 from gurobipy import GRB
 import matplotlib.pyplot as plt
 import time
+import math
 
 
 
@@ -109,6 +110,159 @@ class FIRFilter:
         self.ignore_lowerbound_lin = ignore_lowerbound_lin*(10**self.coef_accuracy)*(2**self.fh)
 
 
+    def run_barebone_real(self,thread, minmax_option, h_zero_count = None, h_target = None):
+        self.h_res = []
+        self.gain_res = []
+        target_result = {}
+        self.order_current = int(self.order)
+        half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
+        
+        print("Gurobi solver called")
+        sf = SolverFunc(self.get_solver_func_dict())
+
+         # linearize the bounds
+        internal_upperbound_lin = [math.floor((f)*(10**self.coef_accuracy)) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
+        internal_lowerbound_lin = [math.ceil((f)*(10**self.coef_accuracy)) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
+        internal_ignore_lowerbound = self.ignore_lowerbound*(10**self.coef_accuracy)
+
+        # print("filter order:", self.order_current)
+        # print(" filter_type:", self.filter_type)
+        # print("freqx_axis:", self.freqx_axis)
+        # print("ignore lower than:", internal_ignore_lowerbound)
+        
+        # print(f"lower {internal_lowerbound_lin}")
+        # print(f"upper {internal_upperbound_lin}")
+        # print(f"coef_accuracy {self.coef_accuracy}")
+        # print(f"gain_upperbound {self.gain_upperbound}")
+        # print(f"gain_lowerbound {self.gain_lowerbound}")
+
+        
+        model = gp.Model(f"presolve_model_{minmax_option}")
+        model.setParam('Threads', thread)
+        model.setParam('OutputFlag', 0)
+
+        h_upperbound = ((2**(self.intW-1))-1)+(1-2**-self.fracW)
+        h_lowerbound = -2**(self.intW-1)
+
+        h = [model.addVar(vtype=GRB.CONTINUOUS,lb=h_lowerbound, ub=h_upperbound, name=f'h_{a}') for a in range(half_order + 1)]
+        gain = model.addVar(vtype=GRB.CONTINUOUS, lb=self.gain_lowerbound, ub=self.gain_upperbound, name="gain")
+
+        for omega in range(len(self.freqx_axis)):
+            if np.isnan(internal_lowerbound_lin[omega]):
+                continue
+
+            h_sum_temp = 0
+
+            for m in range(half_order+1):
+                cm = sf.cm_handler(m, self.freqx_axis[omega])
+                cm_word_prod= int(cm*(10** self.coef_accuracy))
+                h_sum_temp += h[m]*cm_word_prod
+
+            model.update()
+            # print(f"sum temp is{h_sum_temp}")
+            model.addConstr(h_sum_temp <= gain*internal_upperbound_lin[omega])
+            
+            
+            if internal_lowerbound_lin[omega] < internal_ignore_lowerbound:
+                model.addConstr(h_sum_temp >= gain*-internal_upperbound_lin[omega])
+            else:
+                model.addConstr(h_sum_temp >= gain*internal_lowerbound_lin[omega])
+        
+        print(f"Gurobi barebone_real: {minmax_option}")
+                
+        if minmax_option == 'find_max_zero':
+            h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+            h_zero_sum = 0
+            for m in range(half_order + 1):
+                model.addGenConstrIndicator(h_zero[m], True, h[m] == 0)
+                h_zero_sum += h_zero[m]
+            model.setObjective(h_zero_sum, GRB.MAXIMIZE)
+
+        elif minmax_option == 'find_min_gain':
+            if h_zero_count == None:
+                raise TypeError("Gurobi barebone_real: h_zero_count cant be empty when find_min_gain is chosen")
+
+            h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+            h_zero_sum = 0
+            for m in range(half_order + 1):
+                model.addGenConstrIndicator(h_zero[m], True, h[m] == 0)
+                h_zero_sum += h_zero[m]
+            model.addConstr(h_zero_sum >= h_zero_count)
+            
+            model.setObjective(gain, GRB.MINIMIZE)
+
+
+        elif minmax_option == 'maximize_h' or minmax_option == 'minimize_h':
+            if h_target == None:
+                raise TypeError("Gurobi barebone_real: h_target cant be empty when maximize_h/minimize_h is chosen")
+            
+            if h_zero_count == None:
+                raise TypeError("Gurobi barebone_real: h_zero_count cant be empty when find_min_gain is chosen")
+
+            h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+            h_zero_sum = 0
+            for m in range(half_order + 1):
+                model.addGenConstrIndicator(h_zero[m], True, h[m] == 0)
+                h_zero_sum += h_zero[m]
+            model.addConstr(h_zero_sum >= h_zero_count)
+
+            if minmax_option == 'maximize_h':
+                model.setObjective(h[h_target], GRB.MAXIMIZE)
+
+            elif minmax_option == 'minimize_h':
+                model.setObjective(h[h_target], GRB.MINIMIZE)
+
+
+        print("Gurobi: MinMax running")
+        model.optimize()
+        satisfiability = 'unsat'
+
+        if model.status == GRB.OPTIMAL:
+            satisfiability = 'sat'
+
+            for m in range(half_order + 1):
+                h_value = h[m].X
+                self.h_res.append(h_value)
+            # print("FIR Coeffs calculated: ",self.h_res)
+
+            self.gain_res = gain.x
+            # print("gain Coeffs: ", self.gain_res)
+
+            if minmax_option == 'find_max_zero':
+                #asign h_zero value
+                h_zero_sum_res= 0
+                for m in range(half_order + 1):
+                    h_zero_sum_res += h_zero[m].X
+                target_result.update({
+                    'satisfiability' : satisfiability,
+                    'h_res' : self.h_res,
+                    'max_h_zero' : h_zero_sum_res
+                })
+
+            elif minmax_option == 'find_min_gain':
+                target_result.update({
+                    'satisfiability' : satisfiability,
+                    'min_gain' : self.gain_res,
+                })
+            
+            elif minmax_option == 'maximize_h' or minmax_option == 'minimize_h':
+                target_result.update({
+                    'satisfiability' : satisfiability,
+                    'target_h_res' : h[h_target].X,
+                })
+                      
+        else:
+            print("Gurobi: Unsatisfiable")
+            target_result.update({
+                    'satisfiability' : satisfiability,
+                })
+
+        model.dispose()  # Dispose of the model
+        del model
+
+        print(target_result)
+
+        return target_result
 
 
     def runsolver(self):

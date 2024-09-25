@@ -302,9 +302,9 @@ class FIRFilterKumm:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 16
+    order_upper = 8
     accuracy = 1
-    adder_count = 8
+    adder_count = 6
     wordlength = 10
 
     space = int(accuracy*order_upper)
@@ -321,7 +321,7 @@ if __name__ == "__main__":
     freq_upper[0:lower_half_point] = 5
     freq_lower[0:lower_half_point] = -1
 
-    freq_upper[upper_half_point:end_point] = -20
+    freq_upper[upper_half_point:end_point] = -10
     freq_lower[upper_half_point:end_point] = -1000
 
 

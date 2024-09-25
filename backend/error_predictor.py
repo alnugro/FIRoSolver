@@ -4,11 +4,18 @@ import traceback
 import time
 import copy
 import numpy as np
-from .formulation_pysat import FIRFilterPysat
-from .formulation_z3_pbsat import FIRFilterZ3
-from .formulation_gurobi import FIRFilterGurobi
-from .solver_func import SolverFunc
+import random
 
+try:
+    from .formulation_pysat import FIRFilterPysat
+    from .formulation_z3_pbsat import FIRFilterZ3
+    from .formulation_gurobi import FIRFilterGurobi
+    from .solver_func import SolverFunc
+except:
+    from formulation_pysat import FIRFilterPysat
+    from formulation_z3_pbsat import FIRFilterZ3
+    from formulation_gurobi import FIRFilterGurobi
+    from solver_func import SolverFunc
 
 class ErrorPredictor:
     def __init__(self, input_data
@@ -38,7 +45,7 @@ class ErrorPredictor:
         self.timeout = None
         self.start_with_error_prediction = None
 
-        self.original_xdata = None
+        self.xdata = None
         self.upperbound_lin = None
         self.lowerbound_lin = None
 
@@ -50,6 +57,29 @@ class ErrorPredictor:
             if hasattr(self, key):  # Only set attributes that exist in the class
                 setattr(self, key, value)
 
+        self.xdata_gurobi_lin = np.copy(self.xdata)
+        self.freq_upper_gurobi_lin = np.copy(self.upperbound_lin)
+        self.freq_lower_gurobi_lin = np.copy(self.lowerbound_lin)
+
+        self.xdata_z3_lin = np.copy(self.xdata)
+        self.freq_upper_z3_lin = np.copy(self.upperbound_lin)
+        self.freq_lower_z3_lin = np.copy(self.lowerbound_lin)
+
+        self.xdata_pysat_lin = np.copy(self.xdata)
+        self.freq_upper_pysat_lin = np.copy(self.upperbound_lin)
+        self.freq_lower_pysat_lin = np.copy(self.lowerbound_lin)
+
+    def get_solver_func_dict(self):
+        input_data_sf = {
+        'filter_type': self.filter_type,
+        'order_upperbound': self.order_upperbound,
+        }
+
+        return input_data_sf
+    
+
+        
+
 
 
     def execute_parallel_error_prediction(self, order_current):
@@ -58,6 +88,7 @@ class ErrorPredictor:
         futures_z3 = []  # List to store Z3 futures
         futures_pysat = []  # List to store PySAT futures
         self.order_current = order_current
+        
 
         try:
             # Conditionally create the Gurobi pool
@@ -92,15 +123,21 @@ class ErrorPredictor:
                     
             else:
                 pool_pysat = None
+
+            solver_pools = {
+                'gurobi': pool_gurobi,
+                'z3': pool_z3,
+                'pysat': pool_pysat
+            }
             
             if self.gurobi_thread > 0:
-                future_single_gurobi.add_done_callback(self.task_done('gurobi', futures_gurobi))
+                future_single_gurobi.add_done_callback(self.task_done('gurobi', futures_gurobi,solver_pools))
             if self.z3_thread > 0:
                 for future in futures_z3:
-                    future.add_done_callback(self.task_done('z3', futures_z3))
+                    future.add_done_callback(self.task_done('z3', futures_z3,solver_pools))
             if self.pysat_thread > 0:
                 for future in futures_pysat:
-                    future.add_done_callback(self.task_done('pysat', futures_pysat))
+                    future.add_done_callback(self.task_done('pysat', futures_pysat,solver_pools))
             
             # Wait for all futures to complete, handling timeouts as well
             all_futures = futures_gurobi + futures_z3 + futures_pysat
@@ -115,7 +152,7 @@ class ErrorPredictor:
         return self.freq_upper_gurobi_lin, self.freq_lower_gurobi_lin, self.freq_upper_z3_lin, self.freq_lower_z3_lin, self.freq_upper_pysat_lin, self.freq_lower_pysat_lin
 
 
-    def task_done(self, solver_name, futures):
+    def task_done(self, solver_name, futures,solver_pools):
         def callback(future):
             try:
                 freq_upper_lin, freq_lower_lin  = future.result()  # blocks until results are ready
@@ -124,8 +161,10 @@ class ErrorPredictor:
                 # Cancel all other processes for this solver (only within the same group)
                 for f in futures:
                     if f is not future and not f.done():  # Check if `f` is a `Future`
-                        f.cancel()
-                        print(f"{solver_name} process cancelled")
+                        if not f.cancel():
+                        # If cancel() doesn't work, forcefully stop the corresponding pool
+                            print(f"{solver_name} process couldn't be cancelled. Force stopping the pool.")
+                            solver_pools[solver_name].stop()
 
                 
 
@@ -171,26 +210,32 @@ class ErrorPredictor:
     
     def gurobi_error_prediction(self, thread):
         h_res = []
-        gurobi_instance = FIRFilterGurobi(
-            filter_type=self.filter_type, 
-            order=self.order_current, 
-            freqx_axis=self.freqx_axis, 
-            freq_upper_lin=self.freq_upper_gurobi_lin, 
-            freq_lower_lin=self.freq_lower_gurobi_lin, 
-            ignore_lowerbound=self.ignore_lowerbound, 
-            adder_count=self.adder_count, 
-            wordlength=self.wordlength, 
-            adder_depth=self.adder_depth,
-            avail_dsp=self.avail_dsp,
-            adder_wordlength_ext=self.adder_wordlength_ext,
-            gain_upperbound=self.gain_upperbound,
-            gain_lowerbound=self.gain_lowerbound,
-            coef_accuracy=self.coef_accuracy,
-            intW=self.intW)
-        satisfiability, h_res, _ = gurobi_instance.run_barebone(thread)
 
+        gurobi_instance = FIRFilterGurobi(
+            self.filter_type, 
+            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.xdata, 
+            self.upperbound_lin, 
+            self.lowerbound_lin, 
+            self.ignore_lowerbound, 
+            0, 
+            self.wordlength,
+            0,
+            0,
+            0,
+            self.gain_upperbound,
+            self.gain_lowerbound,
+            self.coef_accuracy,
+            self.intW
+        )
+
+        target_result = gurobi_instance.run_barebone_real(thread,None)
+        satisfiability = target_result['satisfiability']
         if satisfiability == "unsat":
             raise ValueError("problem is unsat")
+        h_res = target_result['target_h_res']
+
+        
         freq_upper_lin, freq_lower_lin  = self.calculate_error(h_res,self.freq_upper_gurobi_lin, self.freq_lower_gurobi_lin, 'gurobi', None)
         return freq_upper_lin, freq_lower_lin
 
@@ -219,11 +264,11 @@ class ErrorPredictor:
             delta_gain = 2**-(self.gain_wordlength-self.gain_intW)
 
         delta_h_res = 2**-(self.wordlength-self.intW)
-        sf = SolverFunc(self.filter_type, self.order_current)
+        sf = SolverFunc(self.get_solver_func_dict())
 
         half_order = (self.order_current // 2) +1 if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2)
 
-        for omega in range(len(self.freqx_axis)):
+        for omega in range(len(self.xdata)):
             delta_omega = []
             omega_result = 0
             if np.isnan(freq_upper[omega]):
@@ -231,7 +276,7 @@ class ErrorPredictor:
 
             for m in range(half_order):
                 #calculate const
-                cm = sf.cm_handler(m, self.freqx_axis[omega])
+                cm = sf.cm_handler(m, self.xdata[omega])
                 z_result_temp = h_res[m] * cm
                 
                 #calculate error
@@ -265,40 +310,26 @@ class ErrorPredictor:
 
         return freq_upper,freq_lower
 
-    
-    def minimum_hm_finder(self,thread):
-        target_result = self.gurobi_instance_creator().run_minmax(thread,'find_min_coef')
-        if target_result['satisfiability'] == 'unsat':
-            raise ValueError("problem is unsat")
-        h_res = target_result['h_res']
-        nonzero_found_flag = False
-        nonzero_pos = 0
-        it = 0
-        while nonzero_found_flag == False:
-            it-=1
-            if h_res[it] == 0:
-                continue
-            else: nonzero_pos = it
 
 
 
     def gurobi_instance_creator(self):
         gurobi_instance = FIRFilterGurobi(
-            filter_type=self.filter_type, 
-            order=self.order_current, 
-            freqx_axis=self.freqx_axis, 
-            freq_upper_lin=self.freq_upper_gurobi_lin, 
-            freq_lower_lin=self.freq_lower_gurobi_lin, 
-            ignore_lowerbound=self.ignore_lowerbound, 
-            adder_count=self.adder_count, 
-            wordlength=self.wordlength, 
-            adder_depth=self.adder_depth,
-            avail_dsp=self.avail_dsp,
-            adder_wordlength_ext=self.adder_wordlength_ext,
-            gain_upperbound=self.gain_upperbound,
-            gain_lowerbound=self.gain_lowerbound,
-            coef_accuracy=self.coef_accuracy,
-            intW=self.intW,
+             self.filter_type, 
+            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.xdata, 
+            self.upperbound_lin, 
+            self.lowerbound_lin, 
+            self.ignore_lowerbound, 
+            0, 
+            self.wordlength,
+            0,
+            0,
+            0,
+            self.gain_upperbound,
+            self.gain_lowerbound,
+            self.coef_accuracy,
+            self.intW
         )
     
         return gurobi_instance
@@ -307,15 +338,15 @@ class ErrorPredictor:
         z3_instance = FIRFilterZ3(
                     self.filter_type, 
                     self.order_current, 
-                    self.freqx_axis, 
+                    self.xdata, 
                     self.freq_upper_z3_lin, 
                     self.freq_lower_z3_lin, 
                     self.ignore_lowerbound, 
-                    self.adder_count, 
+                    0, 
                     self.wordlength, 
-                    self.adder_depth,
-                    self.avail_dsp,
-                    self.adder_wordlength_ext,
+                    0,
+                    0,
+                    0,
                     self.gain_upperbound,
                     self.gain_lowerbound,
                     self.coef_accuracy,
@@ -330,15 +361,15 @@ class ErrorPredictor:
         pysat_instance = FIRFilterPysat(
                     self.filter_type, 
                     self.order_current, 
-                    self.freqx_axis, 
+                    self.xdata, 
                     self.freq_upper_pysat_lin,
                     self.freq_lower_pysat_lin,
                     self.ignore_lowerbound, 
-                    self.adder_count, 
+                    0, 
                     self.wordlength, 
-                    self.adder_depth,
-                    self.avail_dsp,
-                    self.adder_wordlength_ext,
+                    0,
+                    0,
+                    0,
                     self.gain_upperbound,
                     self.gain_lowerbound,
                     self.intW
@@ -347,94 +378,134 @@ class ErrorPredictor:
         return pysat_instance
 
 
+def generate_freq_bounds(space, multiplier_to_test ,order_current):
+   #random bounds generator
+    random.seed(1)
+    lower_cutoff = random.choice([0.2, 0.3])
+    upper_cutoff = random.choice([ 0.8, 0.85, 0.9])
+    
+
+    lower_half_point = int(lower_cutoff * space)
+    
+    upper_half_point = int(upper_cutoff * space)
+   
+    
+    end_point = space
+    freqx_axis = np.linspace(0, 1, space)
+    freq_upper = np.full(space, np.nan)
+    freq_lower = np.full(space, np.nan)
+    passband_upperbound = random.choice([0 , 0.2])
+    passband_lowerbound = random.choice([0 , -0.2])
+    stopband_upperbound = random.choice([-10,-20, -30])
+
+    stopband_lowerbound = -1000
+    
+    freq_upper[0:lower_half_point] = stopband_upperbound
+    freq_lower[0:lower_half_point] = stopband_lowerbound
+
+    freq_upper[lower_half_point:upper_half_point] = passband_upperbound
+    freq_lower[lower_half_point:upper_half_point] = passband_lowerbound
+
+    freq_upper[upper_half_point:end_point] = stopband_upperbound
+    freq_lower[upper_half_point:end_point] = stopband_lowerbound
+
+    space_to_test = space * multiplier_to_test
+    original_end_point = space_to_test
+    original_freqx_axis = np.linspace(0, 1, space_to_test)
+    original_freq_upper = np.full(space_to_test, np.nan)
+    original_freq_lower = np.full(space_to_test, np.nan)
+
+    
+    original_lower_half_point = np.abs(original_freqx_axis - ((lower_half_point-1)/space)).argmin()
+    original_upper_half_point = np.abs(original_freqx_axis - ((upper_half_point+1)/space)).argmin()
+   
+    original_freq_upper[0:original_lower_half_point] = stopband_upperbound
+    original_freq_lower[0:original_lower_half_point] = stopband_lowerbound
+
+    original_freq_upper[original_lower_half_point:original_upper_half_point] = passband_upperbound
+    original_freq_lower[original_lower_half_point:original_upper_half_point] = passband_lowerbound
+
+    original_freq_upper[original_upper_half_point:original_end_point] = stopband_upperbound
+    original_freq_lower[original_upper_half_point:original_end_point] = stopband_lowerbound
+
+
+
+     #beyond this bound lowerbound will be ignored
+    ignore_lowerbound = -40
+
+    
+    #linearize the bound
+    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+
+    original_upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in original_freq_upper]
+    original_lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in original_freq_lower]
+
+
+    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
+
+    return freqx_axis,upperbound_lin,lowerbound_lin,ignore_lowerbound_lin,original_freqx_axis,original_upperbound_lin,original_lowerbound_lin
 
 if __name__ == "__main__":
-     # Test inputs
+    # Test inputs
     filter_type = 0
-    order_current = 14
-    accuracy = 1
+    order_current = 20
+    accuracy = 6
     adder_count = 3
     wordlength = 14
     
     adder_depth = 2
     avail_dsp = 0
     adder_wordlength_ext = 2
-    gain_upperbound = 3
+    gain_upperbound = 4
     gain_lowerbound = 1
-    coef_accuracy = 4
-    intW = 4
+    coef_accuracy = 3
+    intW = 6
 
-    space = int(accuracy*order_current)
-    # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
-    freq_upper = np.full(space, np.nan)
-    freq_lower = np.full(space, np.nan)
-
-    # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(space))
-    upper_half_point = int(0.6*(space))
-    end_point = space
-
-    freq_upper[0:lower_half_point] = 3
-    freq_lower[0:lower_half_point] = -1
-
-    freq_upper[upper_half_point:end_point] = -40
-    freq_lower[upper_half_point:end_point] = -1000
-
-
-    #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
-
-    def db_to_lin_conversion(freq_upper, freq_lower):
-        sf = SolverFunc(filter_type, order_current)
-        freq_upper_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
-        freq_lower_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
-
-        return freq_upper_lin, freq_lower_lin
+    space = order_current * accuracy
     
 
-    #convert db to lin
-    freq_upper_gurobi_lin, freq_lower_gurobi_lin = db_to_lin_conversion(freq_upper, freq_lower)
-        
-    freq_upper_z3_lin = copy.deepcopy(freq_upper_gurobi_lin)
-    freq_lower_z3_lin = copy.deepcopy(freq_lower_gurobi_lin)
-
-    freq_upper_pysat_lin = copy.deepcopy(freq_upper_gurobi_lin)
-    freq_lower_pysat_lin = copy.deepcopy(freq_lower_gurobi_lin)
+    freqx_axis,upperbound_lin,lowerbound_lin,ignore_lowerbound_lin,original_freqx_axis,original_upperbound_lin,original_lowerbound_lin = generate_freq_bounds(space,100,order_current)
 
 
     input_data = {
         'filter_type': filter_type,
-        'freqx_axis': freqx_axis,
-        'freq_upper': freq_upper,
-        'freq_lower': freq_lower,
-        'ignore_lowerbound': ignore_lowerbound,
-        'adder_count': adder_count,
+        'order_upperbound': order_current,
+        'xdata': freqx_axis,
+        'upperbound_lin': upperbound_lin,
+        'lowerbound_lin': lowerbound_lin,
+        'ignore_lowerbound': ignore_lowerbound_lin,
+        'original_xdata': original_freqx_axis,
+        'original_upperbound_lin': original_upperbound_lin,
+        'original_lowerbound_lin': original_lowerbound_lin,
+        'cutoffs_x': None,
+        'cutoffs_upper_ydata_lin': None,
+        'cutoffs_lower_ydata_lin': None,
         'wordlength': wordlength,
-        'adder_depth': adder_depth,
-        'avail_dsp': avail_dsp,
-        'adder_wordlength_ext': adder_wordlength_ext,
+        'adder_depth': 0,
+        'avail_dsp': 0,
+        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
+        'gain_wordlength' : 6,
+        'gain_intW' : 2,
         'gain_upperbound': gain_upperbound,
         'gain_lowerbound': gain_lowerbound,
         'coef_accuracy': coef_accuracy,
         'intW': intW,
         'gurobi_thread': 1,
-        'z3_thread': 3,
-        'pysat_thread': 3,
-        'timeout': 1000,
-        'max_iteration': 500,
-        'start_with_error_prediction': True,
-        'gain_wordlength': 6,
-        'gain_intW' : 4
+        'pysat_thread': 0,
+        'z3_thread': 0,
+        'timeout': 0,
+        'start_with_error_prediction': False,
+        'solver_accuracy_multiplier': 6,
     }
 
     # Create an instance of SolverBackend
-    parallel_error_pred_instance = ParallelExecutor(input_data,freq_upper_gurobi_lin, freq_lower_gurobi_lin,freq_upper_z3_lin, freq_lower_z3_lin,freq_upper_pysat_lin,freq_lower_pysat_lin)
-    print(f"before: {parallel_error_pred_instance.freq_lower_gurobi_lin}")
-    print(f"before: {parallel_error_pred_instance.freq_lower_z3_lin}")
-    print(f"before: {parallel_error_pred_instance.freq_lower_pysat_lin}")
+    err_handler = ErrorPredictor(input_data)
+    # print(f"before: {err_handler.freq_lower_gurobi_lin}")
+    print(f"before: {err_handler.freq_lower_z3_lin}")
+    # print(f"before: {err_handler.freq_lower_pysat_lin}")
 
-    parallel_error_pred_instance.execute_parallel_error_prediction(order_current)
-    print(f"After: {parallel_error_pred_instance.freq_lower_gurobi_lin}")
-    print(f"After: {parallel_error_pred_instance.freq_lower_z3_lin}")
-    print(f"After: {parallel_error_pred_instance.freq_lower_pysat_lin}")
+    err_handler.execute_parallel_error_prediction(order_current)
+    # print(f"After: {err_handler.freq_lower_gurobi_lin}")
+    print(f"After: {err_handler.freq_lower_z3_lin}")
+    # print(f"After: {err_handler.freq_lower_pysat_lin}")
