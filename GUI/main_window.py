@@ -8,6 +8,8 @@ from time import sleep
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.figure import Figure
+
 
 import numpy as np
 
@@ -29,6 +31,38 @@ except:
     from ui_func import UIFunc
 
 
+# New Window with Matplotlib Plot
+class PlotWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        self.setWindowTitle("Plot Window")
+        self.setGeometry(100, 100, 600, 400)
+        
+        # Create a layout
+        layout = QVBoxLayout()
+        
+        # Create a Matplotlib figure and add it to the layout
+        self.canvas = FigureCanvas(Figure(figsize=(5, 3)))
+        layout.addWidget(self.canvas)
+        
+        self.setLayout(layout)
+        
+        # Plot something
+        self.plot()
+
+    def plot(self):
+        ax = self.canvas.figure.add_subplot(111)
+        
+        # Example plot: A simple sine wave
+        t = np.linspace(0, 10, 500)
+        y = np.sin(t)
+        
+        ax.plot(t, y)
+        ax.set_title("Sine Wave")
+        
+        # Draw the canvas to show the plot
+        self.canvas.draw()
 
 
 class MainWindow(QMainWindow):
@@ -86,7 +120,7 @@ class MainWindow(QMainWindow):
         #widget to add
         self.interpolate_transition_band_but = True
         self.start_with_error_prediction_but = True
-        self.solver_accuracy_multiplier_box = 6 #according to Mr. Kumm this should be 16
+        self.solver_accuracy_multiplier_box = 10 #according to Mr. Kumm this should be 16
         self.ignore_lowerbound_box = -10
         self.adder_depth_box = 0 #0 means infinite adder depth as maximum
         self.adder_wordlength_ext_box = 2 #default 2
@@ -101,7 +135,11 @@ class MainWindow(QMainWindow):
         self.pysat_thread_box = 0 #default 0
         self.z3_thread_box = 0 #default 1
         self.solver_timeout_box = 0 #default 0 no timeout
-        self.start_with_error_prediction_but = True
+        self.start_with_error_prediction_but = True #start with error pred flag
+        self.deepsearch = False #deep search option
+        self.patch_multiplier = 1 #how many dot to patch the leak
+        self.gurobi_auto_thread = False #assert gurobi to use auto thread, not recommended
+
 
         
 
@@ -132,7 +170,7 @@ class MainWindow(QMainWindow):
         self.filtering_but = self.findChild(QPushButton, 'filtering_but')
         self.run_solver_but = self.findChild(QPushButton, 'run_solver_but')
 
-        self.magnitude_plotter_table = self.findChild(QTableWidget, 'magnitude_plotter_table')
+        
         self.sampling_rate_box = self.findChild(QSpinBox, 'sampling_rate_box')
         self.flatten_box = self.findChild(QSpinBox, 'flatten_box')
         self.filter_type_drop = self.findChild(QComboBox, 'filter_type_drop')
@@ -163,54 +201,12 @@ class MainWindow(QMainWindow):
         self.filtering_but.clicked.connect(self.on_filtering_but_click)
         self.run_solver_but.clicked.connect(self.on_run_solver_but_click)
 
-    # def solver_get_input_data(self):
-    #     # Assigning variables to buffer variables first
-    #     # filter_type = self.filter_type_drop.currentIndex()
-    #     filter_type = 0
-    #     order_current = 0  # Example buffer value, adjust based on your logic
-    #     ignore_lowerbound = True
-    #     adder_count = 4
-    #     # wordlength = self.wordlength_box.value()
-    #     wordlength = 12
-    #     adder_depth = 3
-    #     avail_dsp = 2
-    #     adder_wordlength_ext = 1
-    #     gain_upperbound = 1.5
-    #     gain_lowerbound = 0.5
-    #     coef_accuracy = 0.001
-    #     intW = 4
-    #     gain_wordlength = 8
-    #     gain_intW = 3
-    #     gurobi_thread = 4
-    #     pysat_thread = 2
-    #     z3_thread = 2
-    #     timeout = 300  # Timeout in seconds
-    #     max_iteration = 1000
-    #     start_with_error_prediction = False
+        #connect tables
+        self.magnitude_plotter_table = self.findChild(QTableWidget, 'magnitude_plotter_table')
+        self.result_valid_table = self.findChild(QTableWidget, 'result_valid_tab')
+        self.result_invalid_table = self.findChild(QTableWidget, 'result_invalid_tab')
 
-    #     # Updating the input dictionary using buffer variables
-    #     self.input.update({
-    #         'filter_type': filter_type,
-    #         'order_current': order_current,
-    #         'ignore_lowerbound': ignore_lowerbound,
-    #         'adder_count': adder_count,
-    #         'wordlength': wordlength,
-    #         'adder_depth': adder_depth,
-    #         'avail_dsp': avail_dsp,
-    #         'adder_wordlength_ext': adder_wordlength_ext,
-    #         'gain_upperbound': gain_upperbound,
-    #         'gain_lowerbound': gain_lowerbound,
-    #         'coef_accuracy': coef_accuracy,
-    #         'intW': intW,
-    #         'gain_wordlength': gain_wordlength,
-    #         'gain_intW': gain_intW,
-    #         'gurobi_thread': gurobi_thread,
-    #         'pysat_thread': pysat_thread,
-    #         'z3_thread': z3_thread,
-    #         'timeout': timeout,
-    #         'max_iteration': max_iteration,
-    #         'start_with_error_prediction': start_with_error_prediction
-    #     })
+
         
     def get_ui_data_dict(self):
         data_dict = {
@@ -404,7 +400,24 @@ class MainWindow(QMainWindow):
         msg_box.setText(error_msg_str)  # Set the actual error message string here
         msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
 
-        msg_box.exec()  # Display the pop-up dialog             
+        msg_box.exec()  # Display the pop-up dialog   
+
+    def addRow(self):
+        # Get the current row count
+        rowCount = self.table.rowCount()
+
+        # Insert a new row
+        self.table.insertRow(rowCount)
+
+        # Add row number in the first column
+        self.table.setItem(rowCount, 0, QTableWidgetItem(str(rowCount + 1)))
+
+        # Create a button in the second column
+        button = QPushButton(f'Button {rowCount + 1}')
+        button.clicked.connect(lambda _, row=rowCount + 1: self.buttonClicked(row))
+
+        # Add the button to the table
+        self.table.setCellWidget(rowCount, 1, button)          
 
 
 if __name__ == "__main__":

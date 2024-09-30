@@ -10,7 +10,6 @@ try:
     from backend.backend_main import SolverBackend
 
 except:
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
     from live_logger import LiveLogger
     from backend.backend_main import SolverBackend
 
@@ -73,8 +72,13 @@ class UIFunc:
         'pysat_thread': self.main_window.pysat_thread_box.value(),
         'z3_thread': self.main_window.z3_thread_box.value(),
         'timeout': self.main_window.solver_timeout_box.value(),
-        'start_with_error_prediction': self.main_window.clicked(),
+        'start_with_error_prediction': self.start_with_error_prediction,
         'solver_accuracy_multiplier': self.solver_accuracy_multiplier,
+        'start_with_error_prediction': False,
+        'solver_accuracy_multiplier': accuracy,
+        'deepsearch': True,
+        'patch_multiplier' : 1,
+        'gurobi_auto_thread': False
         }
         return input_data
     
@@ -104,7 +108,10 @@ class UIFunc:
         'z3_thread': 0,
         'timeout': 0,
         'start_with_error_prediction': False,
-        'solver_accuracy_multiplier': 6,
+        'solver_accuracy_multiplier': 9,
+        'deepsearch': True,
+        'patch_multiplier' : 1,
+        'gurobi_auto_thread': False
         }
         return input_data
     

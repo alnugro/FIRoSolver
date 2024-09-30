@@ -190,7 +190,7 @@ if __name__ == "__main__":
     # Example usage:
     b = 0
 
-    b_frac = [-11.220184543019636]  # example input coefficients
+    b_frac = [-11.220184543019636,1.44,9.2222]  # example input coefficients
     nbits = 20  # number of bits
     nfrac = 14 # bits for fractional
     boolean = Rat2bool()
@@ -202,7 +202,7 @@ if __name__ == "__main__":
 
     
     
-    # Y = boolean.frac2csd(b_frac, nbits, nfrac)
+    
     # A = boolean.abs_frac2bool(b_frac, nbits, nfrac)
     
     # print(f"input frac:\n", b_frac)
@@ -212,14 +212,15 @@ if __name__ == "__main__":
     # calculated_values = boolean.bool2frac(A, nfrac)
     # print("Reconstructed values from boolean (abs_frac2bool):\n", calculated_values)
 
-    # print("CSD representation:\n", Y)
+    Y = boolean.frac2csd(b_frac, nbits, nfrac)
+    print("CSD representation:\n", Y)
     # calculated_values = boolean.csd2frac(Y, nfrac)
     # print("Reconstructed values from CSD:\n", calculated_values)
 
-    twos_complement = boolean.frac2bool2s(b_frac, nbits, nfrac)
-    # twos_complement= [[0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1]]
-    print("Boolean representation (frac2bool with two's complement):\n", twos_complement)
-    calculated_values_twos_complement = boolean.bool2s2frac(twos_complement, nfrac)
-    print("Reconstructed values from boolean (frac2bool with two's complement):\n", calculated_values_twos_complement)
+    # twos_complement = boolean.frac2bool2s(b_frac, nbits, nfrac)
+    # # twos_complement= [[0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1]]
+    # print("Boolean representation (frac2bool with two's complement):\n", twos_complement)
+    # calculated_values_twos_complement = boolean.bool2s2frac(twos_complement, nfrac)
+    # print("Reconstructed values from boolean (frac2bool with two's complement):\n", calculated_values_twos_complement)
 
     # print(boolean.bool2str(twos_complement[0]))

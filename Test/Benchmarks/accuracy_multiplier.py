@@ -501,12 +501,6 @@ class FIRFilter:
             self.app.canvas.draw()
 
 
-
-
-
-
-
-
 def generate_freq_bounds(space,multiplier_to_test ,order_current):
    #random bounds generator
     random.seed(it)

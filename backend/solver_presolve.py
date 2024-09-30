@@ -11,14 +11,14 @@ try:
     from .formulation_z3_pbsat import FIRFilterZ3
     from .formulation_gurobi import FIRFilterGurobi
     from .solver_func import SolverFunc
+    from .rat2bool import Rat2bool
 
-except ImportError:
+except:
     from formulation_pysat import FIRFilterPysat
     from formulation_z3_pbsat import FIRFilterZ3
     from formulation_gurobi import FIRFilterGurobi
     from solver_func import SolverFunc
-
-
+    from rat2bool import Rat2bool
 
 
 class Presolver:
@@ -65,10 +65,9 @@ class Presolver:
         self.h_res = None
         self.gain_res = None
 
-        self.z3_gain_res = None
-        self.z3_h_res = None
-        self.z3_pysat_satisfiability = 'unsat'
-        self.z3_or_pysat = None
+        self.gain_res = None
+        self.h_res = None
+        self.satisfiability = 'unsat'
 
         self.half_order = (self.order_upperbound // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2) - 1
         self.max_zero_reduced = 0
@@ -95,15 +94,44 @@ class Presolver:
             self.intW
             )
         
-        target_result_max = gurobi_instance.run_barebone_real(self.gurobi_thread, 'maximize_h',self.max_h_zero_for_minmax, input_m)
-        target_result_min = gurobi_instance.run_barebone_real(self.gurobi_thread, 'minimize_h',self.max_h_zero_for_minmax, input_m)
+        target_result_max = gurobi_instance.run_barebone_real(self.gurobi_thread//2, 'maximize_h',self.max_h_zero_for_minmax, input_m)
+        target_result_min = gurobi_instance.run_barebone_real(self.gurobi_thread//2, 'minimize_h',self.max_h_zero_for_minmax, input_m)
+        
+        print(f"input is done:{input_m}")
+
+        return target_result_max, target_result_min,input_m
+    
+    def minmax_h_worker_func(self,input_m):
+        """Function to be executed in parallel."""
+        print(f"running with input :{input_m}")
+
+        gurobi_instance = FIRFilterGurobi(
+            self.filter_type, 
+            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.xdata, 
+            self.upperbound_lin, 
+            self.lowerbound_lin, 
+            self.ignore_lowerbound, 
+            0, 
+            self.wordlength,
+            0,
+            0,
+            0,
+            self.gain_upperbound,
+            self.gain_lowerbound,
+            self.coef_accuracy,
+            self.intW
+            )
+        
+        target_result_max = gurobi_instance.run_barebone_real(self.gurobi_thread//2, 'maximize_h_without_zero',None, input_m)
+        target_result_min = gurobi_instance.run_barebone_real(self.gurobi_thread//2, 'minimize_h_without_zero',None, input_m)
         
         print(f"input is done:{input_m}")
 
         return target_result_max, target_result_min,input_m
 
     def run_minmax_h_zero_threadpool(self, half_order_list):
-        with ThreadPool(self.gurobi_thread) as pool:
+        with ThreadPool(2) as pool:
             future = pool.map(self.minmax_h_zero_worker_func, half_order_list)
             iterator = future.result()
             try:
@@ -113,6 +141,19 @@ class Presolver:
                     self.h_min[input_m]= (target_result_min['target_h_res'])
             except Exception as error:
                 print("Error:", error)
+
+    def run_minmax_h_threadpool(self, half_order_list):
+        with ThreadPool(2) as pool:
+            future = pool.map(self.minmax_h_worker_func, half_order_list)
+            iterator = future.result()
+            try:
+                for res in iterator:
+                    target_result_max, target_result_min, input_m = res
+                    self.h_max_without_zero[input_m]= (target_result_max['target_h_res'])
+                    self.h_min_without_zero[input_m]= (target_result_min['target_h_res'])
+            except Exception as error:
+                print("Error:", error)
+
 
 
     def run_presolve_gurobi(self, h_zero_input = None):
@@ -142,7 +183,7 @@ class Presolver:
 
             #get result data
             if target_result['satisfiability'] == 'unsat':
-                raise ValueError("Gurobi_Presolve: problem is unsat")
+                raise ValueError("problem is unsat")
             
             max_h_zero = target_result['max_h_zero']
             
@@ -167,6 +208,15 @@ class Presolver:
             raise RuntimeError("Gurobi_Presolve: problem is somehow unsat, but this should be sat, Formulation Error: contact developer")
 
         min_gain = target_result['min_gain']
+        target_result = []
+
+        print("\nFinding Minimum Gain without max zero assertion......\n")
+        target_result = gurobi_instance.run_barebone_real(self.gurobi_thread, 'find_min_gain',None, None)
+        if target_result['satisfiability'] == 'unsat':
+            raise RuntimeError("Gurobi_Presolve: problem is somehow unsat, but this should be sat, Formulation Error: contact developer")
+
+        min_gain_without_zero = target_result['min_gain']
+        self.h_res_without_zero = target_result['h_res']
 
 
         print("\nFinding Minimum and Maximum For each Filter Coefficients......\n")
@@ -181,6 +231,16 @@ class Presolver:
         #run h_zero minmax finder using threadpool
         self.run_minmax_h_zero_threadpool( half_order_list)
 
+        self.h_max_without_zero = []
+        self.h_min_without_zero = []
+
+        self.max_h_zero_for_minmax = max_h_zero
+
+        self.h_max_without_zero = [None for m in range(self.half_order + 1 )] 
+        self.h_min_without_zero = [None for m in range(self.half_order + 1 )]
+
+        self.run_minmax_h_threadpool( half_order_list)
+
         presolve_result.update({
             'max_zero' : max_h_zero,
             'min_gain' : min_gain,
@@ -188,9 +248,15 @@ class Presolver:
             'hmin' : self.h_min,
             'max_zero_reduced' : self.max_zero_reduced,
             'h_res':self.h_res,
-            'gain_res': self.gain_res
+            'gain_res': self.gain_res,
+
+            'min_gain_without_zero' : min_gain_without_zero,
+            'hmax_without_zero' : self.h_max_without_zero,
+            'hmin_without_zero' : self.h_min_without_zero,
+            'h_res_without_zero':self.h_res_without_zero,
+
         })
-        print(presolve_result)
+        # print(presolve_result)
 
         self.max_h_zero_for_minmax = None
 
@@ -200,15 +266,15 @@ class Presolver:
     def run_presolve_z3_pysat(self):
         presolve_result = {}
 
-        if self.z3_thread == 0:
-            self.z3_thread = self.pysat_thread
 
-        print("run_presolve_z3_pysat")
-        # #check first if the problem is even satisfiable
-        # self.execute_z3_pysat()
+        if self.start_with_error_prediction == False:
+            #try satisfiability first if error pred havent run
+            print("run_presolve_z3_pysat")
+            #check first if the problem is even satisfiable
+            self.execute_z3_pysat()
 
-        # if self.z3_pysat_satisfiability == 'unsat':
-        #     raise ValueError("problem is unsat")
+            if self.satisfiability == 'unsat':
+                raise ValueError("problem is unsat")
         
       
         #binary search to find the h_zero count sat transition point
@@ -218,9 +284,9 @@ class Presolver:
         
         while low <= high:            
             #reset all inputs first
-            self.z3_pysat_satisfiability = None
-            self.z3_gain_res = None
-            self.z3_h_res = None
+            self.satisfiability = None
+            self.gain_res = None
+            self.h_res = None
 
             print(f"iteration: {iteration}")
             iteration += 1
@@ -230,13 +296,13 @@ class Presolver:
             print(f"checking mid: {mid}")
             self.execute_z3_pysat('try_h_zero_count' ,mid)
 
-            if self.z3_pysat_satisfiability == 'sat':
+            if self.satisfiability == 'sat':
                 max_h_zero = mid  # Update max_zero to the current 'sat' index
-                z3_gain_res_at_max = self.z3_gain_res
-                z3_h_res_at_max = self.z3_h_res
+                gain_res_at_max = self.gain_res
+                h_res_at_max = self.h_res
                 low = mid + 1
 
-            elif self.z3_pysat_satisfiability == 'unsat':
+            elif self.satisfiability == 'unsat':
                 high = mid - 1
             else:
                 raise TypeError("run_presolve_z3_pysat: Problem should be either sat or unsat, this should never happen contact developer")
@@ -247,8 +313,13 @@ class Presolver:
             'hmax' : None,
             'hmin' : None,
             'max_zero_reduced' : None,
-            'h_res': z3_h_res_at_max,
-            'gain_res': z3_gain_res_at_max
+            'h_res': h_res_at_max,
+            'gain_res': gain_res_at_max,
+
+            'min_gain_without_zero' : None,
+            'hmax_without_zero' : None,
+            'hmin_without_zero' : None,
+            'h_res_without_zero': None,
         })
 
         print(presolve_result)
@@ -262,10 +333,21 @@ class Presolver:
         
         return satisfiability, h_res ,gain
     
+    def pysat_presolve(self, solver_id, solver_options=None, h_zero_count= None):
+        if h_zero_count == None:
+            h_zero_count_loc = 0
+        else: h_zero_count_loc = h_zero_count
+        satisfiability, h_res ,gain= self.pysat_instance_creator().run_barebone(solver_id,h_zero_count_loc)
+        
+        return satisfiability, h_res ,gain
+    
+    
     def execute_z3_pysat(self, solver_options=None,h_zero_count = None):
         pools = []  # To store active pools for cleanup
         futures_z3 = []  # List to store Z3 futures
+        futures_pysat = []  # List to store PySAT futures
         
+
         try:
             # Conditionally create the Z3 pool
             if self.z3_thread > 0:
@@ -278,46 +360,75 @@ class Presolver:
             else:
                 pool_z3 = None
 
-            
-            all_futures = futures_z3   
+            # Conditionally create the PySAT pool
+            if self.pysat_thread > 0:
+                pool_pysat = ProcessPool(max_workers=self.pysat_thread)
+                pools.append(pool_pysat)
+                for i in range(self.pysat_thread):
+                    future_single_pysat = pool_pysat.schedule(self.pysat_presolve, args=(i , solver_options, h_zero_count,), timeout=self.timeout)
+                    futures_pysat.append(future_single_pysat)
+                    
+            else:
+                pool_pysat = None
 
+            solver_pools = {
+                'z3': pool_z3,
+                'pysat': pool_pysat
+            }
+            
             if self.z3_thread > 0:
                 for future in futures_z3:
-                    future.add_done_callback(self.task_done('z3', all_futures))
-                    
+                    future.add_done_callback(self.task_done('z3', futures_z3,solver_pools))
+            if self.pysat_thread > 0:
+                for future in futures_pysat:
+                    future.add_done_callback(self.task_done('pysat', futures_pysat,solver_pools))
             
             # Wait for all futures to complete, handling timeouts as well
-            
+            all_futures =  futures_z3 + futures_pysat
             done, not_done = wait(all_futures, return_when=ALL_COMPLETED)
+
+            # Iterate over completed futures and handle exceptions
+            for future in done:
+                try:
+                    satisfiability, h_res, gain_res = future.result()
+                except CancelledError:
+                    pass
+                except TimeoutError:
+                    pass
+                except Exception as e:
+                    # Handle other exceptions if necessary
+                    print(f"Task raised an exception: {e}")
+                    traceback.print_exc()
 
         finally:
             # Ensure all pools are properly cleaned up
             for pool in pools:
                 pool.stop()
                 pool.join()
+        
         return
-
-    def task_done(self, solver_name, futures):
+    
+    def task_done(self, solver_name, futures, solver_pools):
         def callback(future):
             try:
                 h_res = []
                 satisfiability, h_res, gain_res  = future.result()  # blocks until results are ready
                 print(f"{solver_name} task done")
-                # Cancel all other processes
+                
+                # Cancel all other processes for this solver (only within the same group)
                 for f in futures:
                     if f is not future and not f.done():  # Check if `f` is a `Future`
-                        f.cancel()
-                        print(f"{solver_name} process cancelled")
+                        if not f.cancel():
+                        # If cancel() doesn't work, forcefully stop the corresponding pool
+                            print(f"{solver_name} process couldn't be cancelled. Force stopping the pool.")
+                            solver_pools[solver_name].stop()
                 
 
 
-                self.z3_pysat_satisfiability = satisfiability
-                self.z3_gain_res = gain_res
-                self.z3_h_res = h_res
+                self.satisfiability = satisfiability
+                self.gain_res = gain_res
+                self.h_res = h_res
 
-            except ValueError as e:
-                if str(e) == "problem is unsat":
-                    raise ValueError("problem is unsat")
             except CancelledError:
                 print(f"{solver_name} task was cancelled.")
             except TimeoutError:
@@ -355,7 +466,38 @@ class Presolver:
                     )
         
         return z3_instance
-
+    
+    def pysat_instance_creator(self):
+        pysat_instance = FIRFilterPysat(
+                    self.filter_type, 
+                    self.order_upperbound, 
+                    self.xdata, 
+                    self.upperbound_lin,
+                    self.lowerbound_lin,
+                    self.ignore_lowerbound, 
+                    0, 
+                    self.wordlength, 
+                    0,
+                    0,
+                    0,
+                    self.gain_upperbound,
+                    self.gain_lowerbound,
+                    self.intW
+                    )
+        
+        return pysat_instance
+    
+    def max_adderm_finder(self,h_res, no_max_zero = False):
+        max_adderm = 0
+        r2b = Rat2bool()
+        h_res_csd = r2b.frac2csd(h_res, self.wordlength, self.wordlength-self.intW)
+        for csd in h_res_csd:
+            for bin in csd:
+                if bin!=0:
+                    max_adderm +=1
+        if no_max_zero:
+            max_adderm += 5
+        return max_adderm
 
 
 
@@ -365,7 +507,7 @@ if __name__ == "__main__":
     order_current = 10
     accuracy = 1
     adder_count = 3
-    wordlength = 10
+    wordlength = 14
     
     adder_depth = 2
     avail_dsp = 0
@@ -375,21 +517,21 @@ if __name__ == "__main__":
     coef_accuracy = 4
     intW = 4
 
-    space = 200
+    space = order_current * accuracy
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(space))
+    lower_half_point = int(0.3*(space))
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 21
-    freq_lower[0:lower_half_point] = -19
+    freq_upper[0:lower_half_point] = 5
+    freq_lower[0:lower_half_point] = 0
 
-    freq_upper[upper_half_point:end_point] = -30
+    freq_upper[upper_half_point:end_point] = -10
     freq_lower[upper_half_point:end_point] = -1000
 
 
@@ -446,7 +588,7 @@ if __name__ == "__main__":
         'coef_accuracy': 6,
         'intW': 6,
         'gurobi_thread': 0,
-        'pysat_thread': 1,
+        'pysat_thread': 5,
         'z3_thread': 0,
         'timeout': 0,
         'start_with_error_prediction': False,

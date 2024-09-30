@@ -5,14 +5,21 @@ import copy
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError  # Correct import for TimeoutError
 import multiprocessing
+import math
 try:
     from .solver_func import SolverFunc
     from .bound_error_handler import BoundErrorHandler
     from .solver_presolve import Presolver
+    from .error_predictor import ErrorPredictor
+    from .main_problem import MainProblem
 except:
     from solver_func import SolverFunc
     from bound_error_handler import BoundErrorHandler
     from solver_presolve import Presolver
+    from error_predictor import ErrorPredictor
+    from main_problem import MainProblem
+
+
 
 
 class SolverBackend():
@@ -30,6 +37,7 @@ class SolverBackend():
         self.gain_lowerbound = None
         self.coef_accuracy = None
         self.intW = None
+
 
         self.gain_wordlength = None
         self.gain_intW = None
@@ -57,53 +65,314 @@ class SolverBackend():
                 setattr(self, key, value)
         
         #declare data that is local to backend
-        self.input = input_data  
+        self.input_data = input_data  
 
-        #initiate different bounds, for error predictor later
-        self.upperbound_gurobi_lin = None
-        self.lowerbound_gurobi_lin = None
+
+        self.sf = SolverFunc(self.input_data)
+        self.bound_too_small_flag = False
+
+        self.xdata, self.upperbound_lin, self.lowerbound_lin = self.sf.interpolate_bounds_to_order(self.order_upperbound)
+
         
-        self.upperbound_z3_lin = None
-        self.lowerbound_z3_lin = None
+        #update input data with interpolated data
+        self.input_data.update({
+            'xdata' : self.xdata,
+            'upperbound_lin': self.upperbound_lin,
+            'lowerbound_lin': self.lowerbound_lin
+        })
 
-        self.upperbound_pysat_lin = None
-        self.lowerbound_pysat_lin = None
+        self.end_result = None
+        self.half_order = (self.order_upperbound // 2)+1 if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2)
 
-        self.sf = SolverFunc(self.input)
+
+        self.xdata_temp = None
+        self.upperbound_lin_temp = None
+        self.lowerbound_lin_temp = None
+
 
     def db_to_linear(self,value):
         linear_value = 10 ** (value / 20)
         return linear_value
-
-
-
     
-    def solver_presolve(self):
-        #interpolate original data first
+    def error_prediction(self):
+        err_handler = ErrorPredictor(self.input_data)
+        upperbound_lin_from_err, lowerbound_lin_from_err, h_res, gain_res= err_handler.run_error_prediction()
         
-        xdata, upperbound_lin, lowerbound_lin = self.sf.interpolate_bounds_to_order(self.order_upperbound)
-
-        #update input data with interpolated data
-        self.input.update({
-            'xdata' : xdata,
-            'upperbound_lin': upperbound_lin,
-            'lowerbound_lin':lowerbound_lin
+        if err_handler.error_predictor_canceled == False:
+            self.upperbound_lin = upperbound_lin_from_err
+            self.lowerbound_lin = lowerbound_lin_from_err
+        
+        #flag that some of the upper-and lowerbounds becomes equal, so strict constraint
+        if err_handler.bound_too_small_flag:
+            self.bound_too_small_flag = True
+        
+        
+        self.input_data.update({
+        'upperbound_lin': self.upperbound_lin,
+        'lowerbound_lin': self.lowerbound_lin
         })
 
-        presolve_result_gurobi = None
-        presolve_result_z3 = None
+        print(f"error_pred: {h_res}")
+
+        #patch up the bounds
+        bound_patcher = BoundErrorHandler(self.input_data)
+        leaks,leaks_mag = bound_patcher.leak_validator(h_res, gain_res)
+
+        # print(f"this is xdata before {len(self.xdata)}")
+        # print(f"this is upperbound_lin {len(self.upperbound_lin)}")
+        # print(f"this is lowerbound_lin {len(self.lowerbound_lin)}")
+        h_res2 = []
+        gain_res2 = 0
+        if leaks:
+            #patch the input and lower the bound further if found
+            xdata_temp,upperbound_lin_temp,lowerbound_lin_temp = bound_patcher.patch_bound_error(leaks,leaks_mag)
+
+            #flag that some of the upper-and lowerbounds becomes equal, so strict constraint
+            if bound_patcher.bound_too_small_flag:
+                self.bound_too_small_flag = True
+        
+            
+            #assign test run
+            self.input_data.update({
+                'xdata':xdata_temp,
+                'upperbound_lin': upperbound_lin_temp,
+                'lowerbound_lin': lowerbound_lin_temp
+                })
+
+            err_handler2 = ErrorPredictor(self.input_data)
+            upperbound_lin_from_err2, lowerbound_lin_from_err2, h_res2 ,gain_res2= err_handler2.run_error_prediction(only_check_sat=True)
+            
+            if err_handler2.error_predictor_canceled == True:
+                print("value from patcher is reverted due to unsat")
+                #revert input again if the problem is unsat
+                self.input_data.update({
+                'xdata':self.xdata,
+                'upperbound_lin': self.upperbound_lin,
+                'lowerbound_lin': self.lowerbound_lin
+                })
+            else:
+                self.xdata = xdata_temp
+                self.upperbound_lin = upperbound_lin_temp
+                self.lowerbound_lin = lowerbound_lin_temp
+        else: 
+            print("no leaks found")
+
+        #uncomment if you want to check the solution for the error prediction
+        bound_patcher2 = BoundErrorHandler(self.input_data)
+        leaks,leaks_mag = bound_patcher2.leak_validator(h_res2, gain_res2)
+
+    def find_best_adder_s(self, presolve_result):
+        
+        
+        main = MainProblem(self.input_data)
+        
+        if self.gurobi_thread > 0:
+            target_result, best_adderm, adder_s_h_zero_best= main.find_best_adder_s(presolve_result)
+            
+        
+        else:
+            target_result, best_adderm, adder_s_h_zero_best= main.find_best_adder_s_z3_paysat(presolve_result)
+        
+        adder_s = self.half_order - presolve_result['max_zero'] - 1
+        total_adder = adder_s + best_adderm
+        print(f"self.half_order {self.half_order}")
+        print(f"i ran here")
+
+        # print(f"max_zero {presolve_result['max_zero']}")
+        # print(f"total_adder {total_adder}")
+        # print(f"h {target_result}")
+        # print(f"h {target_result['h_res']}")
+        # print(f"best_adderm {best_adderm}")
+        target_result.update({
+            'total_adder': total_adder,
+            'adder_m':best_adderm,
+            'adder_s': adder_s,
+            'half_order':self.half_order,
+            'wordlength': self.wordlength,
+            'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
+            'adder_depth': self.adder_depth,
+            'fracw':self.wordlength-self.intW
+        })
+
+
+        return target_result, best_adderm ,total_adder,adder_s_h_zero_best
+
+
+    def find_best_adder_m(self,presolve_result):
+        main = MainProblem(self.input_data)
+        target_result, best_adderm,adderm_h_zero_best = main.find_best_adder_m(presolve_result)
+
+        adder_s = self.half_order - adderm_h_zero_best - 1
+        total_adder = adder_s + best_adderm
+
+        # print(f"self.half_order {self.half_order}")
+        # print(f"h_zero_best {adderm_h_zero_best}")
+        # print(f"h {target_result['h']}")
+        # print(f"h_res {target_result['h_res']}")
+        # print(f"total_adder {total_adder}")
+        # print(f"best_adderm {best_adderm}")
+        target_result.update({
+            'total_adder': total_adder,
+            'adder_m':best_adderm,
+            'adder_s': adder_s,
+            'half_order':self.half_order,
+            'wordlength': self.wordlength,
+            'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
+            'adder_depth': self.adder_depth,
+            'fracw':self.wordlength-self.intW
+        })
+        return target_result, best_adderm, total_adder, adderm_h_zero_best
+    
+
+    def deep_search_adder_total(self,presolve_result, input_data_dict):
+        main = MainProblem(self.input_data)
+        target_result, best_adderm, h_zero_best = main.deep_search(presolve_result ,input_data_dict)
+        total_adder = None
+        adder_s = None
+        if h_zero_best:
+            adder_s = self.half_order - h_zero_best - 1
+            total_adder = adder_s + best_adderm
+
+        # print(f"self.half_order {self.half_order}")
+        # print(f"h_zero_best {h_zero_best}")
+        # print(f"h {target_result['h']}")
+        # print(f"h_res {target_result['h_res']}")
+
+        # print(f"total_adder {total_adder}")
+        # print(f"best_adderm {best_adderm}")
+            target_result.update({
+                'total_adder': total_adder,
+                'adder_m':best_adderm,
+                'adder_s': adder_s,
+                'half_order':self.half_order,
+                'wordlength': self.wordlength,
+                'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
+                'adder_depth': self.adder_depth,
+                'fracw':self.wordlength-self.intW
+            })
+
+        return target_result, best_adderm, total_adder, h_zero_best
+
+    def solving_result_barebone(self,presolve_result,adderm,h_zero_count):
+        main = MainProblem(self.input_data)
+        if self.gurobi_thread > 0:
+            target_result_best, satisfiability = main.try_asserted(presolve_result,adderm,h_zero_count)
+
+        else:
+            target_result_best, satisfiability = main.try_asserted_z3_pysat(adderm,h_zero_count)
+
+        adder_s = self.half_order - h_zero_count - 1
+        total_adder = adder_s + adderm
+        target_result_best.update({
+            'total_adder': total_adder,
+            'adder_m':adderm,
+            'adder_s': adder_s,
+            'half_order':self.half_order,
+            'wordlength': self.wordlength,
+            'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
+            'adder_depth': self.adder_depth,
+            'fracw':self.wordlength-self.intW
+        })
+
+            
+        return target_result_best, satisfiability
+
+
+    def solver_presolve(self):
+        #interpolate original data first
+        presolve_result = None
 
         #always run presolver first
-        presolver = Presolver(self.input)
+        presolver = Presolver(self.input_data)
+
         if self.gurobi_thread > 0:
             #if gurobi is available then use gurobi, because it is way faster to find the minimum solver order and can be used to find minmax variables
-            presolve_result_gurobi = presolver.run_presolve_gurobi()
+            presolve_result = presolver.run_presolve_gurobi()
         else:
-            presolve_result_z3 = presolver.run_presolve_z3_pysat()
+            presolve_result = presolver.run_presolve_z3_pysat()
         
-        return presolve_result_gurobi, presolve_result_z3
-            
+        if presolve_result['hmax'] != None:
+            max_adderm = presolver.max_adderm_finder(presolve_result['hmax'])
+            max_adderm_without_zero = presolver.max_adderm_finder(presolve_result['hmax_without_zero'])
+            presolve_result.update({
+                'max_adderm' : max_adderm,
+                'max_adderm_without_zero' : max_adderm_without_zero,
+            })
+        else:
+            max_adderm_without_zero = presolver.max_adderm_finder(presolve_result['h_res'], True)
+            presolve_result.update({
+                'max_adderm' : None,
+                'max_adderm_without_zero' : max_adderm_without_zero,
+            })
+        
+        
+        
+        return presolve_result
+    
+    def result_validator(self,h_res,gain_res):
+        #patch up the bounds
+        bound_patcher = BoundErrorHandler(self.input_data)
+        leaks,leaks_mag = bound_patcher.leak_validator(h_res, gain_res)
 
+        # print(f"this is xdata before {(self.xdata)}")
+        # print(f"this is upperbound_lin {(self.upperbound_lin)}")
+        # print(f"this is lowerbound_lin {(self.lowerbound_lin)}")
+        # print(f"this is xdata before {len(self.xdata)}")
+
+        h_res2 = []
+        gain_res2 = 0
+        leak_flag = None
+
+        if leaks:
+            leak_flag = True
+
+        else: 
+            print("no leaks found")
+            leak_flag = False
+
+        return leaks, leaks_mag
+    
+    def patch_leak(self, leaks,leaks_mag):
+        self.xdata_temp = self.xdata
+        self.upperbound_lin_temp = self.upperbound_lin
+        self.lowerbound_lin_temp = self.lowerbound_lin
+
+        bound_patcher = BoundErrorHandler(self.input_data)
+        #patch the input and lower the bound further if found
+        self.xdata,self.upperbound_lin,self.lowerbound_lin = bound_patcher.patch_bound_error(leaks,leaks_mag)
+
+        #flag that some of the upper-and lowerbounds becomes equal, so strict constraint
+        if bound_patcher.bound_too_small_flag:
+            self.bound_too_small_flag = True
+    
+        # print(f"this is leaks_mag {leaks_mag}")
+        # print(f"this is xdata after {(self.xdata)}")
+        # print(f"this is upperbound_lin {self.upperbound_lin_temp}")
+        # print(f"this is lowerbound_lin {self.lowerbound_lin_temp}")
+        # print(f"this is xdata after {len(self.xdata)}")
+
+         
+        #update dict
+        self.input_data.update({
+            'xdata':self.xdata,
+            'upperbound_lin': self.upperbound_lin,
+            'lowerbound_lin': self.lowerbound_lin
+            })
+
+    def revert_patch(self):
+        self.xdata = self.xdata_temp 
+        self.upperbound_lin = self.upperbound_lin_temp
+        self.lowerbound_lin = self.lowerbound_lin_temp
+
+        #update dict
+        self.input_data.update({
+            'xdata':self.xdata,
+            'upperbound_lin': self.upperbound_lin,
+            'lowerbound_lin': self.lowerbound_lin
+            })
+
+        
+    
     def gurobi_test(self):
         try:
             from gurobipy import Model, GRB
@@ -130,62 +399,44 @@ class SolverBackend():
 
         
             else: 
-                raise ImportError("Gurobi is somehow broken, simple test should be sat: probably contact Gurobi")
+                raise ImportError("Gurobi is somehow broken, simple test should be sat: Check your installation and probably contact Gurobi")
 
             
 
         except Exception as e:
-            raise ImportError(f"Gurobi encountered an error: {e}")
+            raise ImportError(f"Gurobi encountered an error, Check your installation: {e}")
 
 
 
     
-
-    
-    
-    # def run_backend(self):
-        
-
-
-    #     #run gurobi test to find out if its available
-    #     if self.gurobi_thread > 0:
-    #         self.gurobi_test()
-
-    #     parallel_exec_instance = ParallelExecutor(self.input,
-    #                                      self.upperbound_gurobi_lin, 
-    #                                      self.lowerbound_gurobi_lin,
-    #                                      self.upperbound_z3_lin, 
-    #                                      self.lowerbound_z3_lin, 
-    #                                      self.upperbound_pysat_lin,
-    #                                      self.lowerbound_pysat_lin)
-
-    #     #iterate the order from smallest to highest
-    #     self.order_current = self.order_lower
-    #     while self.order_current <= self.order_upper:
-    #         print(f"current {self.order_current}")
-    #         print(f"upper {self.order_upper}")
-    #         if self.start_with_error_prediction:
-    #             self.upperbound_gurobi_lin, self.lowerbound_gurobi_lin, self.upperbound_z3_lin, self.lowerbound_z3_lin, self.upperbound_pysat_lin, self.lowerbound_pysat_lin = parallel_exec_instance.execute_parallel_error_prediction(self.order_current)
-    #         self.order_current += 1
-                
 
 if __name__ == "__main__":
-    # Test inputs
+     # Test inputs
     filter_type = 0
-    order_current = 10
-    accuracy = 1
-    adder_count = 3
-    wordlength = 10
-    
-    adder_depth = 2
-    avail_dsp = 0
-    adder_wordlength_ext = 2
-    gain_upperbound = 4
+    order_current = 20
+    accuracy = 3
+    wordlength = 14
+    gain_upperbound = 2
     gain_lowerbound = 1
-    coef_accuracy = 4
+    coef_accuracy = 6
     intW = 4
 
-    space = 400
+    adder_count = 4
+    adder_depth = 0
+    avail_dsp = 0
+    adder_wordlength_ext = 2
+    intW = 4
+
+    gain_wordlength = 6
+    gain_intW = 2
+
+    gurobi_thread = 10
+    pysat_thread = 0
+    z3_thread = 0
+
+    timeout = 0
+
+    space = order_current * accuracy * 50
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
@@ -196,8 +447,8 @@ if __name__ == "__main__":
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 21
-    freq_lower[0:lower_half_point] = -19
+    freq_upper[0:lower_half_point] = 1
+    freq_lower[0:lower_half_point] = 0
 
     freq_upper[upper_half_point:end_point] = -30
     freq_lower[upper_half_point:end_point] = -1000
@@ -226,39 +477,13 @@ if __name__ == "__main__":
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-    input_data_sf = {
-        'filter_type': filter_type,
-        'order_upperbound': order_current,
-        'original_xdata': freqx_axis,
-        'cutoffs_x': cutoffs_x,
-        'wordlength': 15,
-        'adder_depth': 0,
-        'avail_dsp': 0,
-        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
-        'gain_wordlength' : 6,
-        'gain_intW' : 2,
-        'gain_upperbound': 3,
-        'gain_lowerbound': 1,
-        'coef_accuracy': 6,
-        'intW': 6,
-        'gurobi_thread': 1,
-        'pysat_thread': 0,
-        'z3_thread': 1,
-        'timeout': 0,
-        'start_with_error_prediction': False,
-        'solver_accuracy_multiplier': 6,
-    }
+    #linearize the bound
+    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
 
-
-    sf = SolverFunc(input_data_sf)
-    upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
-    ignore_lowerbound_np = np.array(ignore_lowerbound, dtype=float)
-    ignore_lowerbound_lin = sf.db_to_linear(ignore_lowerbound_np)
-
-    cutoffs_upper_ydata_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in cutoffs_upper_ydata]
-    cutoffs_lower_ydata_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in cutoffs_lower_ydata]
-
+    cutoffs_upper_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_upper_ydata]
+    cutoffs_lower_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_lower_ydata]
 
 
     input_data = {
@@ -271,25 +496,101 @@ if __name__ == "__main__":
         'cutoffs_x': cutoffs_x,
         'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
         'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
-        'wordlength': 15,
-        'adder_depth': 0,
-        'avail_dsp': 0,
-        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
-        'gain_wordlength' : 6,
-        'gain_intW' : 2,
-        'gain_upperbound': 3,
-        'gain_lowerbound': 1,
-        'coef_accuracy': 6,
-        'intW': 6,
-        'gurobi_thread': 0,
-        'pysat_thread': 0,
-        'z3_thread': 1,
+        'wordlength': wordlength,
+        'adder_count': adder_count,
+        'adder_depth': adder_depth,
+        'avail_dsp': avail_dsp,
+        'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
+        'gain_wordlength' : gain_wordlength,
+        'gain_intW' : gain_intW,
+        'gain_upperbound': gain_upperbound,
+        'gain_lowerbound': gain_lowerbound,
+        'coef_accuracy': coef_accuracy,
+        'intW': intW,
+        'gurobi_thread': gurobi_thread,
+        'pysat_thread': pysat_thread,
+        'z3_thread': z3_thread,
         'timeout': 0,
         'start_with_error_prediction': False,
-        'solver_accuracy_multiplier': 6,
+        'solver_accuracy_multiplier': accuracy,
     }
 
     # Create an instance of SolverBackend
-    solver_backend_instance = SolverBackend(input_data)
-    solver_backend_instance.solver_presolve()
-    # solver_backend_instance.gurobi_test()
+    backend = SolverBackend(input_data)
+    backend.plot_bound_for_test_flag = True
+
+    # backend.solver_presolve()
+    # backend.error_prediction()
+    # backend.gurobi_test()
+
+    #start presolve
+    presolve_result = backend.solver_presolve()
+    target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
+        # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
+    
+    while True:
+        leak_flag = backend.result_validator(target_result['h_res'],target_result['gain'])
+        
+        if leak_flag:
+            target_result, satisfiability = backend.solving_result_barebone(presolve_result,best_adderm,adder_s_h_zero_best)
+            if satisfiability == 'unsat':
+                print("problem is unsat from asserting the leak to the problem")
+                break
+        else:
+            break
+
+        
+    # #test main problem
+    # presolve_result = backend.solver_presolve()
+    # target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
+    # # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
+
+    # backend.result_validator(target_result['h_res'],target_result['gain'])
+
+    # # Packing variables into a dictionary
+    # data_dict = {
+    # 'best_adderm_from_s': best_adderm,
+    # 'best_adderm_from_m': best_adderm2,
+    # 'total_adder_s': total_adder,
+    # 'total_adder_m': total_adder2,
+    # 'adder_s_h_zero_best': adder_s_h_zero_best,
+    # 'adder_m_h_zero_best': adderm_h_zero_best,
+    # }
+
+    # if adderm_h_zero_best + 1 >= presolve_result['max_zero']:
+    #     print("Deep Search canceled, no search space for h_zero: Taking either A_S(h_zero_max) or A_S(A_M_Min(h_zero_max)) as the best solution")
+    #     best_adderm3 = best_adderm if total_adder >= total_adder2 else best_adderm2
+    #     total_adder3 = total_adder if total_adder >= total_adder2 else total_adder2
+    # else:
+    #     target_result3, best_adderm3, total_adder3, h_zero_best3 = backend.deep_search_adder_total(presolve_result, data_dict)
+    
+    # print(f"best_adderm {best_adderm}")
+    # print(f"best_adderm2 {best_adderm2}")
+    # print(f"total_adder_global_minimum {best_adderm3}")
+    
+    # print(f"total_adder_s {total_adder}")
+    # print(f"total_adder_m {total_adder2}")
+    # print(f"total_adder_global_minimum {total_adder3}")
+
+    # # .........test interpolation data..........
+    # interp_xdata = backend.xdata
+    # interp_upper = backend.upperbound_lin
+    # interp_lower = backend.lowerbound_lin
+
+    # import matplotlib.pyplot as plt
+
+    # plt.scatter(freqx_axis, upperbound_lin, color='blue', marker='o', s=100)
+    # plt.scatter(interp_xdata, interp_upper, color='red', marker='x', s=100)
+
+    # # Add a title and labels to the axes
+    # plt.title('Simple Scatter Plot')
+    # plt.xlabel('X-axis')
+    # plt.ylabel('Y-axis')
+
+    # # Display the plot
+    # plt.show()
+
+
+
+
+    

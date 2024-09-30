@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import time
 import gurobipy as gp
 from gurobipy import GRB
+from scipy.fft import fft, fftfreq
+
 
 
 
@@ -55,14 +57,14 @@ class FIRFilterGurobi:
         self.gain_res = 0
 
         self.wordlength = wordlength
-        self.max_adder = adder_count
+        self.adder_count = adder_count
 
         self.app = app
         self.fig, (self.ax1, self.ax2) = plt.subplots(2,1)
         self.freq_upper_lin=0
         self.freq_lower_lin=0
 
-        self.coef_accuracy = 3
+        self.coef_accuracy = 10
         self.intW = 4
         self.fracW = self.wordlength - self.intW
 
@@ -147,33 +149,35 @@ class FIRFilterGurobi:
 
 
 
-        # Bitshift SAT starts here
+         # Bitshift SAT starts here
 
         # Define binary variables for c, l, r, alpha, beta, gamma, delta, etc.
-        c = [[model.addVar(vtype=GRB.BINARY, name=f'c_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(self.max_adder + 2)]
-        l = [[model.addVar(vtype=GRB.BINARY, name=f'l_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
-        r = [[model.addVar(vtype=GRB.BINARY, name=f'r_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        c = [[model.addVar(vtype=GRB.BINARY, name=f'c_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(self.adder_count + 2)]
+        l = [[model.addVar(vtype=GRB.BINARY, name=f'l_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+        r = [[model.addVar(vtype=GRB.BINARY, name=f'r_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        alpha = [[model.addVar(vtype=GRB.BINARY, name=f'alpha_{i}_{a}') for a in range(i)] for i in range(1, self.max_adder + 1)]
-        beta = [[model.addVar(vtype=GRB.BINARY, name=f'beta_{i}_{a}') for a in range(i)] for i in range(1, self.max_adder + 1)]
+        alpha = [[model.addVar(vtype=GRB.BINARY, name=f'alpha_{i}_{a}') for a in range(i)] for i in range(1, self.adder_count + 1)]
+        beta = [[model.addVar(vtype=GRB.BINARY, name=f'beta_{i}_{a}') for a in range(i)] for i in range(1, self.adder_count + 1)]
 
         # c0,w is always 0 except at index fracW
         for w in range(self.fracW + 1, self.adder_wordlength):
             model.addConstr(c[0][w] == 0)
+
         for w in range(self.fracW):
             model.addConstr(c[0][w] == 0)
+
         model.addConstr(c[0][self.fracW] == 1)
 
         # Bound ci,0 to be an odd number
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             model.addConstr(c[i][0] == 1)
 
         # Last c or c[N+1] is connected to ground, so all zeroes
         for w in range(self.adder_wordlength):
-            model.addConstr(c[self.max_adder + 1][w] == 0)
+            model.addConstr(c[self.adder_count + 1][w] == 0)
 
         # Input multiplexer constraints
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             alpha_sum = gp.LinExpr()
             beta_sum = gp.LinExpr()
             for a in range(i):
@@ -194,10 +198,10 @@ class FIRFilterGurobi:
             model.addConstr(beta_sum == 1)
 
         # Left Shifter constraints
-        gamma = [[model.addVar(vtype=GRB.BINARY, name=f'gamma_{i}_{k}') for k in range(self.adder_wordlength - 1)] for i in range(1, self.max_adder + 1)]
-        s = [[model.addVar(vtype=GRB.BINARY, name=f's_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        gamma = [[model.addVar(vtype=GRB.BINARY, name=f'gamma_{i}_{k}') for k in range(self.adder_wordlength - 1)] for i in range(1, self.adder_count + 1)]
+        s = [[model.addVar(vtype=GRB.BINARY, name=f's_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             gamma_sum = gp.LinExpr()
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
@@ -221,11 +225,11 @@ class FIRFilterGurobi:
             model.addConstr(l[i-1][self.adder_wordlength - 1] + (1 - s[i-1][self.adder_wordlength - 1]) >= 1)
 
         # Delta selector constraints
-        delta = [model.addVar(vtype=GRB.BINARY, name=f'delta_{i}') for i in range(1, self.max_adder + 1)]
-        u = [[model.addVar(vtype=GRB.BINARY, name=f'u_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
-        x = [[model.addVar(vtype=GRB.BINARY, name=f'x_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        delta = [model.addVar(vtype=GRB.BINARY, name=f'delta_{i}') for i in range(1, self.adder_count + 1)]
+        u = [[model.addVar(vtype=GRB.BINARY, name=f'u_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+        x = [[model.addVar(vtype=GRB.BINARY, name=f'x_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 # Equivalent to clause8_1 and clause8_2
                 model.addConstr((1 - delta[i-1]) + (1 - s[i-1][word]) + x[i-1][word] >= 1)
@@ -244,49 +248,75 @@ class FIRFilterGurobi:
                 model.addConstr(delta[i-1] + r[i-1][word] + (1 - x[i-1][word]) >= 1)
 
         # XOR constraints
-        epsilon = [model.addVar(vtype=GRB.BINARY, name=f'epsilon_{i}') for i in range(1, self.max_adder + 1)]
-        y = [[model.addVar(vtype=GRB.BINARY, name=f'y_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        epsilon = [model.addVar(vtype=GRB.BINARY, name=f'epsilon_{i}') for i in range(1, self.adder_count + 1)]
+        y = [[model.addVar(vtype=GRB.BINARY, name=f'y_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 # Equivalent to clause12, clause13, clause14, clause15
-                model.addConstr((1 - u[i-1][word]) + (1 - epsilon[i-1]) + y[i-1][word] >= 1)
-                model.addConstr((1 - u[i-1][word]) + epsilon[i-1] + (1 - y[i-1][word]) >= 1)
-                model.addConstr(u[i-1][word] + (1 - epsilon[i-1]) + (1 - y[i-1][word]) >= 1)
-                model.addConstr(u[i-1][word] + epsilon[i-1] + y[i-1][word] >= 1)
+                model.addConstr(u[i-1][word] + epsilon[i-1] + (1 - y[i-1][word] )>= 1)
+                model.addConstr(u[i-1][word] + (1 - epsilon[i-1]) + y[i-1][word] >= 1)
+                model.addConstr((1 - u[i-1][word]) + epsilon[i-1] + y[i-1][word] >= 1)
+                model.addConstr((1 - u[i-1][word]) + (1 - epsilon[i-1]) + (1 - y[i-1][word]) >= 1)
 
         # Ripple carry constraints
-        z = [[model.addVar(vtype=GRB.BINARY, name=f'z_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
-        cout = [[model.addVar(vtype=GRB.BINARY, name=f'cout_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        z = [[model.addVar(vtype=GRB.BINARY, name=f'z_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+        cout = [[model.addVar(vtype=GRB.BINARY, name=f'cout_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             # Clauses for sum = a ⊕ b ⊕ cin at 0
+            model.addConstr(x[i-1][0] + y[i-1][0] + epsilon[i-1] + (1 - z[i-1][0]) >= 1)
+            model.addConstr(x[i-1][0] + y[i-1][0] + (1 - epsilon[i-1]) + z[i-1][0] >= 1)
+            model.addConstr(x[i-1][0] + (1 - y[i-1][0]) + epsilon[i-1] + z[i-1][0] >= 1)
+            model.addConstr((1 - x[i-1][0]) + y[i-1][0] + epsilon[i-1] + z[i-1][0] >= 1)
             model.addConstr((1 - x[i-1][0]) + (1 - y[i-1][0]) + (1 - epsilon[i-1]) + z[i-1][0] >= 1)
             model.addConstr((1 - x[i-1][0]) + (1 - y[i-1][0]) + epsilon[i-1] + (1 - z[i-1][0]) >= 1)
             model.addConstr((1 - x[i-1][0]) + y[i-1][0] + (1 - epsilon[i-1]) + (1 - z[i-1][0]) >= 1)
-            model.addConstr(x[i-1][0] + (1 - y[i-1][0]) + (1 - epsilon[i-1]) + z[i-1][0] >= 1)
+            model.addConstr(x[i-1][0] + (1 - y[i-1][0]) + (1 - epsilon[i-1]) + (1 - z[i-1][0]) >= 1)
+
 
             # Clauses for cout = (a AND b) OR (cin AND (a ⊕ b))
             model.addConstr((1 - x[i-1][0]) + (1 - y[i-1][0]) + cout[i-1][0] >= 1)
             model.addConstr(x[i-1][0] + y[i-1][0] + (1 - cout[i-1][0]) >= 1)
             model.addConstr((1 - x[i-1][0]) + (1 - epsilon[i-1]) + cout[i-1][0] >= 1)
             model.addConstr(x[i-1][0] + epsilon[i-1] + (1 - cout[i-1][0]) >= 1)
+            model.addConstr((1 - y[i-1][0]) + (1 - epsilon[i-1]) + cout[i-1][0] >= 1)
+            model.addConstr(y[i-1][0] + epsilon[i-1] + (1 - cout[i-1][0]) >= 1)
+
+
+
 
             for kf in range(1, self.adder_wordlength):
                 # Clauses for sum = a ⊕ b ⊕ cin at kf
+                model.addConstr(x[i-1][kf] + y[i-1][kf] + cout[i-1][kf-1] + (1 - z[i-1][kf]) >= 1)
+                model.addConstr(x[i-1][kf] + y[i-1][kf] + (1 - cout[i-1][kf-1]) + z[i-1][kf] >= 1)
+                model.addConstr(x[i-1][kf] + (1 - y[i-1][kf]) + cout[i-1][kf-1] + z[i-1][kf] >= 1)
+                model.addConstr((1 - x[i-1][kf]) + y[i-1][kf] + cout[i-1][kf-1] + z[i-1][kf] >= 1)
                 model.addConstr((1 - x[i-1][kf]) + (1 - y[i-1][kf]) + (1 - cout[i-1][kf-1]) + z[i-1][kf] >= 1)
+                model.addConstr((1 - x[i-1][kf]) + (1 - y[i-1][kf]) + cout[i-1][kf-1] + (1 - z[i-1][kf]) >= 1)
                 model.addConstr((1 - x[i-1][kf]) + y[i-1][kf] + (1 - cout[i-1][kf-1]) + (1 - z[i-1][kf]) >= 1)
+                model.addConstr(x[i-1][kf] + (1 - y[i-1][kf]) + (1 - cout[i-1][kf-1]) + (1 - z[i-1][kf]) >= 1)
+
 
                 # Clauses for cout = (a AND b) OR (cin AND (a ⊕ b)) at kf
                 model.addConstr((1 - x[i-1][kf]) + (1 - y[i-1][kf]) + cout[i-1][kf] >= 1)
                 model.addConstr(x[i-1][kf] + y[i-1][kf] + (1 - cout[i-1][kf]) >= 1)
+                model.addConstr((1 - x[i-1][kf]) + (1 - cout[i-1][kf-1]) + cout[i-1][kf] >= 1)
+                model.addConstr(x[i-1][kf] + cout[i-1][kf-1] + (1 - cout[i-1][kf]) >= 1)
+                model.addConstr((1 - y[i-1][kf]) + (1 - cout[i-1][kf-1]) + cout[i-1][kf] >= 1)
+                model.addConstr(y[i-1][kf] + cout[i-1][kf-1] + (1 - cout[i-1][kf]) >= 1)
+
 
             model.addConstr(epsilon[i-1] + x[i-1][self.adder_wordlength-1] + u[i-1][self.adder_wordlength-1] + (1 - z[i-1][self.adder_wordlength-1]) >= 1)
+            model.addConstr(epsilon[i-1] + (1 - x[i-1][self.adder_wordlength-1]) + (1 - u[i-1][self.adder_wordlength-1]) + z[i-1][self.adder_wordlength-1] >= 1)
+            model.addConstr((1 - epsilon[i-1]) + x[i-1][self.adder_wordlength-1] + (1 - u[i-1][self.adder_wordlength-1]) + (1 - z[i-1][self.adder_wordlength-1]) >= 1)
+            model.addConstr((1 - epsilon[i-1]) + (1 - x[i-1][self.adder_wordlength-1]) + u[i-1][self.adder_wordlength-1] + z[i-1][self.adder_wordlength-1] >= 1)
+
 
         # Right shift constraints
-        zeta = [[model.addVar(vtype=GRB.BINARY, name=f'zeta_{i}_{k}') for k in range(self.adder_wordlength - 1)] for i in range(1, self.max_adder + 1)]
+        zeta = [[model.addVar(vtype=GRB.BINARY, name=f'zeta_{i}_{k}') for k in range(self.adder_wordlength - 1)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             zeta_sum = gp.LinExpr()
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
@@ -313,14 +343,14 @@ class FIRFilterGurobi:
         connected_coefficient = half_order + 1 - self.avail_dsp
 
         # Solver connection
-        theta = [[model.addVar(vtype=GRB.BINARY, name=f'theta_{i}_{m}') for m in range(half_order + 1)] for i in range(self.max_adder + 2)]
+        theta = [[model.addVar(vtype=GRB.BINARY, name=f'theta_{i}_{m}') for m in range(half_order + 1)] for i in range(self.adder_count + 2)]
         iota = [model.addVar(vtype=GRB.BINARY, name=f'iota_{m}') for m in range(half_order + 1)]
         t = [[model.addVar(vtype=GRB.BINARY, name=f't_{m}_{w}') for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
 
         iota_sum = gp.LinExpr()
-        for i in range(self.max_adder + 2):
+        for m in range(half_order + 1):
             theta_or = gp.LinExpr()
-            for m in range(half_order + 1):
+            for i in range(self.adder_count + 2):
                 for word in range(self.adder_wordlength):
                     # Equivalent to clause52_1 and clause52_2
                     model.addConstr((1 - theta[i][m]) + (1 - iota[m]) + (1 - c[i][word]) + t[m][word] >= 1)
@@ -360,6 +390,8 @@ class FIRFilterGurobi:
             model.addConstr((1 - t[m][self.adder_wordlength - 1]) + h_ext[m][self.adder_wordlength - 1] >= 1)
             model.addConstr(t[m][self.adder_wordlength - 1] + (1 - h_ext[m][self.adder_wordlength - 1]) >= 1)
 
+
+        for m in range(half_order + 1):
             for word in range(self.adder_wordlength):
                 if word <= self.wordlength - 1:
                     # Equivalent to clause58 and clause59
@@ -369,47 +401,6 @@ class FIRFilterGurobi:
                     model.addConstr(h[m][self.wordlength - 1] + (1 - h_ext[m][word]) >= 1)
                     model.addConstr((1 - h[m][self.wordlength - 1]) + h_ext[m][word] >= 1)
 
-        if self.adder_depth > 0:
-            # Binary variables for psi_alpha and psi_beta
-            psi_alpha = [[model.addVar(vtype=GRB.BINARY, name=f'psi_alpha_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.max_adder+1)]
-            psi_beta = [[model.addVar(vtype=GRB.BINARY, name=f'psi_beta_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.max_adder+1)]
-
-            psi_alpha_sum = []
-            psi_beta_sum = []
-
-            for i in range(1, self.max_adder+1):
-                # Clause 60: Not(psi_alpha[i-1][0]) or alpha[i-1][0]
-                model.addConstr(psi_alpha[i-1][0] + (1 - alpha[i-1][0]) >= 1)
-                
-                # Clause 61: Not(psi_beta[i-1][0]) or beta[i-1][0]
-                model.addConstr(psi_beta[i-1][0] + (1 - beta[i-1][0]) >= 1)
-                
-                for d in range(self.adder_depth):
-                    psi_alpha_sum.append(psi_alpha[i-1][d])
-                    psi_beta_sum.append(psi_beta[i-1][d])
-
-                # AtMost and AtLeast for psi_alpha_sum and psi_beta_sum
-                model.addConstr(sum(psi_alpha_sum) <= 1)
-                model.addConstr(sum(psi_alpha_sum) >= 1)
-                model.addConstr(sum(psi_beta_sum) <= 1)
-                model.addConstr(sum(psi_beta_sum) >= 1)
-
-                if d == 1:
-                    continue
-
-                for d in range(1, self.adder_depth):
-                    for a in range(i-1):
-                        # Clause 63: Not(psi_alpha[i-1][d]) or alpha[i-1][a]
-                        model.addConstr(psi_alpha[i-1][d] + (1 - alpha[i-1][a]) >= 1)
-
-                        # Clause 64: Not(psi_alpha[i-1][d]) or psi_alpha[i-1][d-1]
-                        model.addConstr(psi_alpha[i-1][d] + (1 - psi_alpha[i-1][d-1]) >= 1)
-
-                        # Clause 65: Not(psi_beta[i-1][d]) or beta[i-1][a]
-                        model.addConstr(psi_beta[i-1][d] + (1 - beta[i-1][a]) >= 1)
-
-                        # Clause 66: Not(psi_beta[i-1][d]) or psi_beta[i-1][d-1]
-                        model.addConstr(psi_beta[i-1][d] + (1 - psi_beta[i-1][d-1]) >= 1)
 
         
         start_time=time.time()
@@ -518,10 +509,10 @@ class FIRFilterGurobi:
 
         
 
-                    
-
+            
     def plot_result(self, result_coef):
         print("result plotter called")
+        
         fir_coefficients = np.array([])
         for i in range(len(result_coef)):
             fir_coefficients = np.append(fir_coefficients, result_coef[(i+1)*-1])
@@ -533,10 +524,10 @@ class FIRFilterGurobi:
 
         print("Fir coef in mp", fir_coefficients)
 
-        # Compute the FFT of the coefficients
+        # Compute the FFT of the coefficients using scipy.fft
         N = 5120  # Number of points for the FFT
-        frequency_response = np.fft.fft(fir_coefficients, N)
-        frequencies = np.fft.fftfreq(N, d=1.0)[:N//2]  # Extract positive frequencies up to Nyquist
+        frequency_response = fft(fir_coefficients, N)
+        frequencies = fftfreq(N, d=1.0)[:N//2]  # Extract positive frequencies up to Nyquist
 
         # Compute the magnitude and phase response for positive frequencies
         magnitude_response = np.abs(frequency_response)[:N//2]
@@ -544,22 +535,21 @@ class FIRFilterGurobi:
         # Convert magnitude response to dB
         magnitude_response_db = 20 * np.log10(np.where(magnitude_response == 0, 1e-10, magnitude_response))
 
-        # print("magdb in mp", magnitude_response_db)
-
         # Normalize frequencies to range from 0 to 1
-        omega= frequencies * 2 * np.pi
+        omega = frequencies * 2 * np.pi
         normalized_omega = omega / np.max(omega)
+
         self.ax1.set_ylim([-10, 10])
+
         # Convert lists to numpy arrays
         freq_upper_lin_array = np.array(self.freq_upper_lin, dtype=np.float64)
         freq_lower_lin_array = np.array(self.freq_lower_lin, dtype=np.float64)
 
         # Perform element-wise division
-        self.freq_upper_lin = ((freq_upper_lin_array/((10**self.coef_accuracy)*(2**(self.fracW)))) * self.gain_res).tolist()
-        self.freq_lower_lin = ((freq_lower_lin_array/((10**self.coef_accuracy)*(2**(self.fracW)))) * self.gain_res).tolist()
+        self.freq_upper_lin = ((freq_upper_lin_array / ((10 ** self.coef_accuracy) * (2 ** (self.fracW)))) * self.gain_res).tolist()
+        self.freq_lower_lin = ((freq_lower_lin_array / ((10 ** self.coef_accuracy) * (2 ** (self.fracW)))) * self.gain_res).tolist()
 
-
-        #plot input
+        # Plot input
         self.ax1.scatter(self.freqx_axis, self.freq_upper_lin, color='r', s=20, picker=5)
         self.ax1.scatter(self.freqx_axis, self.freq_lower_lin, color='b', s=20, picker=5)
 
@@ -568,6 +558,7 @@ class FIRFilterGurobi:
 
         if self.app:
             self.app.canvas.draw()
+
 
     def plot_validation(self):
         print("Validation plotter called")
@@ -608,7 +599,7 @@ class FIRFilterGurobi:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_upper = 30
+    order_upper = 20
     accuracy = 2
     adder_count = 3
     wordlength = 10

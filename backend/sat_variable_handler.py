@@ -11,6 +11,9 @@ class VariableMapper:
             ('h', a, w): f'h_{a}_{w}' for a in range(half_order + 1) for w in range(wordlength)
         }
         variables.update({
+            ('h_zero', a): f'h_zero{a}' for a in range(half_order + 1)
+        })
+        variables.update({
             ('gain', g): f'gain{g}' for g in range(wordlength)
         })
         variables.update({
@@ -79,6 +82,7 @@ class VariableMapper:
         variables.update({
             ('psi_beta', i, d): f'psi_beta_{i}_{d}' for i in range(1, max_adder + 1) for d in range(adder_depth)
         })
+       
         return variables
     
     def var_name_to_int(self, var_name):

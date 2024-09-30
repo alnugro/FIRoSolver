@@ -7,7 +7,7 @@ class bitshift():
     def __init__(self, out, wordlength, verbose=False):
         self.wordlength = wordlength
         self.out = out
-        self.N = 6
+        self.N = 1
         self.verbose = verbose
 
         # Input multiplexer
@@ -23,7 +23,7 @@ class bitshift():
         # Test case
         for i in range(1, self.N+1):
             solver.add(z[i-1][5])
-            solver.add(zeta[i-1][2])
+            solver.add(zeta[i-1][1])
 
         for i in range(1, self.N+1):
             zeta_sum = []

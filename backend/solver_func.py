@@ -94,14 +94,23 @@ class SolverFunc():
         upper_ydata_lin = np.interp(xdata, self.original_xdata, self.original_upperbound_lin)
         lower_ydata_lin = np.interp(xdata, self.original_xdata, self.original_lowerbound_lin)
 
+
         for x_index, x in enumerate(self.cutoffs_x):
-            if x in xdata:
-                continue
             xdata_index = np.searchsorted(xdata, x)
+
+
+            if x in xdata:
+                upper_ydata_lin[xdata_index] = self.cutoffs_upper_ydata_lin[x_index]
+                lower_ydata_lin[xdata_index] = self.cutoffs_lower_ydata_lin[x_index]
+                continue
+                 
             xdata = np.insert(xdata, xdata_index, x)
+         
             upper_ydata_lin = np.insert(upper_ydata_lin, xdata_index, self.cutoffs_upper_ydata_lin[x_index])
             lower_ydata_lin = np.insert(lower_ydata_lin, xdata_index, self.cutoffs_lower_ydata_lin[x_index])
+        
 
+       
         return xdata, upper_ydata_lin, lower_ydata_lin
 
 

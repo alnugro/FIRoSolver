@@ -70,7 +70,10 @@ class FIRFilterPysat:
         return input_data_sf
 
 
-    def run_barebone(self, solver_id):
+    def run_barebone(self, solver_id,h_zero_count= 0):
+        self.h_res = []
+        self.gain_res = 0
+        self.model = []
 
         half_order = (self.order_current // 2)
 
@@ -129,6 +132,20 @@ class FIRFilterPysat:
         cnf2 = pb2cnf.atmost(gain_weight,[gain_literals],self.gain_upperbound,self.fracW)
         for clause in cnf2:
             solver.add_clause(clause)
+
+        if h_zero_count > 0:
+            print("pysat_barebone_running: try_h_zero_count")
+            h_zero_sum = []
+            for m in range(half_order+1):
+                for word in range(self.wordlength):
+                    solver.add_clause([-v2i(('h_zero', m)), -v2i(('h', m, word))])
+                h_zero_sum.append(v2i(('h_zero', m)))
+
+            cnf_h_zero = pb2cnf.equal_card(h_zero_sum, h_zero_count)
+            
+            for clause in cnf_h_zero:
+                solver.add_clause(clause)
+       
 
 
         filter_literals = []
@@ -218,14 +235,16 @@ class FIRFilterPysat:
 
             for clause in cnf4:
                 solver.add_clause(clause)
-            
-        
 
         
-        satifiability = 'unsat'
+
+            
+
+        
+        satisfiability = 'unsat'
 
         if solver.solve():
-            satifiability = 'sat'
+            satisfiability = 'sat'
             self.model = solver.get_model()
 
             for m in range(half_order + 1):
@@ -262,10 +281,13 @@ class FIRFilterPysat:
         print(f"Pysat: Barebone done with solver {solver_list[solver_id]}")
 
         
-        return satifiability,self.h_res,self.gain_res
+        return satisfiability, self.h_res, self.gain_res
        
 
-    def runsolver_internal(self):
+    def runsolver(self,solver_id,adderm,h_zero_count):
+        self.max_adder = adderm
+        self.h_res = []
+        self.gain_res = 0
         half_order = (self.order_current // 2)
         
         print("Pysat solver called")
@@ -281,7 +303,16 @@ class FIRFilterPysat:
         pb2cnf = PB2CNF(top_var)
         r2b = Rat2bool()
 
-        solver = Solver(name='cadical103')
+        sf = SolverFunc(self.get_solver_func_dict())
+        internal_upperbound_lin = [f if not np.isnan(f) else np.nan for f in self.upperbound]
+        internal_lowerbound_lin = [f if not np.isnan(f) else np.nan for f in self.lowerbound]
+
+        internal_ignore_lowerbound = self.ignore_lowerbound_lin
+
+        solver_list = ['cadical103', 'cadical153','cadical195','glucose421','glucose41','minisat-gh','minisat22','lingeling','gluecard30','glucose30','gluecard41','maplesat']
+        print(f"Pysat: Barebone running with solver {solver_list[solver_id]}")
+
+        solver = Solver(name=solver_list[solver_id])
 
         #bound the gain to upper and lowerbound
         gain_literals = []
@@ -303,6 +334,18 @@ class FIRFilterPysat:
         for clause in cnf2:
             solver.add_clause(clause)
 
+        if h_zero_count > 0:
+            print("pysat_running: try_h_zero_count")
+            h_zero_sum = []
+            for m in range(half_order+1):
+                for word in range(self.wordlength):
+                    solver.add_clause([-v2i(('h_zero', m)), -v2i(('h', m, word))])
+                h_zero_sum.append(v2i(('h_zero', m)))
+
+            cnf_h_zero = pb2cnf.equal_card(h_zero_sum, h_zero_count)
+            
+            for clause in cnf_h_zero:
+                solver.add_clause(clause)
 
         filter_literals = []
         filter_weights = []
@@ -656,18 +699,22 @@ class FIRFilterPysat:
         print("solver running")
         start_time = time.time()
 
-        satifiability = 'unsat'
+        satisfiability = 'unsat'
 
         if solver.solve():
-            satifiability = 'sat'
+            end_time = time.time()
+
+            satisfiability = 'sat'
             print("solver sat")
             self.model = solver.get_model()
 
+            # Calculate h coefficients
+            self.h_res = []
             for m in range(half_order + 1):
                 fir_coef = 0
                 for w in range(self.wordlength):
                     var_index = v2i(('h', m, w)) - 1
-                    bool_value = self.model[var_index] > 0  # Convert to boolean
+                    bool_value = 1 if self.model[var_index] > 0 else 0  # Convert to boolean
 
                     if w == self.wordlength - 1:
                         fir_coef += -2 ** (w - self.fracW) * bool_value
@@ -676,65 +723,131 @@ class FIRFilterPysat:
                     else:
                         fir_coef += 2 ** (w - self.fracW) * bool_value
                 self.h_res.append(fir_coef)
-                self.result_model[f"h[{m}]"] = fir_coef
             print("FIR Coeffs calculated: ", self.h_res)
 
+            # Store h coefficients
+            self.result_model.update({"h_res": self.h_res})
+
+            # Calculate gain coefficient
             gain_coef = 0
             for g in range(self.wordlength):
                 var_index = v2i(('gain', g)) - 1
-                bool_value = self.model[var_index] > 0  # Convert to boolean
+                bool_value = 1 if self.model[var_index] > 0 else 0  # Convert to boolean
                 if g < self.fracW:
                     gain_coef += 2 ** -(self.fracW - g) * bool_value
                 else:
                     gain_coef += 2 ** (g - self.fracW) * bool_value
 
             self.gain_res = gain_coef
-            self.result_model["gain"] = gain_coef
             print("gain Coeffs: ", self.gain_res)
+            self.result_model.update({"gain": gain_coef})
 
-           # Store alpha and beta selectors
+             # Store h
+            h_values = []
+            for i in range(half_order + 1):
+                h_row = []
+                for a in range(self.wordlength):
+                    var_index = v2i(('h', i, a)) - 1
+                    value = 1 if self.model[var_index] > 0 else 0
+                    h_row.append(value)
+                h_values.append(h_row)
+            self.result_model.update({"h": h_values})
+
+            # Store alpha selectors
+            alpha_values = []
             for i in range(1, self.max_adder + 1):
+                alpha_row = []
                 for a in range(i):
-                    self.result_model[f'alpha[{i}][{a}]'] = 1 if self.model[v2i(('alpha', i, a)) - 1] > 0 else 0
+                    var_index = v2i(('alpha', i, a)) - 1
+                    value = 1 if self.model[var_index] > 0 else 0
+                    alpha_row.append(value)
+                alpha_values.append(alpha_row)
+            self.result_model.update({"alpha": alpha_values})
+
+            # Store beta selectors
+            beta_values = []
+            for i in range(1, self.max_adder + 1):
+                beta_row = []
                 for a in range(i):
-                    self.result_model[f'beta[{i}][{a}]'] = 1 if self.model[v2i(('beta', i, a)) - 1] > 0 else 0
+                    var_index = v2i(('beta', i, a)) - 1
+                    value = 1 if self.model[var_index] > 0 else 0
+                    beta_row.append(value)
+                beta_values.append(beta_row)
+            self.result_model.update({"beta": beta_values})
 
             # Store gamma (left shift selectors)
+            gamma_values = []
             for i in range(1, self.max_adder + 1):
+                gamma_row = []
                 for k in range(self.adder_wordlength - 1):
-                    self.result_model[f'gamma[{i}][{k}]'] = 1 if self.model[v2i(('gamma', i, k)) - 1] > 0 else 0
+                    var_index = v2i(('gamma', i, k)) - 1
+                    value = 1 if self.model[var_index] > 0 else 0
+                    gamma_row.append(value)
+                gamma_values.append(gamma_row)
+            self.result_model.update({"gamma": gamma_values})
 
             # Store delta selectors
+            delta_values = []
             for i in range(1, self.max_adder + 1):
-                self.result_model[f'delta[{i}]'] = 1 if self.model[v2i(('delta', i)) - 1] > 0 else 0
+                var_index = v2i(('delta', i)) - 1
+                value = 1 if self.model[var_index] > 0 else 0
+                delta_values.append(value)
+            self.result_model.update({"delta": delta_values})
 
             # Store epsilon selectors
+            epsilon_values = []
             for i in range(1, self.max_adder + 1):
-                self.result_model[f'epsilon[{i}]'] = 1 if self.model[v2i(('epsilon', i)) - 1] > 0 else 0
+                var_index = v2i(('epsilon', i)) - 1
+                value = 1 if self.model[var_index] > 0 else 0
+                epsilon_values.append(value)
+            self.result_model.update({"epsilon": epsilon_values})
 
             # Store zeta (right shift selectors)
+            zeta_values = []
             for i in range(1, self.max_adder + 1):
+                zeta_row = []
                 for k in range(self.adder_wordlength - 1):
-                    self.result_model[f'zeta[{i}][{k}]'] = 1 if self.model[v2i(('zeta', i, k)) - 1] > 0 else 0
+                    var_index = v2i(('zeta', i, k)) - 1
+                    value = 1 if self.model[var_index] > 0 else 0
+                    zeta_row.append(value)
+                zeta_values.append(zeta_row)
+            self.result_model.update({"zeta": zeta_values})
 
             # Store phi (left shift selectors in result)
+            phi_values = []
             for i in range(half_order + 1):
+                phi_row = []
                 for k in range(self.adder_wordlength - 1):
-                    self.result_model[f'phi[{i}][{k}]'] = 1 if self.model[v2i(('phi', i, k)) - 1] > 0 else 0
+                    var_index = v2i(('phi', i, k)) - 1
+                    value = 1 if self.model[var_index] > 0 else 0
+                    phi_row.append(value)
+                phi_values.append(phi_row)
+            self.result_model.update({"phi": phi_values})
 
             # Store theta array
+            theta_values = []
             for i in range(self.max_adder + 2):
+                theta_row = []
                 for m in range(half_order + 1):
-                    self.result_model[f'theta[{i}][{m}]'] = 1 if self.model[v2i(('theta', i, m)) - 1] > 0 else 0
+                    var_index = v2i(('theta', i, m)) - 1
+                    value = 1 if self.model[var_index] > 0 else 0
+                    theta_row.append(value)
+                theta_values.append(theta_row)
+            self.result_model.update({"theta": theta_values})
 
             # Store iota array
+            iota_values = []
             for m in range(half_order + 1):
-                self.result_model[f'iota[{m}]'] = 1 if self.model[v2i(('iota', m)) - 1] > 0 else 0
+                var_index = v2i(('iota', m)) - 1
+                value = 1 if self.model[var_index] > 0 else 0
+                iota_values.append(value)
+            self.result_model.update({"iota": iota_values})
 
         else:
             print("Unsatisfiable")
+            end_time = time.time()
+
         
-        end_time = time.time()
         duration = end_time - start_time
         print(f"Duration: {duration} seconds")
         solver.delete()
@@ -747,117 +860,60 @@ class FIRFilterPysat:
         print(f"Total number of variables            : {pb2cnf.var}")        
         print(f"Total number of constraints (clauses): {solver.nof_clauses()}\n" )
 
-        return duration, satifiability
+        return self.result_model , satisfiability
+
 
 
     
 
-    def runsolver(self, timeout=0):
-        if timeout == 0:
-            return self.runsolver_internal()
-
-        #added function to do timeout in PySat
-
-        manager = multiprocessing.Manager()
-        shared_h_res = manager.list()
-        shared_gain_res = manager.list()
-        shared_result = manager.dict()
-
-        process = multiprocessing.Process(target=run_solver_wrapper, args=(shared_h_res, shared_gain_res, shared_result, self))
-        process.start()
-
-        process.join(timeout)
-
-        if process.is_alive():
-            print("Solver timed out! Terminating...")
-            process.terminate()
-            process.join()
-            return timeout, 'timeout'
-
-        self.h_res = list(shared_h_res)  
-        self.gain_res = list(shared_gain_res) 
-
-        duration = shared_result.get('duration', None)
-        satisfiability = shared_result.get('satisfiability', 'unsat')
-        self.model = shared_result.get('model', None)
-        return duration, satisfiability
-
-def run_solver_wrapper(shared_h_res, shared_gain_res, shared_result, fir_filter):
-    duration, satisfiability = fir_filter.runsolver_internal()
-    shared_h_res[:] = fir_filter.h_res
-    shared_gain_res[:] = [fir_filter.gain_res]
-    shared_result['duration'] = duration
-    shared_result['satisfiability'] = satisfiability
-    shared_result['model'] = fir_filter.model if satisfiability == 'sat' else None
-
+    
 
 
 if __name__ == "__main__":
-    # Test inputs
+     # Test inputs
     filter_type = 0
-    order_current = 10
+    order_current = 12
     accuracy = 1
-    adder_count = 3
-    wordlength = 16
-    
-    adder_depth = 2
-    avail_dsp = 0
-    adder_wordlength_ext = 2
+    wordlength = 14
     gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
-    intW = 4
+    intW = 6
 
-    space = accuracy * order_current
+    adder_count = 6
+    adder_depth = 2
+    avail_dsp = 0
+    adder_wordlength_ext = 2
+    
+    
+
+    space = order_current * accuracy
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(space))
+    lower_half_point = int(0.3*(space))
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 21
-    freq_lower[0:lower_half_point] = -19
+    freq_upper[0:lower_half_point] = 6
+    freq_lower[0:lower_half_point] = 0
 
-    freq_upper[upper_half_point:end_point] = -30
+    freq_upper[upper_half_point:end_point] = -10
     freq_lower[upper_half_point:end_point] = -1000
-
 
 
     #beyond this bound lowerbound will be ignored
     ignore_lowerbound = -40
 
-    input_data_sf = {
-        'filter_type': filter_type,
-        'order_upperbound': order_current,
-        'original_xdata': freqx_axis,
-        'wordlength': 15,
-        'adder_depth': 0,
-        'avail_dsp': 0,
-        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
-        'gain_wordlength' : 6,
-        'gain_intW' : 2,
-        'gain_upperbound': 3,
-        'gain_lowerbound': 1,
-        'coef_accuracy': 6,
-        'intW': 6,
-        'gurobi_thread': 0,
-        'pysat_thread': 0,
-        'z3_thread': 1,
-        'timeout': 0,
-        'start_with_error_prediction': False,
-        'solver_accuracy_multiplier': 6,
-    }
+    #linearize the bound
+    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
+    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
 
 
-    sf = SolverFunc(input_data_sf)
-    upperbound_lin = [np.array(sf.db_to_linear(f)).item() if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [np.array(sf.db_to_linear(f)).item()  if not np.isnan(f) else np.nan for f in freq_lower]
-    ignore_lowerbound_np = np.array(ignore_lowerbound, dtype=float)
-    ignore_lowerbound_lin = sf.db_to_linear(ignore_lowerbound_np)
 
     # Create FIRFilter instance
     fir_filter = FIRFilterPysat(
@@ -878,5 +934,5 @@ if __name__ == "__main__":
                  )
 
     # Run solver and plot result
-    # fir_filter.runsolver()
-    fir_filter.run_barebone(0)
+    fir_filter.runsolver(0,5)
+    # fir_filter.run_barebone(0,5)

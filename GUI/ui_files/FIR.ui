@@ -310,7 +310,7 @@
           <bool>false</bool>
          </property>
          <property name="currentIndex">
-          <number>3</number>
+          <number>0</number>
          </property>
          <widget class="QWidget" name="tab_2">
           <attribute name="title">
@@ -3347,66 +3347,148 @@
           <attribute name="title">
            <string>Result Data</string>
           </attribute>
-          <layout class="QHBoxLayout" name="horizontalLayout_28">
+          <layout class="QHBoxLayout" name="horizontalLayout_15">
            <item>
-            <widget class="QTableWidget" name="tableWidget_3">
-             <property name="minimumSize">
-              <size>
-               <width>783</width>
-               <height>0</height>
-              </size>
+            <widget class="QTabWidget" name="tabWidget_3">
+             <property name="currentIndex">
+              <number>0</number>
              </property>
-             <property name="maximumSize">
-              <size>
-               <width>783</width>
-               <height>16777215</height>
-              </size>
-             </property>
-             <attribute name="horizontalHeaderMinimumSectionSize">
-              <number>27</number>
-             </attribute>
-             <attribute name="horizontalHeaderDefaultSectionSize">
-              <number>130</number>
-             </attribute>
-             <attribute name="verticalHeaderVisible">
-              <bool>false</bool>
-             </attribute>
-             <attribute name="verticalHeaderMinimumSectionSize">
-              <number>27</number>
-             </attribute>
-             <attribute name="verticalHeaderDefaultSectionSize">
-              <number>27</number>
-             </attribute>
-             <column>
-              <property name="text">
-               <string>Filter Order</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Optimality</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Adder Depth</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Plot Result</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Show Coefficient</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>Generate VHDL Code</string>
-              </property>
-             </column>
+             <widget class="QWidget" name="tab_6">
+              <attribute name="title">
+               <string>Result Valid</string>
+              </attribute>
+              <layout class="QHBoxLayout" name="horizontalLayout_28">
+               <item>
+                <widget class="QTableWidget" name="tableWidget_5">
+                 <property name="minimumSize">
+                  <size>
+                   <width>783</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>783</width>
+                   <height>16777215</height>
+                  </size>
+                 </property>
+                 <attribute name="horizontalHeaderMinimumSectionSize">
+                  <number>27</number>
+                 </attribute>
+                 <attribute name="horizontalHeaderDefaultSectionSize">
+                  <number>130</number>
+                 </attribute>
+                 <attribute name="verticalHeaderVisible">
+                  <bool>false</bool>
+                 </attribute>
+                 <attribute name="verticalHeaderMinimumSectionSize">
+                  <number>27</number>
+                 </attribute>
+                 <attribute name="verticalHeaderDefaultSectionSize">
+                  <number>27</number>
+                 </attribute>
+                 <column>
+                  <property name="text">
+                   <string>Problem ID</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Filter Order</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Total Adder</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Generate VHDL Code</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Plot Result</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Show Details</string>
+                  </property>
+                 </column>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+             <widget class="QWidget" name="tab_8">
+              <attribute name="title">
+               <string>Result Invalid(Bounds Leak)</string>
+              </attribute>
+              <layout class="QVBoxLayout" name="verticalLayout_34">
+               <item>
+                <widget class="QTableWidget" name="tableWidget_4">
+                 <property name="minimumSize">
+                  <size>
+                   <width>783</width>
+                   <height>0</height>
+                  </size>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>783</width>
+                   <height>16777215</height>
+                  </size>
+                 </property>
+                 <attribute name="horizontalHeaderMinimumSectionSize">
+                  <number>27</number>
+                 </attribute>
+                 <attribute name="horizontalHeaderDefaultSectionSize">
+                  <number>130</number>
+                 </attribute>
+                 <attribute name="verticalHeaderVisible">
+                  <bool>false</bool>
+                 </attribute>
+                 <attribute name="verticalHeaderMinimumSectionSize">
+                  <number>27</number>
+                 </attribute>
+                 <attribute name="verticalHeaderDefaultSectionSize">
+                  <number>27</number>
+                 </attribute>
+                 <column>
+                  <property name="text">
+                   <string>Problem ID</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Filter Order</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Total Adder</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Generate VHDL Code</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Plot Result</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Show Details</string>
+                  </property>
+                 </column>
+                </widget>
+               </item>
+              </layout>
+             </widget>
             </widget>
            </item>
            <item>
@@ -3417,52 +3499,7 @@
              <property name="frameShadow">
               <enum>QFrame::Raised</enum>
              </property>
-             <layout class="QVBoxLayout" name="verticalLayout_28">
-              <item>
-               <spacer name="verticalSpacer_15">
-                <property name="orientation">
-                 <enum>Qt::Vertical</enum>
-                </property>
-                <property name="sizeType">
-                 <enum>QSizePolicy::Preferred</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>20</width>
-                  <height>40</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
-              <item>
-               <widget class="QPushButton" name="pushButton_18">
-                <property name="minimumSize">
-                 <size>
-                  <width>0</width>
-                  <height>60</height>
-                 </size>
-                </property>
-                <property name="text">
-                 <string>Show Solver Details for Current Data</string>
-                </property>
-               </widget>
-              </item>
-              <item>
-               <spacer name="verticalSpacer_16">
-                <property name="orientation">
-                 <enum>Qt::Vertical</enum>
-                </property>
-                <property name="sizeType">
-                 <enum>QSizePolicy::Preferred</enum>
-                </property>
-                <property name="sizeHint" stdset="0">
-                 <size>
-                  <width>20</width>
-                  <height>40</height>
-                 </size>
-                </property>
-               </spacer>
-              </item>
+             <layout class="QVBoxLayout" name="verticalLayout_30">
               <item>
                <widget class="QWidget" name="widget_32" native="true">
                 <property name="minimumSize">
@@ -3472,6 +3509,22 @@
                  </size>
                 </property>
                 <layout class="QVBoxLayout" name="verticalLayout_32">
+                 <item>
+                  <spacer name="verticalSpacer_16">
+                   <property name="orientation">
+                    <enum>Qt::Vertical</enum>
+                   </property>
+                   <property name="sizeType">
+                    <enum>QSizePolicy::Expanding</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>20</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                  </spacer>
+                 </item>
                  <item>
                   <widget class="QLabel" name="label_37">
                    <property name="minimumSize">
@@ -3487,7 +3540,7 @@
                     </size>
                    </property>
                    <property name="text">
-                    <string>Load or Save Result to .firosolver</string>
+                    <string>Load or Save Result</string>
                    </property>
                    <property name="alignment">
                     <set>Qt::AlignCenter</set>
@@ -3559,6 +3612,22 @@
                     <string>Load Plot</string>
                    </property>
                   </widget>
+                 </item>
+                 <item>
+                  <spacer name="verticalSpacer_15">
+                   <property name="orientation">
+                    <enum>Qt::Vertical</enum>
+                   </property>
+                   <property name="sizeType">
+                    <enum>QSizePolicy::Fixed</enum>
+                   </property>
+                   <property name="sizeHint" stdset="0">
+                    <size>
+                     <width>20</width>
+                     <height>40</height>
+                    </size>
+                   </property>
+                  </spacer>
                  </item>
                 </layout>
                </widget>

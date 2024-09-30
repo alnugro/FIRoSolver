@@ -10,7 +10,7 @@ class bitshift():
     def __init__(self, out, wordlength, verbose=False):
         self.wordlength = wordlength
         self.out = out
-        self.N = 11
+        self.N = 1
         self.verbose = verbose
 
         # Input multiplexer
@@ -25,10 +25,10 @@ class bitshift():
 
         # Test case
         for i in range(1, self.N+1):
-            # self.solver.add(self.l[i-1][2])
+            self.solver.add(self.l[i-1][0])
             # self.solver.add(Not(self.l[i-1][3]))
 
-            self.solver.add(self.gamma[i-1][0])
+            self.solver.add(self.gamma[i-1][1])
             
 
         for i in range(1, self.N+1):
@@ -80,6 +80,6 @@ class bitshift():
 
 if __name__ == '__main__':
     hm = (25, 23, 11, 25, 75)
-    wordlength = 14 # min wordlength would be 2
+    wordlength = 6 # min wordlength would be 2
     bitshift_instance = bitshift(hm, wordlength, verbose=True)
     bitshift_instance.run()
