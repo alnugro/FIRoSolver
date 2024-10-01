@@ -342,19 +342,19 @@ class TestBench(QThread):
 if __name__ == '__main__':
     # Unpack the dictionary to corresponding variables
     test_run = {
-        8: {#L3.2
-            'filter_type': 0,
-            'order_current': 44,
-            'accuracy': 8,
-            'wordlength': 16,
+        8: {#L3
+            'filter_type': 1,
+            'order_current': 45,
+            'accuracy': 3,
+            'wordlength': 8,
             'gain_upperbound': 2.63,
             'gain_lowerbound': 1,
-            'coef_accuracy': 8,
-            'intW': 4,
+            'coef_accuracy': 5,
+            'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 2,
+            'adder_wordlength_ext': 3,
             'gain_wordlength': 6,
             'gain_intW': 2,
             'gurobi_thread': 16,
@@ -363,6 +363,7 @@ if __name__ == '__main__':
             'timeout': 0,
         }
     }
+
 
 
     test_key = 8

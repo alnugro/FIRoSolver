@@ -16,6 +16,7 @@ except:
     from solver_func import SolverFunc
 
 
+
 class BoundErrorHandler:
     def __init__(self, input_data
                  ):
@@ -75,9 +76,9 @@ class BoundErrorHandler:
         self.gain_res = None
 
         self.half_order = (self.order_upperbound // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2) - 1
-        self.ignore_error = 10 ** (-40 / 20) 
+        self.ignore_error = 10 ** (-60 / 20) 
 
-        self.plot_flag = False #turn this on to graph result
+        self.plot_flag = True #turn this on to graph result
         if self.plot_flag:
             self.fig, (self.axone, self.axtwo) = plt.subplots(2,1)
             

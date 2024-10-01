@@ -61,6 +61,10 @@ class FIRFilterGurobi:
         self.result_model = {}
         self.run_auto_thread = False
 
+
+
+
+
     def get_solver_func_dict(self):
         input_data_sf = {
         'filter_type': self.filter_type,
@@ -68,7 +72,7 @@ class FIRFilterGurobi:
         }
 
         return input_data_sf
-
+    
     def run_barebone(self, thread, minmax_option = None, h_zero_count = None):
         
 
@@ -213,6 +217,178 @@ class FIRFilterGurobi:
                     'satisfiability' : satisfiability,
                     'h_res' : self.h_res,
                     'max_h_zero' : h_zero_sum_res,
+                    'gain_res' : self.gain_res,
+                    
+                })
+
+            else:
+                target_result.update({
+                        'satisfiability' : satisfiability,
+                        'h_res' : self.h_res,
+                        'gain_res' : self.gain_res,
+                    })
+                
+            
+
+                      
+        else:
+            print("Gurobi: Unsatisfiable")
+            target_result.update({
+                    'satisfiability' : satisfiability,
+                })
+            
+        model.terminate()  # Dispose of the model
+        del model
+
+        print(target_result)
+
+        return target_result
+    
+    def run_barebone_aa(self, thread, minmax_option = None, h_zero_count = None):
+        
+
+        self.h_res = []
+        self.gain_res = 0
+        target_result = {}
+        self.order_current = int(self.order)
+        half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
+        
+        print("Gurobi solver called")
+        sf = SolverFunc(self.get_solver_func_dict())
+
+        # print(f"upperbound_lin: {self.upperbound_lin}")
+        # print(f"lowerbound_lin: {self.lowerbound_lin}")
+
+
+         # linearize the bounds
+        internal_upperbound_lin = [math.floor((f)*(10**self.coef_accuracy)*(2**(self.fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
+        internal_lowerbound_lin = [math.ceil((f)*(10**self.coef_accuracy)*(2**(self.fracW))) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
+        internal_ignore_lowerbound = self.ignore_lowerbound*(10**self.coef_accuracy)*(2**self.fracW)
+
+
+        print("Running Gurobi with the following parameters:")
+        print(f"thread: {thread}")
+        print(f"minmax_option: {minmax_option}")
+        print(f"h_zero_count: {h_zero_count}")
+        print(f"filter_type: {self.filter_type}")
+        print(f"order_current: {self.order}")
+        print(f"freqx_axis: {self.freqx_axis}")
+        print(f"upperbound_lin: {internal_upperbound_lin}")
+        print(f"lowerbound_lin: {internal_lowerbound_lin}")
+        print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
+        print(f"gain_upperbound: {self.gain_upperbound}")
+        print(f"gain_lowerbound: {self.gain_lowerbound}")
+        print(f"wordlength: {self.wordlength}")
+        print(f"fracW: {self.fracW}")
+
+        model = gp.Model()
+        if self.run_auto_thread == False:
+            model.setParam('Threads', thread)
+            
+        model.setParam('OutputFlag', 0)
+
+
+        h = [[model.addVar(vtype=GRB.BINARY, name=f'h_{a}_{w}') for w in range(self.wordlength)] for a in range(half_order + 1)]
+        gain = model.addVar(vtype=GRB.CONTINUOUS, lb=self.gain_lowerbound, ub=self.gain_upperbound, name="gain")
+
+
+
+        for omega in range(len(self.freqx_axis)):
+            if np.isnan(internal_lowerbound_lin[omega]):
+                continue
+
+            h_sum_temp = 0
+
+            for m in range(half_order+1):
+                cm = sf.cm_handler(m, self.freqx_axis[omega])
+                for w in range(self.wordlength):
+                    if w==self.wordlength-1:
+                        cm_word_prod= int(cm*(10** self.coef_accuracy)*(-1*(2**w)))
+                    else: cm_word_prod= int(cm*(10** self.coef_accuracy)*(2**w))
+                    h_sum_temp += h[m][w]*cm_word_prod
+
+            model.update()
+            # print(f"sum temp is{h_sum_temp}")
+            model.addConstr(h_sum_temp <= gain * internal_upperbound_lin[omega])
+            
+            
+            if internal_lowerbound_lin[omega] < internal_ignore_lowerbound:
+                model.addConstr(h_sum_temp >= gain * -internal_upperbound_lin[omega])
+            else:
+                model.addConstr(h_sum_temp >= gain * internal_lowerbound_lin[omega])
+
+        if minmax_option == 'try_h_zero_count':
+            model.setObjective(0, GRB.MINIMIZE)
+            if h_zero_count == None:
+                raise TypeError("Gurobi: h_zero_count in Barebone cant be empty when try_h_zero_count is chosen")
+
+            h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+            h_zero_sum = 0
+            for m in range(half_order + 1):
+                for w in range(self.wordlength):
+                    model.addGenConstrIndicator(h_zero[m], True, h[m][w] == 0)
+                h_zero_sum += h_zero[m]
+            model.addConstr(h_zero_sum >= h_zero_count)
+
+        elif minmax_option == 'find_max_zero':
+            h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+            h_zero_sum = 0
+            for m in range(half_order + 1):
+                for w in range(self.wordlength):
+                    model.addGenConstrIndicator(h_zero[m], True, h[m][w] == 0)
+                h_zero_sum += h_zero[m]
+            model.setObjective(h_zero_sum, GRB.MAXIMIZE)
+            
+        else:
+            model.setObjective(0, GRB.MINIMIZE)
+
+
+
+            
+        
+        print("Gurobi: Barebone running")
+        model.optimize()
+
+        satisfiability = 'unsat'
+
+        if model.status == GRB.OPTIMAL:
+            satisfiability = 'sat'
+
+            for m in range(half_order + 1):
+                fir_coef = 0
+                for w in range(self.wordlength):
+                    # Evaluate the boolean value from the model
+                    bool_value = 1 if h[m][w].X > 1 else 0
+                    
+                    # Convert boolean to integer (0 or 1) and calculate the term
+                    if w==self.wordlength-1:
+                        fir_coef += -2**(w-self.fracW)  * (1 if bool_value else 0)
+                    elif w < self.fracW:                   
+                        fir_coef += 2**(-1*(self.fracW-w)) * (1 if bool_value else 0)
+                    else:
+                        fir_coef += 2**(w-self.fracW) * (1 if bool_value else 0)
+                
+                self.h_res.append(fir_coef)
+            print("FIR Coeffs calculated: ",self.h_res)
+
+            self.gain_res=gain.x
+            #print("gain Coeffs: ", self.gain_res)
+            if minmax_option == 'try_h_zero_count':
+                target_result.update({
+                        'satisfiability' : satisfiability,
+                        'h_res' : self.h_res,
+                        'gain_res' : self.gain_res,
+                    })
+            elif minmax_option == 'find_max_zero':
+                #asign h_zero value
+                h_zero_sum_res= 0
+                for m in range(half_order + 1):
+                    h_zero_sum_res += h_zero[m].X
+                target_result.update({
+                    'satisfiability' : satisfiability,
+                    'h_res' : self.h_res,
+                    'max_h_zero' : h_zero_sum_res,
+                    'gain_res' : self.gain_res,
                     
                 })
 
@@ -309,6 +485,7 @@ class FIRFilterGurobi:
         print(f"Gurobi barebone_real: {minmax_option}")
                 
         if minmax_option == 'find_max_zero':
+            print(minmax_option)
             h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
             h_zero_sum = 0
             for m in range(half_order + 1):
@@ -359,8 +536,20 @@ class FIRFilterGurobi:
 
             elif minmax_option == 'minimize_h_without_zero':
                 model.setObjective(h[h_target], GRB.MINIMIZE)
+        
+        elif minmax_option == 'try_h_zero_count':
+            model.setObjective(0, GRB.MINIMIZE)
+            if h_zero_count == None:
+                raise TypeError("Gurobi: h_zero_count in Barebone cant be empty when try_h_zero_count is chosen")
 
-        elif minmax_option == None:
+            h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+            h_zero_sum = 0
+            for m in range(half_order + 1):
+                model.addGenConstrIndicator(h_zero[m], True, h[m] == 0)
+                h_zero_sum += h_zero[m]
+            model.addConstr(h_zero_sum >= h_zero_count)
+
+        else:
             model.setObjective(0, GRB.MINIMIZE)
 
 
@@ -388,6 +577,8 @@ class FIRFilterGurobi:
                     'satisfiability' : satisfiability,
                     'h_res' : self.h_res,
                     'max_h_zero' : h_zero_sum_res,
+                    'gain_res' : self.gain_res,
+
                 })
 
             elif minmax_option == 'find_min_gain':
@@ -401,6 +592,7 @@ class FIRFilterGurobi:
                 target_result.update({
                     'satisfiability' : satisfiability,
                     'target_h_res' : h[h_target].X,
+                    'gain_res' : self.gain_res,
                 })
             elif minmax_option == 'maximize_h_without_zero' or minmax_option == 'minimize_h_without_zero':
                  target_result.update({
@@ -540,14 +732,23 @@ class FIRFilterGurobi:
         alpha = [[model.addVar(vtype=GRB.BINARY, name=f'alpha_{i}_{a}') for a in range(i)] for i in range(1, self.adder_count + 1)]
         beta = [[model.addVar(vtype=GRB.BINARY, name=f'beta_{i}_{a}') for a in range(i)] for i in range(1, self.adder_count + 1)]
 
-        # c0,w is always 0 except at index fracW
-        for w in range(self.fracW + 1, self.adder_wordlength):
+        # # c0,w is always 0 except at index fracW
+        # for w in range(self.fracW + 1, self.adder_wordlength):
+        #     model.addConstr(c[0][w] == 0)
+
+        # for w in range(self.fracW):
+        #     model.addConstr(c[0][w] == 0)
+
+        # model.addConstr(c[0][self.fracW] == 1)
+
+         # c0,w is always 0 except at 0 so input
+        for w in range(1, self.adder_wordlength):
             model.addConstr(c[0][w] == 0)
 
-        for w in range(self.fracW):
-            model.addConstr(c[0][w] == 0)
+        model.addConstr(c[0][0] == 1)
 
-        model.addConstr(c[0][self.fracW] == 1)
+
+
 
         # Bound ci,0 to be an odd number
         for i in range(1, self.adder_count + 1):
@@ -1015,7 +1216,7 @@ if __name__ == "__main__":
     # Test inputs
     filter_type = 0
     order_current = 16
-    accuracy = 2
+    accuracy = 1
     wordlength = 14
     gain_upperbound = 6
     gain_lowerbound = 1
@@ -1036,11 +1237,11 @@ if __name__ == "__main__":
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(space))
-    upper_half_point = int(0.6*(space))
+    lower_half_point = int(0.3*(space))
+    upper_half_point = int(0.5*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 5
+    freq_upper[0:lower_half_point] = 0.5
     freq_lower[0:lower_half_point] = 0
 
     freq_upper[upper_half_point:end_point] = -20
@@ -1076,42 +1277,42 @@ if __name__ == "__main__":
                  intW,
                  )
             
-    gurobi_thread = 6
+    gurobi_thread = 15
     presolve = True
     presolve_result = {}
 
-    if presolve:
-        half_order = (order_current // 2) if filter_type == 0 or filter_type == 2 else (order_current // 2) - 1
+    # if presolve:
+    #     half_order = (order_current // 2) if filter_type == 0 or filter_type == 2 else (order_current // 2) - 1
 
 
-        target_result = fir_filter.run_barebone(gurobi_thread, 'find_max_zero')
-        max_h_zero = target_result['max_h_zero']
+    #     target_result = fir_filter.run_barebone(gurobi_thread, 'find_max_zero')
+    #     max_h_zero = target_result['max_h_zero']
 
-        target_result = fir_filter.run_barebone_real(gurobi_thread, 'find_min_gain',max_h_zero, None)
-        min_gain = target_result['min_gain']
+    #     target_result = fir_filter.run_barebone_real(gurobi_thread, 'find_min_gain',max_h_zero, None)
+    #     min_gain = target_result['min_gain']
 
     
-        h_max = []
-        h_min = []
-        for m in range(half_order + 1):
-            target_result_max = fir_filter.run_barebone_real(gurobi_thread, 'maximize_h',max_h_zero, m)
-            target_result_min = fir_filter.run_barebone_real(gurobi_thread, 'minimize_h',max_h_zero, m)
-            h_max.append(target_result_max['target_h_res'])
-            h_min.append(target_result_min['target_h_res'])
+    #     h_max = []
+    #     h_min = []
+    #     for m in range(half_order + 1):
+    #         target_result_max = fir_filter.run_barebone_real(gurobi_thread, 'maximize_h',max_h_zero, m)
+    #         target_result_min = fir_filter.run_barebone_real(gurobi_thread, 'minimize_h',max_h_zero, m)
+    #         h_max.append(target_result_max['target_h_res'])
+    #         h_min.append(target_result_min['target_h_res'])
             
 
-        presolve_result.update({
-                'max_zero' : max_h_zero,
-                'min_gain' : min_gain,
-                'hmax' : h_max,
-                'hmin' : h_min,
-            })
+    #     presolve_result.update({
+    #             'max_zero' : max_h_zero,
+    #             'min_gain' : min_gain,
+    #             'hmax' : h_max,
+    #             'hmin' : h_min,
+    #         })
         
-        print(presolve_result)
-    # Run solver
-    target_result = fir_filter.runsolver(0,presolve_result,'try_max_h_zero_count',15, 0)
+    #     print(presolve_result)
+    # # Run solver
+    # target_result = fir_filter.runsolver(0,presolve_result,'try_max_h_zero_count',2, 0)
 
-    # target_result = fir_filter.run_barebone(0,None,None)
+    target_result = fir_filter.run_barebone(0,None,None)
     # target_result = fir_filter.run_barebone(1,'minimize_h',None, 0)
     
     # target_result = fir_filter.run_barebone_real(0,None)

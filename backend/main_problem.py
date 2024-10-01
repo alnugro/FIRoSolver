@@ -131,42 +131,44 @@ class MainProblem:
             self.intW)
         
         
-        #binary search to find the minimum adder count
-        low = 0
-        high = presolve_result['max_adderm']
-        iteration = 1
+        #iteration search to find the minimum adder count
+        
+        iteration = presolve_result['min_adderm']
         best_adderm = -1  # Default value if no 'sat' is found
         target_result = None
         target_result_best = None
-        print(f"presolve_result {presolve_result['max_adderm_without_zero']}")
+        print(f"presolve_result min adderm {presolve_result['min_adderm']}")
 
-        while low <= high:            
+        while True:            
             print(f"iteration: {iteration}")
-            iteration += 1
+            
         
-            mid = (low + high) // 2
             max_h_zero = presolve_result['max_zero']
-            print(f"checking mid: {mid}")
-            target_result, satisfiability_loc, _ = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'try_max_h_zero_count' ,mid, max_h_zero)
+            print(f"checking adderm of: {iteration}")
+            target_result, satisfiability_loc, _ = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'try_max_h_zero_count' ,iteration, max_h_zero)
 
             if satisfiability_loc == 'unsat':
-                low = mid + 1
+                iteration += 1
+                if iteration > presolve_result['min_adderm'] * 2 * self.order_upperbound: #if iteration bigger than this, something is definitely wrong
+                    break
 
             elif satisfiability_loc == 'sat':
                 target_result_best = target_result
-                best_adderm = mid  # Update max_zero to the current 'sat' index
-                high = mid - 1
+                best_adderm = iteration  # Update max_adderm to the current 'sat' index
+                break
             else:
                 raise TypeError("find_best_adder_s: Problem should be either sat or unsat, this should never happen contact developer")
         
         print(f"max iteration: {iteration}")
 
         if best_adderm == -1:
-            print(f"presolve_result {presolve_result['max_adderm_without_zero']}")
-
+            print(f"presolve_result {presolve_result['min_adderm']}")
             raise RuntimeError("Somehow cannot find any solution to all the multiplier adder count: unsat")
 
         return target_result_best, best_adderm, max_h_zero
+    
+
+
     
     def find_best_adder_m(self, presolve_result):
         gurobi_instance = FIRFilterGurobi(
@@ -186,43 +188,42 @@ class MainProblem:
             self.coef_accuracy,
             self.intW)
         
-
-        #binary search to find the minimum adder count
-        low = 0 
-        high = presolve_result['max_adderm_without_zero']
-        iteration = 1
+        
+        #iteration search to find the minimum adder count
+        
+        iteration = presolve_result['min_adderm_without_zero']
         best_adderm = -1  # Default value if no 'sat' is found
         target_result = None
         target_result_best = None
-        h_zero_best = None
+        print(f"presolve_result min adderm {presolve_result['min_adderm_without_zero']}")
 
-        while low <= high:            
+        while True:            
             print(f"iteration: {iteration}")
-            iteration += 1
-
-            mid = (low + high) // 2
-
-            print(f"checking mid: {mid}")
-            target_result, satisfiability_loc ,h_zero_loc = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'find_max_zero' ,mid)
+            
+        
+            max_h_zero = presolve_result['max_zero']
+            print(f"checking adderm of: {iteration}")
+            target_result, satisfiability_loc ,h_zero_loc = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'find_max_zero' ,iteration)
 
             if satisfiability_loc == 'unsat':
-                low = mid + 1
+                iteration += 1
+                if iteration > presolve_result['min_adderm'] * 2 * self.order_upperbound: #if iteration bigger than this, something is definitely wrong
+                    break
 
             elif satisfiability_loc == 'sat':
                 target_result_best = target_result
-                best_adderm = mid  # Update max_zero to the current 'sat' index
-                high = mid - 1
-                h_zero_best = h_zero_loc
+                best_adderm = iteration  # Update max_adderm to the current 'sat' index
+                break
             else:
                 raise TypeError("find_best_adder_s: Problem should be either sat or unsat, this should never happen contact developer")
         
         print(f"max iteration: {iteration}")
 
         if best_adderm == -1:
-            print(f"presolve_result {presolve_result['max_adderm_without_zero']}")
+            print(f"presolve_result {presolve_result['min_adderm']}")
             raise RuntimeError("Somehow cannot find any solution to all the multiplier adder count: unsat")
 
-        return target_result_best, best_adderm, h_zero_best
+        return target_result_best, best_adderm, max_h_zero
     
     def deep_search(self,presolve_result ,input_data_dict):
         gurobi_instance = FIRFilterGurobi(

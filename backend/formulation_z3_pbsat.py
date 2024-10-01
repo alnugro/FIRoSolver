@@ -454,6 +454,11 @@ class FIRFilterZ3:
 
         solver.add(c[0][self.fracW])
 
+        # # c0,w is always 0 except 1
+        # for w in range(1, self.adder_wordlength):
+        #     solver.add(Not(c[0][w]))
+        # solver.add(c[0][self.fracW])
+
         # bound ci,0 to be odd number
         for i in range(1, self.max_adder + 1):
             solver.add(c[i][0])
