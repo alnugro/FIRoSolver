@@ -132,7 +132,8 @@ class MainProblem:
         
         
         #iteration search to find the minimum adder count
-        
+        max_iter = presolve_result['min_adderm'] * 4 * self.order_upperbound if presolve_result['min_adderm'] != 0 else 5 * self.order_upperbound
+
         iteration = presolve_result['min_adderm']
         best_adderm = -1  # Default value if no 'sat' is found
         target_result = None
@@ -149,7 +150,7 @@ class MainProblem:
 
             if satisfiability_loc == 'unsat':
                 iteration += 1
-                if iteration > presolve_result['min_adderm'] * 2 * self.order_upperbound: #if iteration bigger than this, something is definitely wrong
+                if iteration > max_iter: #if iteration bigger than this, something is definitely wrong
                     break
 
             elif satisfiability_loc == 'sat':
@@ -188,7 +189,7 @@ class MainProblem:
             self.coef_accuracy,
             self.intW)
         
-        
+        max_iter = presolve_result['min_adderm'] * 4 * self.order_upperbound if presolve_result['min_adderm'] != 0 else 5 * self.order_upperbound
         #iteration search to find the minimum adder count
         
         iteration = presolve_result['min_adderm_without_zero']
@@ -207,7 +208,7 @@ class MainProblem:
 
             if satisfiability_loc == 'unsat':
                 iteration += 1
-                if iteration > presolve_result['min_adderm'] * 2 * self.order_upperbound: #if iteration bigger than this, something is definitely wrong
+                if iteration > max_iter: #if iteration bigger than this, something is definitely wrong
                     break
 
             elif satisfiability_loc == 'sat':

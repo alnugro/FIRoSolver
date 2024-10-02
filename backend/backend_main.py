@@ -176,7 +176,6 @@ class SolverBackend():
         adder_s = self.half_order - presolve_result['max_zero'] - 1
         total_adder = adder_s + best_adderm
         print(f"self.half_order {self.half_order}")
-        print(f"i ran here")
 
         # print(f"max_zero {presolve_result['max_zero']}")
         # print(f"total_adder {total_adder}")
@@ -292,7 +291,7 @@ class SolverBackend():
             presolve_result = presolver.run_presolve_z3_pysat()
         
         if presolve_result['hmax'] != None:
-            min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'],False)
+            min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'], False)
             min_adderm_without_zero = presolver.min_adderm_finder(presolve_result['hmax_without_zero'],presolve_result['hmin_without_zero'],False)
             presolve_result.update({
                 'min_adderm' : min_adderm,
@@ -520,23 +519,25 @@ if __name__ == "__main__":
 
     # # backend.solver_presolve()
     # # backend.error_prediction()
-    backend.gurobi_test()
+    # backend.gurobi_test()
 
-    # #start presolve
-    # presolve_result = backend.solver_presolve()
-    # target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
-    #     # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
+    #start presolve
+    presolve_result = backend.solver_presolve()
+    target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
+        # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
     
-    # while True:
-    #     leak_flag = backend.result_validator(target_result['h_res'],target_result['gain'])
+    while True:
+        leaks, leaks_mag = backend.result_validator(target_result['h_res'],target_result['gain'])
         
-    #     if leak_flag:
-    #         target_result, satisfiability = backend.solving_result_barebone(presolve_result,best_adderm,adder_s_h_zero_best)
-    #         if satisfiability == 'unsat':
-    #             print("problem is unsat from asserting the leak to the problem")
-    #             break
-    #     else:
-    #         break
+        if leaks:
+            print("leak_flag")
+
+            target_result, satisfiability = backend.solving_result_barebone(presolve_result,best_adderm,adder_s_h_zero_best)
+            if satisfiability == 'unsat':
+                print("problem is unsat from asserting the leak to the problem")
+                break
+        else:
+            break
 
         
     # #test main problem

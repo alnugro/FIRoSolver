@@ -487,7 +487,7 @@ class Presolver:
         
         return pysat_instance
     
-    def min_adderm_finder(self,h_res_max ,h_res_min = None, no_max_zero = False):
+    def min_adderm_finder(self,h_res_max ,h_res_min = None, no_gurobi = False):
         min_adderm = 0
         csd_min = 100000
         r2b = Rat2bool()
@@ -502,25 +502,26 @@ class Presolver:
                     csd_min = csd_count
         
         
-        if no_max_zero:
+        if no_gurobi:
             min_adderm = csd_min
-            min_adderm = int(min_adderm//2) #just to be safe half it
+            min_adderm = int(min_adderm) #just to be safe half it
             if csd_min == 100000: #if somehow all values are zeroes
                 csd_min = 0
             return min_adderm
         
-        h_res_csd = r2b.frac2csd(h_res_min, self.wordlength, self.wordlength-self.intW)
-        for csd in h_res_csd:
+        h_res_csd_min= r2b.frac2csd(h_res_min, self.wordlength, self.wordlength-self.intW)
+        for csd in h_res_csd_min:
             csd_count = 0
             for bin in csd:
                 if bin!=0:
                     csd_count +=1
+
             if csd_count != 0:
                 if csd_count < csd_min:
                     csd_min = csd_count
         
         min_adderm = csd_min
-        min_adderm = int(min_adderm//2)
+        min_adderm = int(min_adderm)
         if csd_min == 100000: #if somehow all values are zeroes
             csd_min = 0
         print(f"min_adderm_ {min_adderm}")

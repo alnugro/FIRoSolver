@@ -1,8 +1,4 @@
-from pebble import ProcessPool, ProcessExpired, ThreadPool
-from concurrent.futures import TimeoutError, CancelledError, wait, ALL_COMPLETED
-import traceback
-import time
-import copy
+
 import numpy as np
 
 from solver_func import SolverFunc
@@ -143,21 +139,21 @@ class QuickCheck:
     
 
 if __name__ == '__main__':
-     # Unpack the dictionary to corresponding variables
+    # Unpack the dictionary to corresponding variables
     test_run = {
         1: {#S1
             'filter_type': 1,
             'order_current': 29,
             'accuracy': 3,
-            'wordlength': 10,
+            'wordlength': 11,
             'gain_upperbound': 2.5,
             'gain_lowerbound': 1,
-            'coef_accuracy': 5,
+            'coef_accuracy': 3,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 2,
+            'adder_wordlength_ext': 4,
             'gain_wordlength': 6,
             'gain_intW': 2,
             'gurobi_thread': 16,
@@ -173,7 +169,7 @@ if __name__ == '__main__':
             'filter_type': 1,
             'order_current': 55,
             'accuracy': 3,
-            'wordlength': 11,
+            'wordlength': 12,
             'gain_upperbound': 10.5,
             'gain_lowerbound': 1,
             'coef_accuracy': 5,
@@ -181,7 +177,7 @@ if __name__ == '__main__':
             'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 2,
+            'adder_wordlength_ext': 4,
             'gain_wordlength': 9,
             'gain_intW': 5,
             'gurobi_thread': 16,
@@ -197,15 +193,15 @@ if __name__ == '__main__':
             'filter_type': 0,
             'order_current': 64,
             'accuracy': 3,
-            'wordlength': 12,
+            'wordlength': 14,
             'gain_upperbound': 4.2,
             'gain_lowerbound': 1,
             'coef_accuracy': 6,
-            'intW': 2,
+            'intW': 4,
             'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 2,
+            'adder_wordlength_ext': 4,
             'gain_wordlength': 2,
             'gain_intW': 4,
             'gurobi_thread': 16,
@@ -219,25 +215,25 @@ if __name__ == '__main__':
         },
         4: {#X1
             'filter_type': 0,
-            'order_current': 20,
-            'accuracy': 1,
-            'wordlength': 12,
+            'order_current': 16,
+            'accuracy': 4,
+            'wordlength': 13,
             'gain_upperbound': 1.7,
             'gain_lowerbound': 1,
-            'coef_accuracy': 5,
-            'intW': 4,
-            'adder_count': 0,
+            'coef_accuracy': 6,
+            'intW': 2,
+            'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 2,
+            'adder_wordlength_ext': 4,
             'gain_wordlength': 6,
-            'gain_intW': 3,
-            'gurobi_thread': 10,
+            'gain_intW': 2,
+            'gurobi_thread': 16,
             'pysat_thread': 0,
             'z3_thread': 0,
             'timeout': 0,
-            'passband_error':  0.001,
-            'stopband_error':  0.001,
+            'passband_error':  0.0001,
+            'stopband_error':  0.0001,
             'lower_cutoff': 0.2,
             'upper_cutoff': 0.8,
         },
@@ -245,7 +241,7 @@ if __name__ == '__main__':
             'filter_type': 0,
             'order_current': 18,
             'accuracy': 6,
-            'wordlength': 7,
+            'wordlength': 9,
             'gain_upperbound': 2.65,
             'gain_lowerbound': 1,
             'coef_accuracy': 6,
@@ -255,7 +251,7 @@ if __name__ == '__main__':
             'avail_dsp': 0,
             'adder_wordlength_ext': 5,
             'gain_wordlength': 6,
-            'gain_intW': 2,
+            'gain_intW': 3,
             'gurobi_thread': 16,
             'pysat_thread': 0,
             'z3_thread': 0,
@@ -269,7 +265,7 @@ if __name__ == '__main__':
             'filter_type': 1,
             'order_current': 31,
             'accuracy': 4,
-            'wordlength': 11,
+            'wordlength': 13,
             'gain_upperbound': 2.6,
             'gain_lowerbound': 1,
             'coef_accuracy': 6,
@@ -277,7 +273,7 @@ if __name__ == '__main__':
             'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 2,
+            'adder_wordlength_ext': 4,
             'gain_wordlength': 6,
             'gain_intW': 2,
             'gurobi_thread': 16,
@@ -293,7 +289,7 @@ if __name__ == '__main__':
             'filter_type': 1,
             'order_current': 41,
             'accuracy': 3,
-            'wordlength': 11,
+            'wordlength': 14,
             'gain_upperbound': 2.65,
             'gain_lowerbound': 1,
             'coef_accuracy': 6,
@@ -301,7 +297,7 @@ if __name__ == '__main__':
             'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 2,
+            'adder_wordlength_ext': 4,
             'gain_wordlength': 6,
             'gain_intW': 2,
             'gurobi_thread': 16,
@@ -314,7 +310,7 @@ if __name__ == '__main__':
             'upper_cutoff': 0.5,
         }
     }
-    test_key = 4
+    test_key = 3
     print(test_run[test_key])
     # Accessing the dictionary for the test_key 1 and assigning variables
     filter_type = test_run[test_key]['filter_type']
@@ -434,12 +430,20 @@ if __name__ == '__main__':
     }
 
     quickie = QuickCheck(input_data)
-    # target_result2,_= quickie.check_sat_real('find_max_zero', 0)
+    # target_result,_= quickie.check_sat_real('find_max_zero', 0)
     
+    # while True:
+    #     target_result2,_ = quickie.check_sat('try_h_zero_count',target_result['max_h_zero'])
+    #     if target_result2['satisfiability'] == 'unsat':
+    #         print(quickie.wordlength)
+    #         break
+    #     else:
+    #         quickie.wordlength -= 1
 
-    target_result2,_ = quickie.check_sat('find_max_zero',0)
-    # adder_s = (quickie.half_order - target_result2['max_h_zero'] -1)*2
-    # print(adder_s)
+
+    target_result2,_ = quickie.check_sat('findax_zero',0)
+    adder_s = (quickie.half_order - target_result2['max_h_zero'] -1)*2
+    print(adder_s)
     print(target_result2['satisfiability'])
     backend = SolverBackend(input_data)
     backend.result_validator(target_result2['h_res'],target_result2['gain_res'])

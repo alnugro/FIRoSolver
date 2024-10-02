@@ -354,7 +354,7 @@ if __name__ == '__main__':
             'adder_count': None,
             'adder_depth': 0,
             'avail_dsp': 0,
-            'adder_wordlength_ext': 3,
+            'adder_wordlength_ext': 4,
             'gain_wordlength': 6,
             'gain_intW': 2,
             'gurobi_thread': 16,
