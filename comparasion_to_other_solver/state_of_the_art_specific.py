@@ -1,7 +1,5 @@
 import numpy as np
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QPushButton, QSlider, QComboBox, QSpinBox, QTextEdit, QTableWidget, QTableWidgetItem, QWidget, QFrame
-from PyQt6.QtCore import QThread, pyqtSignal, Qt
-from concurrent.futures import TimeoutError  # Correct import for TimeoutError
+
 import sys
 import os
 import json
@@ -18,14 +16,10 @@ except:
 
 
 
-class TestBench(QThread):
-    log_message = pyqtSignal(str)
-    exception_message = pyqtSignal(str)
+class TestBench():
     # presolve_done = pyqtSignal(tuple)
 
     def __init__(self ,initial_solver_input, test_key):
-        super().__init__()
-
         # Explicit declaration of instance variables with default values (if applicable)
         self.filter_type = None
         self.order_upperbound = None
