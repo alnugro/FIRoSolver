@@ -6,18 +6,20 @@ from pebble import ProcessPool
 from concurrent.futures import TimeoutError  # Correct import for TimeoutError
 import multiprocessing
 import math
+import sys
 try:
     from .solver_func import SolverFunc
     from .bound_error_handler import BoundErrorHandler
     from .solver_presolve import Presolver
-    from .error_predictor import ErrorPredictor
-    from .main_problem import MainProblem
+    from .solver_error_predictor import ErrorPredictor
+    from .solver_main_problem import MainProblem
 except:
+
     from solver_func import SolverFunc
     from bound_error_handler import BoundErrorHandler
     from solver_presolve import Presolver
-    from error_predictor import ErrorPredictor
-    from main_problem import MainProblem
+    from solver_error_predictor import ErrorPredictor
+    from solver_main_problem import MainProblem
 
 
 
@@ -82,7 +84,7 @@ class SolverBackend():
         })
 
         self.end_result = None
-        self.half_order = (self.order_upperbound // 2)+1 if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2)
+        self.half_order = (self.order_upperbound // 2) + 1 if self.filter_type == 0 or self.filter_type == 2 else ((self.order_upperbound + 1) / 2)
 
 
         self.xdata_temp = None
@@ -98,11 +100,13 @@ class SolverBackend():
         err_handler = ErrorPredictor(self.input_data)
         upperbound_lin_from_err, lowerbound_lin_from_err, h_res, gain_res= err_handler.run_error_prediction()
         
-        if err_handler.error_predictor_canceled == False:
-            self.upperbound_lin = upperbound_lin_from_err
-            self.lowerbound_lin = lowerbound_lin_from_err
+        if err_handler.error_predictor_canceled:
+            return
         
-        #flag that some of the upper-and lowerbounds becomes equal, so strict constraint
+        self.upperbound_lin = upperbound_lin_from_err
+        self.lowerbound_lin = lowerbound_lin_from_err
+        
+        #flag that some of the upper-and lowerbounds becomes equal, so a strict constraint
         if err_handler.bound_too_small_flag:
             self.bound_too_small_flag = True
         
@@ -118,9 +122,6 @@ class SolverBackend():
         bound_patcher = BoundErrorHandler(self.input_data)
         leaks,leaks_mag = bound_patcher.leak_validator(h_res, gain_res)
 
-        # print(f"this is xdata before {len(self.xdata)}")
-        # print(f"this is upperbound_lin {len(self.upperbound_lin)}")
-        # print(f"this is lowerbound_lin {len(self.lowerbound_lin)}")
         h_res2 = []
         gain_res2 = 0
         if leaks:
@@ -158,12 +159,10 @@ class SolverBackend():
             print("no leaks found")
 
         #uncomment if you want to check the solution for the error prediction
-        bound_patcher2 = BoundErrorHandler(self.input_data)
-        leaks,leaks_mag = bound_patcher2.leak_validator(h_res2, gain_res2)
+        # bound_patcher2 = BoundErrorHandler(self.input_data)
+        # leaks,leaks_mag = bound_patcher2.leak_validator(h_res2, gain_res2)
 
     def find_best_adder_s(self, presolve_result):
-        
-        
         main = MainProblem(self.input_data)
         
         if self.gurobi_thread > 0:
@@ -174,14 +173,15 @@ class SolverBackend():
             target_result, best_adderm, adder_s_h_zero_best= main.find_best_adder_s_z3_paysat(presolve_result)
         
         adder_s = self.half_order - presolve_result['max_zero'] - 1
-        total_adder = adder_s + best_adderm
+        total_adder = (2*adder_s) + best_adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + 1 + best_adderm
         print(f"self.half_order {self.half_order}")
 
-        # print(f"max_zero {presolve_result['max_zero']}")
-        # print(f"total_adder {total_adder}")
-        # print(f"h {target_result}")
-        # print(f"h {target_result['h_res']}")
-        # print(f"best_adderm {best_adderm}")
+        print(f"max_zero {presolve_result['max_zero']}")
+        print(f"total_adder {total_adder}")
+        print(f"h {target_result}")
+        print(f"h {target_result['h_res']}")
+        print(f"best_adderm {best_adderm}")
+
         target_result.update({
             'total_adder': total_adder,
             'adder_m':best_adderm,
@@ -199,17 +199,18 @@ class SolverBackend():
 
     def find_best_adder_m(self,presolve_result):
         main = MainProblem(self.input_data)
-        target_result, best_adderm,adderm_h_zero_best = main.find_best_adder_m(presolve_result)
+        target_result, best_adderm, adderm_h_zero_best = main.find_best_adder_m(presolve_result)
 
         adder_s = self.half_order - adderm_h_zero_best - 1
-        total_adder = adder_s + best_adderm
+        total_adder = (2 * adder_s) + best_adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + 1 + best_adderm
 
-        # print(f"self.half_order {self.half_order}")
-        # print(f"h_zero_best {adderm_h_zero_best}")
-        # print(f"h {target_result['h']}")
-        # print(f"h_res {target_result['h_res']}")
-        # print(f"total_adder {total_adder}")
-        # print(f"best_adderm {best_adderm}")
+        print(f"self.half_order {self.half_order}")
+        print(f"h_zero_best {adderm_h_zero_best}")
+        print(f"h {target_result['h']}")
+        print(f"h_res {target_result['h_res']}")
+        print(f"total_adder {total_adder}")
+        print(f"best_adderm {best_adderm}")
+
         target_result.update({
             'total_adder': total_adder,
             'adder_m':best_adderm,
@@ -230,7 +231,7 @@ class SolverBackend():
         adder_s = None
         if h_zero_best:
             adder_s = self.half_order - h_zero_best - 1
-            total_adder = adder_s + best_adderm
+            total_adder = (2*adder_s) - 1 + best_adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + best_adderm
 
         # print(f"self.half_order {self.half_order}")
         # print(f"h_zero_best {h_zero_best}")
@@ -261,7 +262,7 @@ class SolverBackend():
             target_result_best, satisfiability = main.try_asserted_z3_pysat(adderm,h_zero_count)
 
         adder_s = self.half_order - h_zero_count - 1
-        total_adder = adder_s + adderm
+        total_adder = (2*adder_s) - 1 + adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + adderm
         target_result_best.update({
             'total_adder': total_adder,
             'adder_m':adderm,
@@ -291,17 +292,17 @@ class SolverBackend():
             presolve_result = presolver.run_presolve_z3_pysat()
         
         if presolve_result['hmax'] != None:
-            min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'], False)
-            min_adderm_without_zero = presolver.min_adderm_finder(presolve_result['hmax_without_zero'],presolve_result['hmin_without_zero'],False)
+            # min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'], False)
+            # min_adderm_without_zero = presolver.min_adderm_finder(presolve_result['hmax_without_zero'],presolve_result['hmin_without_zero'],False)
             presolve_result.update({
-                'min_adderm' : min_adderm,
-                'min_adderm_without_zero' : min_adderm_without_zero,
+                'min_adderm' : 0,
+                'min_adderm_without_zero' : 0,
             })
         else:
-            max_adderm_without_zero = presolver.min_adderm_finder(presolve_result['h_res'], None ,True)
+            # min_adderm_without_zero = presolver.min_adderm_finder(presolve_result['h_res'], None ,True)
             presolve_result.update({
                 'min_adderm' : None,
-                'min_adderm_without_zero' : min_adderm_without_zero,
+                'min_adderm_without_zero' : 0,
             })
         
         
@@ -410,80 +411,79 @@ class SolverBackend():
     
 
 if __name__ == "__main__":
-     # Test inputs
+    # Test inputs
     filter_type = 0
     order_current = 20
-    accuracy = 3
-    wordlength = 14
-    gain_upperbound = 2
+    accuracy = 4
+    wordlength = 11
+    gain_upperbound = 1
     gain_lowerbound = 1
-    coef_accuracy = 6
-    intW = 4
+    coef_accuracy = 5
+    intW = 1
 
     adder_count = 4
-    adder_depth = 0
+    adder_depth = 1
     avail_dsp = 0
-    adder_wordlength_ext = 2
-    intW = 4
+    adder_wordlength_ext = 4
 
-    gain_wordlength = 6
-    gain_intW = 2
+    gain_wordlength = 13
+    gain_intW = 4
 
-    gurobi_thread = 10
+    gurobi_thread = 0
     pysat_thread = 0
-    z3_thread = 0
+    z3_thread = 10
 
     timeout = 0
 
+
+    passband_error = 0.071192
+    stopband_error = 0.071192
     space = order_current * accuracy * 50
     # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    freqx_axis = np.linspace(0, 1, space)
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(space))
-    upper_half_point = int(0.6*(space))
+    lower_half_point = int(0.3 * space)
+    upper_half_point = int(0.5 * space)
     end_point = space
 
-    freq_upper[0:lower_half_point] = 1
-    freq_lower[0:lower_half_point] = 0
+    freq_upper[0:lower_half_point] = 1 + passband_error
+    freq_lower[0:lower_half_point] = 1 - passband_error
 
-    freq_upper[upper_half_point:end_point] = -30
-    freq_lower[upper_half_point:end_point] = -1000
-
+    freq_upper[upper_half_point:end_point] = 0 + stopband_error
+    freq_lower[upper_half_point:end_point] = 0
 
     cutoffs_x = []
     cutoffs_upper_ydata = []
     cutoffs_lower_ydata = []
 
     cutoffs_x.append(freqx_axis[0])
-    cutoffs_x.append(freqx_axis[lower_half_point-1])
+    cutoffs_x.append(freqx_axis[lower_half_point - 1])
     cutoffs_x.append(freqx_axis[upper_half_point])
-    cutoffs_x.append(freqx_axis[end_point-1])
+    cutoffs_x.append(freqx_axis[end_point - 1])
 
     cutoffs_upper_ydata.append(freq_upper[0])
-    cutoffs_upper_ydata.append(freq_upper[lower_half_point-1])
+    cutoffs_upper_ydata.append(freq_upper[lower_half_point - 1])
     cutoffs_upper_ydata.append(freq_upper[upper_half_point])
-    cutoffs_upper_ydata.append(freq_upper[end_point-1])
+    cutoffs_upper_ydata.append(freq_upper[end_point - 1])
 
     cutoffs_lower_ydata.append(freq_lower[0])
-    cutoffs_lower_ydata.append(freq_lower[lower_half_point-1])
+    cutoffs_lower_ydata.append(freq_lower[lower_half_point - 1])
     cutoffs_lower_ydata.append(freq_lower[upper_half_point])
-    cutoffs_lower_ydata.append(freq_lower[end_point-1])
+    cutoffs_lower_ydata.append(freq_lower[end_point - 1])
 
+    # Beyond this bound, lowerbound will be ignored
+    ignore_lowerbound = -60
 
-    #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
-
-    #linearize the bound
-    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    # Linearize the bounds
+    upperbound_lin = np.copy(freq_upper)
+    lowerbound_lin = np.copy(freq_lower)
     ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
 
-    cutoffs_upper_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_upper_ydata]
-    cutoffs_lower_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_lower_ydata]
-
+    cutoffs_upper_ydata_lin = np.copy(cutoffs_upper_ydata)
+    cutoffs_lower_ydata_lin = np.copy(cutoffs_lower_ydata)
 
     input_data = {
         'filter_type': filter_type,
@@ -499,9 +499,9 @@ if __name__ == "__main__":
         'adder_count': adder_count,
         'adder_depth': adder_depth,
         'avail_dsp': avail_dsp,
-        'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
-        'gain_wordlength' : gain_wordlength,
-        'gain_intW' : gain_intW,
+        'adder_wordlength_ext': adder_wordlength_ext,  # This is extension, not the adder wordlength
+        'gain_wordlength': gain_wordlength,
+        'gain_intW': gain_intW,
         'gain_upperbound': gain_upperbound,
         'gain_lowerbound': gain_lowerbound,
         'coef_accuracy': coef_accuracy,
@@ -512,6 +512,10 @@ if __name__ == "__main__":
         'timeout': 0,
         'start_with_error_prediction': False,
         'solver_accuracy_multiplier': accuracy,
+        'deepsearch': True,
+        'patch_multiplier': 1,
+        'gurobi_auto_thread': False,
+        'seed': 0
     }
 
     # Create an instance of SolverBackend
@@ -521,7 +525,7 @@ if __name__ == "__main__":
     # # backend.error_prediction()
     # backend.gurobi_test()
 
-    #start presolve
+    # start presolve
     presolve_result = backend.solver_presolve()
     target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
         # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
@@ -538,6 +542,8 @@ if __name__ == "__main__":
                 break
         else:
             break
+    
+    print(target_result)
 
         
     # #test main problem

@@ -79,8 +79,7 @@ class BoundErrorHandler:
         self.ignore_error = 10 ** (-60 / 20) #gurobi feasibility accuracy 1e-6
 
         self.plot_flag = False #turn this on to graph result
-        if self.plot_flag:
-            self.fig, (self.axone, self.axtwo) = plt.subplots(2,1)
+        
             
 
 
@@ -114,30 +113,6 @@ class BoundErrorHandler:
             magnitude_response.append(np.abs(term_sum_exprs))
 
 
-
-        # self.h_res = h_res
-        # self.gain_res = gain_res
-        # # print("Result plotter called with higher accuracy check")
-        
-        # # Construct fir_coefficients from h_res
-        # fir_coefficients = np.concatenate((h_res[::-1], h_res[1:]))
-
-        # print(fir_coefficients)
-        # # print("FIR Coefficients in higher accuracy test", fir_coefficients)
-
-        # # Compute the FFT of the coefficients at higher resolution
-        # N = len(self.original_xdata)*2  # Use the original frequency resolution length for FFT
-        # frequency_response = np.fft.fft(fir_coefficients, N)
-        # frequencies = np.fft.fftfreq(N, d=1.0)[:N//2]  # Extract positive frequencies up to Nyquist
-
-        # Compute the magnitude response for positive frequencies
-        # magnitude_response = np.abs(frequency_response)[:N//2]
-        
-        # # Normalize frequencies to range from 0 to 1 for plotting
-        # omega = frequencies * 2 * np.pi
-        # normalized_omega = np.linspace(0, 1, len(magnitude_response))
-
-        # Initialize leak detection
         leaks = []
         leaks_mag = []
         continous_leak_count = 0
@@ -166,6 +141,7 @@ class BoundErrorHandler:
         # print(f"leaks {leaks}")
         
         if self.plot_flag:
+            self.fig, (self.axone, self.axtwo) = plt.subplots(2,1)
             # Plot the input bounds (using the original bounds, which are at higher accuracy)
             self.axone.scatter(self.xdata, np.array(self.upperbound_lin) * gain_res, color='r', s=20, picker=5, label="Upper Bound")
             self.axone.scatter(self.xdata, np.array(self.lowerbound_lin) * gain_res, color='b', s=20, picker=5, label="Lower Bound")
@@ -282,7 +258,127 @@ class BoundErrorHandler:
         return new_arr
 
         
+if __name__ == "__main__":
+   # Test inputs
+    filter_type = 0
+    order_current = 18
+    accuracy = 4
+    wordlength = 11
+    gain_upperbound = 1
+    gain_lowerbound = 1
+    coef_accuracy = 5
+    intW = 1
 
+    adder_count = 4
+    adder_depth = 0
+    avail_dsp = 0
+    adder_wordlength_ext = 4
+
+    gain_wordlength = 13
+    gain_intW = 4
+
+    gurobi_thread = 10
+    pysat_thread = 0
+    z3_thread = 0
+
+    timeout = 0
+
+
+    passband_error = 0.094922
+    stopband_error = 0.094922
+    space = order_current * accuracy * 50
+    # Initialize freq_upper and freq_lower with NaN values
+    freqx_axis = np.linspace(0, 1, space)
+    freq_upper = np.full(space, np.nan)
+    freq_lower = np.full(space, np.nan)
+
+    # Manually set specific values for the elements of freq_upper and freq_lower in dB
+    lower_half_point = int(0.3 * space)
+    upper_half_point = int(0.5 * space)
+    end_point = space
+
+    freq_upper[0:lower_half_point] = 1 + passband_error
+    freq_lower[0:lower_half_point] = 1 - passband_error
+
+    freq_upper[upper_half_point:end_point] = 0 + stopband_error
+    freq_lower[upper_half_point:end_point] = 0
+
+    cutoffs_x = []
+    cutoffs_upper_ydata = []
+    cutoffs_lower_ydata = []
+
+    cutoffs_x.append(freqx_axis[0])
+    cutoffs_x.append(freqx_axis[lower_half_point - 1])
+    cutoffs_x.append(freqx_axis[upper_half_point])
+    cutoffs_x.append(freqx_axis[end_point - 1])
+
+    cutoffs_upper_ydata.append(freq_upper[0])
+    cutoffs_upper_ydata.append(freq_upper[lower_half_point - 1])
+    cutoffs_upper_ydata.append(freq_upper[upper_half_point])
+    cutoffs_upper_ydata.append(freq_upper[end_point - 1])
+
+    cutoffs_lower_ydata.append(freq_lower[0])
+    cutoffs_lower_ydata.append(freq_lower[lower_half_point - 1])
+    cutoffs_lower_ydata.append(freq_lower[upper_half_point])
+    cutoffs_lower_ydata.append(freq_lower[end_point - 1])
+
+    # Beyond this bound, lowerbound will be ignored
+    ignore_lowerbound = -60
+
+    # Linearize the bounds
+    upperbound_lin = np.copy(freq_upper)
+    lowerbound_lin = np.copy(freq_lower)
+    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
+
+    cutoffs_upper_ydata_lin = np.copy(cutoffs_upper_ydata)
+    cutoffs_lower_ydata_lin = np.copy(cutoffs_lower_ydata)
+
+    input_data = {
+        'filter_type': filter_type,
+        'order_upperbound': order_current,
+        'original_xdata': freqx_axis,
+        'original_upperbound_lin': upperbound_lin,
+        'original_lowerbound_lin': lowerbound_lin,
+        'xdata': freqx_axis,
+        'upperbound_lin': upperbound_lin,
+        'lowerbound_lin': lowerbound_lin,
+        'ignore_lowerbound': ignore_lowerbound_lin,
+        'cutoffs_x': cutoffs_x,
+        'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
+        'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
+        'wordlength': wordlength,
+        'adder_count': adder_count,
+        'adder_depth': adder_depth,
+        'avail_dsp': avail_dsp,
+        'adder_wordlength_ext': adder_wordlength_ext,  # This is extension, not the adder wordlength
+        'gain_wordlength': gain_wordlength,
+        'gain_intW': gain_intW,
+        'gain_upperbound': gain_upperbound,
+        'gain_lowerbound': gain_lowerbound,
+        'coef_accuracy': coef_accuracy,
+        'intW': intW,
+        'gurobi_thread': gurobi_thread,
+        'pysat_thread': pysat_thread,
+        'z3_thread': z3_thread,
+        'timeout': 0,
+        'start_with_error_prediction': False,
+        'solver_accuracy_multiplier': accuracy,
+        'deepsearch': True,
+        'patch_multiplier': 1,
+        'gurobi_auto_thread': False,
+        'seed': 0
+    }
+
+    h_res = [208,144,52,-36,-32,0,0,0,0,0]
+
+    h_res = [h / 2**9 for h in h_res]
+
+    print(h_res)
+
+    gain_res = 1
+    leak_validator = BoundErrorHandler(input_data)
+    leak_validator.plot_flag = True
+    leaks,leaks_mag = leak_validator.leak_validator(h_res, gain_res)
 
 
 

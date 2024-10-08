@@ -3,6 +3,7 @@ from pysat.solvers import Solver
 import matplotlib.pyplot as plt
 import time
 import multiprocessing
+import math
 try:
     from .sat_variable_handler import VariableMapper
     from .pb2cnf import PB2CNF
@@ -43,6 +44,8 @@ class FIRFilterPysat:
 
         self.max_adder = adder_count
         self.wordlength = wordlength
+        self.weight_wordlength = self.wordlength + 2 #increase this if you need higher intW for the weights
+
         self.adder_wordlength = self.wordlength + adder_wordlength_ext # New adder wordlength for bitshifting
         
 
@@ -54,6 +57,7 @@ class FIRFilterPysat:
 
         self.gain_upperbound = gain_upperbound
         self.gain_lowerbound = gain_lowerbound
+
 
         self.ignore_lowerbound_lin = ignore_lowerbound
 
@@ -68,9 +72,12 @@ class FIRFilterPysat:
         }
 
         return input_data_sf
+    
 
 
-    def run_barebone(self, solver_id,h_zero_count= 0):
+    def run_barebone(self, solver_id, h_zero_count= 0):
+        if h_zero_count == None:
+            h_zero_count = 0
         self.h_res = []
         self.gain_res = 0
         self.model = []
@@ -105,7 +112,7 @@ class FIRFilterPysat:
             return var_mapper.int_to_var_name(var_int)
         
         top_var = var_mapper.max_int_value
-        pb2cnf = PB2CNF(top_var)
+        pb2cnf = PB2CNF(self.weight_wordlength, top_var)
         r2b = Rat2bool()
 
         solver_list = ['cadical103', 'cadical153','cadical195','glucose421','glucose41','minisat-gh','minisat22','lingeling','gluecard30','glucose30','gluecard41','maplesat']
@@ -209,7 +216,7 @@ class FIRFilterPysat:
 
             #generate cnf for upperbound
             filter_upper_pb_weights = filter_weights + gain_freq_upper_prod_weights
-            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.wordlength,self.fracW,True)
+            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.weight_wordlength,self.fracW,True)
 
             filter_upper_pb_literals = filter_literals + gain_upper_literals
 
@@ -224,7 +231,7 @@ class FIRFilterPysat:
             filter_lower_pb_weights = filter_weights + gain_freq_lower_prod_weights
     
 
-            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.wordlength,self.fracW,True)
+            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.weight_wordlength,self.fracW,True)
 
             filter_lower_pb_literals = filter_literals + gain_lower_literals
             
@@ -300,7 +307,7 @@ class FIRFilterPysat:
             return var_mapper.int_to_var_name(var_int)
         
         top_var = var_mapper.max_int_value
-        pb2cnf = PB2CNF(top_var)
+        pb2cnf = PB2CNF(self.weight_wordlength, top_var)
         r2b = Rat2bool()
 
         sf = SolverFunc(self.get_solver_func_dict())
@@ -410,7 +417,7 @@ class FIRFilterPysat:
 
             #generate cnf for upperbound
             filter_upper_pb_weights = filter_weights + gain_freq_upper_prod_weights
-            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.wordlength,self.fracW,True)
+            filter_upper_pb_weights = r2b.frac2round(filter_upper_pb_weights,self.weight_wordlength,self.fracW,True)
 
             filter_upper_pb_literals = filter_literals + gain_upper_literals
 
@@ -430,7 +437,7 @@ class FIRFilterPysat:
             filter_lower_pb_weights = filter_weights + gain_freq_lower_prod_weights
     
 
-            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.wordlength,self.fracW,True)
+            filter_lower_pb_weights = r2b.frac2round(filter_lower_pb_weights,self.weight_wordlength,self.fracW,True)
 
             filter_lower_pb_literals = filter_literals + gain_lower_literals
             
@@ -446,6 +453,7 @@ class FIRFilterPysat:
 
         # Bitshift SAT starts here
 
+
         # # c0,w is all 0 except 1, so input is 1
         # for w in range(self.fracW+1, self.adder_wordlength):
         #     solver.add_clause([-v2i(('c', 0, w))])
@@ -454,6 +462,8 @@ class FIRFilterPysat:
         #     solver.add_clause([-v2i(('c', 0, w))])
 
         # solver.add_clause([v2i(('c', 0, self.fracW))])
+
+        
 
         # c0,w is always 0 except at 0 so input is 1
         for w in range(1, self.adder_wordlength):
@@ -884,7 +894,7 @@ if __name__ == "__main__":
     gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
-    intW = 6
+    intW = 4
 
     adder_count = 6
     adder_depth = 2
@@ -904,7 +914,7 @@ if __name__ == "__main__":
     upper_half_point = int(0.6*(space))
     end_point = space
 
-    freq_upper[0:lower_half_point] = 6
+    freq_upper[0:lower_half_point] = 20
     freq_lower[0:lower_half_point] = 0
 
     freq_upper[upper_half_point:end_point] = -10
@@ -940,5 +950,5 @@ if __name__ == "__main__":
                  )
 
     # Run solver and plot result
-    fir_filter.runsolver(0,5)
-    # fir_filter.run_barebone(0,5)
+    # fir_filter.runsolver(0,5,0)
+    fir_filter.run_barebone(0,5)

@@ -386,6 +386,9 @@ class ShiftLeft(Module):
         reason = "" if valid else "Shift modules must have exactly 1 input!"
         return valid, reason
 
+    def shift_length(self):
+        return self.shift_length
+
 
 class ShiftRight(Module):
     def __init__(self, input_ranges, data_type, name, shift_length) -> None:
@@ -411,6 +414,9 @@ class ShiftRight(Module):
         valid = len(self.input_modules) == 1 and 0 in self.input_modules
         reason = "" if valid else "Shift modules must have exactly 1 input!"
         return valid, reason
+    
+    def shift_length(self):
+        return self.shift_length
 
 
 class TruncateMSBs(Module):

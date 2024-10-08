@@ -97,6 +97,7 @@ class DraggableLine(QMainWindow):
         # Generate initial data
         self.x = np.linspace(0, 10, 100)
         self.y = np.sin(self.x)
+        self.y[4:5] = np.nan   
         self.save_state()
 
         # Plot the data
@@ -205,6 +206,8 @@ class DraggableLine(QMainWindow):
         y = event.ydata
         if x is None or y is None:
             return
+        if np.isnan(x) or np.isnan(y):
+            return
         
         if move_only:
             idx = np.argmin(np.abs(self.x - x))
@@ -212,7 +215,11 @@ class DraggableLine(QMainWindow):
             self.draggable_point.set_data([self.x[idx]], [y])
         else:
             idx = np.argmin(np.abs(self.x - x))
-            self.y[idx] = y
+            if np.isnan(self.y[idx]):
+                self.y[idx] = np.nan
+            else:
+                self.y[idx] = y
+           
             self.draggable_point.set_data([self.x[idx]], [y])
 
         self.redraw_plot()

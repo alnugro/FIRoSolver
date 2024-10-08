@@ -14,13 +14,14 @@ top_var is the top most int variable that you made in your solver, the auxilary 
 '''''
 
 class PB2CNF():
-    def __init__(self, top_var = None):
+    def __init__(self, weight_wordlength ,top_var = None):
         
         self.var = 1
         #top var
         if top_var != None:
             self.var = top_var+1
         self.r2b = Rat2bool()
+        self.weight_wordlength = weight_wordlength
 
     def addition_matcher(self,res, a, b, cin):
         
@@ -369,7 +370,7 @@ class PB2CNF():
     
     def run_pb2cnf(self, weight, literalls, bounds, fracW , case):
         wordlength = len(literalls[0])
-        weight_csd = self.r2b.frac2csd(weight, wordlength, fracW).tolist()
+        weight_csd = self.r2b.frac2csd(weight, self.weight_wordlength, fracW).tolist()
         weight_csd ,lits , deleted_lits_cnf= self.remove_zeroes_weight(weight_csd,literalls)
 
 
@@ -646,14 +647,15 @@ class PB2CNF():
 
         #shifting csd parts
         for i in range(lits_counts):
-            for j in range(wordlength): #csd wordlenght to be exact
+            for j in range(len(weight_csd[0])): #csd wordlenght to be exact
                 adder_submodule = ['zero' for i in range(sum_wordlength)]
+                # print("i: ",i)
+                # print("j: ",j)
                 if weight_csd[i][j] == 0:
-                    
                     continue
 
                 elif weight_csd[i][j] == 1:
-                    for k in range(j,j+wordlength):
+                    for k in range(j, j+wordlength):
                         # print(f"k is {k}")
                         # print(f"k-j is {k-j}")
                         adder_submodule[k] = lits[i][k-j]
@@ -709,16 +711,13 @@ class PB2CNF():
             raise ValueError("literalls and weight are not in the same size!")
             
     def weight_bounds_validation(self, weight, wordlength, bounds, fracW):
-        max_integer_pos_value = 2**(wordlength-fracW-1)
+        max_integer_pos_value = 2**(self.weight_wordlength-fracW-1)-1
         max_integer_neg_value = -1*max_integer_pos_value #its the same to keep the negation from getting overflown
         #print(max_integer_pos_value)
         for w in weight:
             if int(w) > max_integer_pos_value or int(w) < max_integer_neg_value:
                 raise ValueError(f"given wordlength for int is too short for the weight: {w}")
 
-
-
-    
         if int(bounds) > max_integer_pos_value or int(bounds) < max_integer_neg_value:
             raise ValueError(f"given wordlength for int is too short for given bounds: {bounds} \n keep them between -2**(wordlength-fracW-1)-1 and 2**(wordlength-fracW-1)-1 to avoid negation overflow")
 
@@ -730,20 +729,21 @@ class PB2CNF():
 if __name__ == "__main__":
     #Example Use
     # lits = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24]]
-    # lits = [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]
-    # weight = [1]
-    # bounds = -8
-    # fracW = 0
+    lits = [[1, 2, 3, 4, 5]]
+    weight = [1]
+    bounds = 2
+    fracW = 0
 
-    # top_var = max(max(lit_group) for lit_group in lits)
-    # print(top_var)
+    top_var = max(max(lit_group) for lit_group in lits)
+    print(top_var)
 
-    lits = [1,2,3,4,5,6]
-    top_var = 6
+    # lits = [1,2,3,4,5,6]
+    # top_var = 6
 
     
-    pb = PB2CNF(top_var=top_var)
-    cnf = pb.equal_card(lits,5)
+    pb = PB2CNF(top_var=top_var, weight_wordlength=10)
+    cnf = pb.equal(weight,lits, bounds,0)
+    # cnf = pb.equal_card(lits,5)
 
     solver = Solver(name='Cadical195')
 

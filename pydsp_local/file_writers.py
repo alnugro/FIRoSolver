@@ -5,9 +5,9 @@ try:
     from circuit import Circuit
     from dfg import Graph
 except:
-    import pydsp.modules as modules
-    from pydsp.circuit import Circuit
-    from pydsp.dfg import Graph
+    import pydsp_local.modules as modules
+    from pydsp_local.circuit import Circuit
+    from pydsp_local.dfg import Graph
 
 
 

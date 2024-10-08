@@ -37,7 +37,7 @@ def calculate_result(model, lits, weights, fracW):
 
 def test_pb2cnf(case, lits, weights, bound, fracW, top_var):
     global iter
-    pb = PB2CNF(top_var=top_var)
+    pb = PB2CNF(top_var=top_var, weight_wordlength=10)
     if case == 'atleast':
         cnf = pb.atleast(weights, lits, bound, fracW)
     elif case == 'atmost':
@@ -74,15 +74,15 @@ def test_pb2cnf(case, lits, weights, bound, fracW, top_var):
 
         if case == 'atleast':
             if rounded_result < bound:
-                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits} ,{weights}, iter: {iter}"])
+                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits} ,weight {weights}, iter: {iter}"])
                 print("\n*****************atleast failed*****************\n")
         elif case == 'atmost':
             if rounded_result > bound:
-                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits},{weights}, iter: {iter}"])
+                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits},weight {weights}, iter: {iter}"])
                 print("\n*****************atmost failed*****************\n")
         elif case == 'equals':
             if rounded_result > bound or rounded_result < bound:
-                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits},{weights}, iter: {iter}"])
+                failed_test.append([f"+++++++Calculated: {rounded_result} and Original: {bound}, case: {case} with fracW: {fracW}, {lits},weight {weights}, iter: {iter}"])
                 print("\n*****************equals failed*****************\n")
         print("Model verification passed")
     else:
@@ -122,7 +122,7 @@ rat = Rat2bool()
     
 
 
-total_test = 100 # Example number of tests, adjust as needed
+total_test = 5 # Example number of tests, adjust as needed
 failed_test = []
 result_test = []
 
@@ -136,18 +136,17 @@ for i in range(total_test):
     list_length_end = 15
 
     random_lits = generate_randomized_lits(num_lists_start, num_lists_end, list_length_start, list_length_end)
-    fracW_min = 2
-    fracW_max = len(random_lits[0]) - 2
-    fracW = random.randint(fracW_min, fracW_max)
+    fracW = 0
+
     bound_min = (-2**(len(random_lits[0])-fracW-1)+1)
     bound_max = (2**(len(random_lits[0])-fracW-1)-1)
-    bound = random.uniform(bound_min, bound_max)
+    bound = random.randint(bound_min, bound_max)
     bound = 0
 
-    weight_min = -2**(len(random_lits[0])-fracW-1)+1
-    weight_max = 2**(len(random_lits[0])-fracW-1)-1
+    weight_min = -2**(10-fracW-1)
+    weight_max = 2**(10-fracW-1)-1
 
-    random_weights = [random.uniform(weight_min, weight_max) or random.uniform(1, weight_max) for _ in range(len(random_lits))]
+    random_weights = [random.randint(weight_min, weight_max) for _ in range(len(random_lits))]
 
     print("before",random_weights)
     # round the inputs

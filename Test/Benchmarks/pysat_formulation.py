@@ -219,14 +219,12 @@ class FIRFilterPysat:
 
         # Bitshift SAT starts here
 
-        # c0,w is all 0 except 1, so input is 1
-        for w in range(self.fracW+1, self.adder_wordlength):
+        # c0,w is always 0 except at 0 so input is 1
+        for w in range(1, self.adder_wordlength):
             solver.add_clause([-v2i(('c', 0, w))])
 
-        for w in range(self.fracW):
-            solver.add_clause([-v2i(('c', 0, w))])
+        solver.add_clause([v2i(('c', 0, 0))])
 
-        solver.add_clause([v2i(('c', 0, self.fracW))])
         
         for i in range(1,self.max_adder+1):
             # Bound ci,0 to be odd number 

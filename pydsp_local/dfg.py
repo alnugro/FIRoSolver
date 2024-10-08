@@ -2,7 +2,7 @@ from enum import Enum
 try:
     import modules
 except:
-    import pydsp.modules as modules
+    import pydsp_local.modules as modules
 
 
 class OperationType(Enum):

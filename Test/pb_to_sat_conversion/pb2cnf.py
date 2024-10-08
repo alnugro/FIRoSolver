@@ -1,6 +1,10 @@
 import numpy as np
-from rat2bool import Rat2bool
 from pysat.solvers import Solver
+
+try:
+    from .rat2bool import Rat2bool
+except:
+    from rat2bool import Rat2bool
 
 
 
@@ -10,13 +14,14 @@ top_var is the top most int variable that you made in your solver, the auxilary 
 '''''
 
 class PB2CNF():
-    def __init__(self, top_var = None):
+    def __init__(self, weight_wordlength ,top_var = None):
         
         self.var = 1
         #top var
         if top_var != None:
             self.var = top_var+1
         self.r2b = Rat2bool()
+        self.weight_wordlength = weight_wordlength
 
     def addition_matcher(self,res, a, b, cin):
         
@@ -332,8 +337,16 @@ class PB2CNF():
         for i in range(len(lits)):
             for j in range(i+1,len(lits)):
                 cnf_temp.append([-lits[i],-lits[j]])
-                print(cnf_temp)
         cnf += cnf_temp
+        return cnf
+    
+    def equal_card(self,lits,bound):
+        ext_lits = []
+        weight = []
+        for lit in lits:
+            ext_lits.append([lit,'zero'])
+            weight.append(1)
+        cnf = self.run_pb2cnf(weight, ext_lits, bound, 0, "equal")
         return cnf
     
 
@@ -350,7 +363,6 @@ class PB2CNF():
                 del lits[i]
                 #todo assert the deleted lits to 0
                 print(f"Lits and Weight at pos {i} are deleted, because it will go to 0 with given fracW")
-        print("deleted cnf",deleted_cnf)
         return weight, lits , deleted_cnf
 
 
@@ -358,7 +370,7 @@ class PB2CNF():
     
     def run_pb2cnf(self, weight, literalls, bounds, fracW , case):
         wordlength = len(literalls[0])
-        weight_csd = self.r2b.frac2csd(weight, wordlength, fracW).tolist()
+        weight_csd = self.r2b.frac2csd(weight, self.weight_wordlength, fracW).tolist()
         weight_csd ,lits , deleted_lits_cnf= self.remove_zeroes_weight(weight_csd,literalls)
 
 
@@ -367,25 +379,16 @@ class PB2CNF():
         sum_wordlength = 2*len(lits[0])
         lits_counts = len(lits)
         bounds *= -1
-
-        #print(f"weight is : {weight}")
-        #initialize Rational to boolean class
-        # print(f"weight csd is : {weight_csd}")
     
-
         bounds_list = [bounds]
         bounds_bool = self.r2b.frac2bool2s(bounds_list, wordlength, fracW).tolist()
 
         
 
 
-        adder_model, cnf_list_generator = self.adder_model_list_generator(weight_csd, lits, bounds_bool, fracW)
-
+        adder_model, cnf_list_generator = self.adder_model_list_generator(weight_csd, lits)
         cnf_final += cnf_list_generator
-        
-        # print("Model ",adder_model)
 
-        #print("original, ",adder_model)
         for i in range(lits_counts):
             #add 1 to lsb if it was inversed and not added by zero. only the case if it were not bitshifted and multiplied by minus 1 or csd[0] = -1, so it is always on the adder_model[i][1] position
 
@@ -447,21 +450,24 @@ class PB2CNF():
         sum_adder_model= self.generate_sum_adder_model(adder_model, extended_wordlength)
 
 
-        # print(f"\nbefore: {sum_adder_model}")
-        # bounds2 = bounds*2**fracW
-        # bounds_list2 = [bounds2]
-        # bounds_bool2 = self.r2b.frac2bool2s(bounds_list2, extended_wordlength, fracW).tolist()
-        # bounds_bool2_str = self.r2b.bool2str(bounds_bool2[0])
+        if fracW == 0:
+            # print(f"\nbefore: {sum_adder_model}")
+            bounds2 = bounds*2**fracW
+            bounds_list2 = [bounds2]
+            bounds_bool2 = self.r2b.frac2bool2s(bounds_list2, extended_wordlength, fracW).tolist()
+            bounds_bool_str = self.r2b.bool2str(bounds_bool2[0])
 
-        
-        # del sum_adder_model[-1]
+        else:
+            bounds_list = [bounds]
+            bounds_bool = self.r2b.frac2bool2s(bounds_list, wordlength, fracW).tolist()
+            for i in range(wordlength, extended_wordlength):
+                #extend signbit for bounds bool
+                bounds_bool[0].append(bounds_bool[0][-1])
+            #all we do is left shifts thats why the fractional part has to go so multiply bounds by 2**fracW
+            bounds_bool[0]  = self.r2b.right_shift(bounds_bool[0] ,fracW)
+            bounds_bool_str = self.r2b.bool2str(bounds_bool[0])
 
-        # sum_adder_model.append(bounds_bool2_str)
-
-        # print(f"bound {bounds}")
-        # print(f"converted {bounds2}")
-
-        # print(f"bool1 {bounds_bool2}\n")
+        sum_adder_model.append(bounds_bool_str)
         
 
 
@@ -622,7 +628,7 @@ class PB2CNF():
 
 
 
-    def adder_model_list_generator(self, weight_csd, lits, bounds_bool, fracW):
+    def adder_model_list_generator(self, weight_csd, lits):
         inversion_cnf = []
         sum_wordlength = 2*len(lits[0])
         wordlength = len(lits[0])
@@ -637,18 +643,19 @@ class PB2CNF():
                 adder_model[i][0][j]=self.aux_var_setter()
             
 
-        #print("CSD: ",weight_csd)
+        # print("CSD: ",weight_csd)
 
         #shifting csd parts
         for i in range(lits_counts):
-            for j in range(wordlength): #csd wordlenght to be exact
+            for j in range(len(weight_csd[0])): #csd wordlenght to be exact
                 adder_submodule = ['zero' for i in range(sum_wordlength)]
-
+                # print("i: ",i)
+                # print("j: ",j)
                 if weight_csd[i][j] == 0:
                     continue
 
                 elif weight_csd[i][j] == 1:
-                    for k in range(j,j+wordlength):
+                    for k in range(j, j+wordlength):
                         # print(f"k is {k}")
                         # print(f"k-j is {k-j}")
                         adder_submodule[k] = lits[i][k-j]
@@ -682,18 +689,6 @@ class PB2CNF():
                     adder_submodule = sum_sub_res
 
                     adder_model[i].append(adder_submodule)
-
-        #print(f"adder model is {adder_model}")
-
-        for i in range(wordlength, sum_wordlength):
-            #extend signbit for bounds bool
-            bounds_bool[0].append(bounds_bool[0][-1])
-
-        #all we do is left shifts thats why the fractional part has to go so multiply bounds by 2**fracW
-        bounds_bool[0]  = self.r2b.right_shift(bounds_bool[0] ,fracW)
-
-        bounds_bool[0] = self.r2b.bool2str(bounds_bool[0])
-        adder_model.append(bounds_bool)
         
         #print(adder_model)
         return adder_model,inversion_cnf
@@ -716,18 +711,16 @@ class PB2CNF():
             raise ValueError("literalls and weight are not in the same size!")
             
     def weight_bounds_validation(self, weight, wordlength, bounds, fracW):
-        max_integer_pos_value = 2**(wordlength-fracW-1)
+        max_integer_pos_value = 2**(self.weight_wordlength-fracW-1)-1
         max_integer_neg_value = -1*max_integer_pos_value #its the same to keep the negation from getting overflown
         #print(max_integer_pos_value)
         for w in weight:
             if int(w) > max_integer_pos_value or int(w) < max_integer_neg_value:
                 raise ValueError(f"given wordlength for int is too short for the weight: {w}")
 
-
-
-    
         if int(bounds) > max_integer_pos_value or int(bounds) < max_integer_neg_value:
             raise ValueError(f"given wordlength for int is too short for given bounds: {bounds} \n keep them between -2**(wordlength-fracW-1)-1 and 2**(wordlength-fracW-1)-1 to avoid negation overflow")
+
  
 
         
@@ -736,26 +729,21 @@ class PB2CNF():
 if __name__ == "__main__":
     #Example Use
     # lits = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12], [13, 14, 15, 16, 17, 18], [19, 20, 21, 22, 23, 24]]
-    lits = [[1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [11, 12, 13, 14, 15, 16, 17, 18, 19, 20], [21, 22, 23, 24, 25, 26, 27, 28, 29, 30], [31, 32, 33, 34, 35, 36, 37, 38, 39, 40], [41, 42, 43, 44, 45, 46, 47, 48, 49, 50], [51, 52, 53, 54, 55, 56, 57, 58, 59, 60], [61, 62, 63, 64, 65, 66, 67, 68, 69, 70]]
-    weight = [10, -271, 502, 408, 455, 265, -83]
-    bounds = -383
+    lits = [[1, 2, 3, 4, 5]]
+    weight = [1]
+    bounds = 2
     fracW = 0
 
     top_var = max(max(lit_group) for lit_group in lits)
     print(top_var)
+
+    # lits = [1,2,3,4,5,6]
+    # top_var = 6
+
     
-    pb = PB2CNF(top_var=top_var)
-    cnf = pb.equal(weight,lits,bounds,fracW)
- 
-    # cnf=[]
-    # lits1 =['zero', 'zero', 1, 2, 3, 4, 5, 6, 7, 7, 7]
-    # lits2 =['zero', 'zero', 'zero', 'zero', 1, 2, 3, 4, 5, 6, 7]
-    # #result = a < 2 + a < 4 = 4a + 16a
-    # res = [8,9,10,11,12,13,14,15,16,17,18]
-    
-    # pb = PB2CNF(top_var=21)
-    # cnf += [[1],[2],[3],[4],[5]]
-    # cnf += pb.list_addition(res,lits1,lits2,False )
+    pb = PB2CNF(top_var=top_var, weight_wordlength=10)
+    cnf = pb.equal(weight,lits, bounds,0)
+    # cnf = pb.equal_card(lits,5)
 
     solver = Solver(name='Cadical195')
 

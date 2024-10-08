@@ -179,7 +179,7 @@ class Presolver:
         if h_zero_input == None:
             #find max zero
             print("\nFinding Maximum H_zero......\n")
-            target_result = gurobi_instance.run_barebone_real(self.gurobi_thread, 'find_max_zero')
+            target_result = gurobi_instance.run_barebone(self.gurobi_thread, 'find_max_zero')
 
             #get result data
             if target_result['satisfiability'] == 'unsat':
@@ -187,14 +187,18 @@ class Presolver:
             
             max_h_zero = target_result['max_h_zero']
             
+            print("max h zero: ", max_h_zero)
+
             #decrease the h_zero by one if its not satisfiable
             solve_with_h_zero_sum_sat_flag = False
             while solve_with_h_zero_sum_sat_flag == False:
-                target_result = gurobi_instance.run_barebone(self.gurobi_thread,'try_h_zero_count' ,max_h_zero)
-                if target_result['satisfiability'] == 'unsat':
+                target_result_temp = gurobi_instance.run_barebone(self.gurobi_thread,'try_h_zero_count' ,max_h_zero)
+                if target_result_temp['satisfiability'] == 'unsat':
                     max_h_zero -= 1
                     print("\n.......calculated h_zero was not satisfiable......\n")
                     self.max_zero_reduced +=1
+                    if max_h_zero < 0:
+                        raise ValueError("problem is unsat")
 
                 else: 
                     solve_with_h_zero_sum_sat_flag = True

@@ -2,6 +2,7 @@ import numpy as np
 from z3 import *
 import matplotlib.pyplot as plt
 import time
+import math
 
 try:
     from .solver_func import SolverFunc
@@ -72,6 +73,8 @@ class FIRFilterZ3:
 
 
     def run_barebone(self , seed , z3_option = None, h_zero_count = None):
+        if h_zero_count == None:
+            h_zero_count = 0
         self.h_res = []
         self.gain_res = 0
 
@@ -82,8 +85,8 @@ class FIRFilterZ3:
         sf = SolverFunc(self.get_solver_func_dict())
 
         # linearize the bounds
-        internal_upperbound_lin = [math.ceil(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
-        internal_lowerbound_lin = [math.floor(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
+        internal_upperbound_lin = [math.floor(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.upperbound_lin]
+        internal_lowerbound_lin = [math.ceil(f*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))) if not np.isnan(f) else np.nan for f in self.lowerbound_lin]
         internal_ignore_lowerbound = self.ignore_lowerbound_lin*(10**self.coef_accuracy)*(2**(self.fracW-self.gain_fracW))
 
 
@@ -98,8 +101,8 @@ class FIRFilterZ3:
 
 
         #bounds the gain
-        self.gain_upperbound_int = math.ceil(self.gain_upperbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
-        self.gain_lowerbound_int = math.floor(self.gain_lowerbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
+        self.gain_upperbound_int = math.floor(self.gain_upperbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
+        self.gain_lowerbound_int = math.ceil(self.gain_lowerbound*2**self.gain_fracW*(10**self.gain_bound_accuracy))
 
         # print(self.gain_upperbound_int)
         # print(self.gain_lowerbound_int)
@@ -446,18 +449,19 @@ class FIRFilterZ3:
         beta = [[Bool(f'Beta_{i}_{a}', ctx=ctx) for a in range(i)] for i in range(1, self.max_adder + 1)]
 
         # c0,w is always 0 except 1
-        for w in range(self.fracW + 1, self.adder_wordlength):
-            solver.add(Not(c[0][w]))
-
-        for w in range(self.fracW):
-            solver.add(Not(c[0][w]))
-
-        solver.add(c[0][self.fracW])
-
-        # # c0,w is always 0 except 1
-        # for w in range(1, self.adder_wordlength):
+        # for w in range(self.fracW + 1, self.adder_wordlength):
         #     solver.add(Not(c[0][w]))
+
+        # for w in range(self.fracW):
+        #     solver.add(Not(c[0][w]))
+
         # solver.add(c[0][self.fracW])
+
+        # c0,w is always 0 except at 1
+        for w in range(1, self.adder_wordlength):
+            solver.add(Not(c[0][w]))
+
+        solver.add(c[0][0])
 
         # bound ci,0 to be odd number
         for i in range(1, self.max_adder + 1):
@@ -988,13 +992,13 @@ class FIRFilterZ3:
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_current = 14
-    accuracy = 1
+    order_current = 6
+    accuracy = 3
     wordlength = 14
     gain_upperbound = 4
     gain_lowerbound = 1
     coef_accuracy = 4
-    intW = 6
+    intW = 4
 
     adder_count = 6
     adder_depth = 2
@@ -1010,14 +1014,14 @@ if __name__ == "__main__":
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3*(space))
+    lower_half_point = int(0.4*(space))
     upper_half_point = int(0.6*(space))
     end_point = space
 
     freq_upper[0:lower_half_point] = 6
     freq_lower[0:lower_half_point] = 0
 
-    freq_upper[upper_half_point:end_point] = -10
+    freq_upper[upper_half_point:end_point] = -5
     freq_lower[upper_half_point:end_point] = -1000
 
 
@@ -1051,6 +1055,6 @@ if __name__ == "__main__":
                  )
 
     # fir_filter.run_barebone(1,'try_h_zero_count',1)
-    fir_filter.runsolver(1,1)
+    fir_filter.runsolver(1,10)
     
     

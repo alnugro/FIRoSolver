@@ -22,7 +22,7 @@ class MainWindow(QMainWindow):
     def show_yes_no_dialog(self):
         # Create a QMessageBox for Yes/No prompt
         reply = QMessageBox.question(self, 'Confirmation', 'Do you want to proceed?',
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
 
         if reply == QMessageBox.StandardButton.Yes:
             print("User selected Yes")

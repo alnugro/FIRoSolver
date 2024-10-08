@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+import copy
+
 
 try:
     from .draggable_plotter import DraggablePlotter
@@ -9,164 +11,251 @@ except:
 
 
 class MagnitudePlotter:
-    def __init__(self, app=None):
-        plt.style.use('dark_background')
+    def __init__(self ,day_night = False ,app=None):
+        if day_night:
+            plt.style.use('fivethirtyeight')
+        else:
+            plt.style.use('dark_background')
+
         self.app = app
         self.fig, self.ax = plt.subplots(figsize=(30, 4))
-        self.fig.subplots_adjust(left=0.03, bottom=0.1, right=0.98, top=0.98)
+        self.fig.subplots_adjust(left=0.05, bottom=0.1, right=0.98, top=0.98)
         
-        #input data from user
-        self.filter_type = None
-        self.order_upper = None
-        self.wordlength = None
-        self.sampling_rate = None
-        self.flatten_value = None
-        self.gaussian_smoothing_value = None
-        self.average_flaten_value = None
-        self.cutoff_smoothing_value = None
 
-        # Array to put the object of Draggable plotter
-        self.draggable_lines_mag = []
-        self.draggable_lines_upper = []
-        self.draggable_lines_lower = []
+        self.day_night = day_night
+        plt.rcParams['font.size'] = 11
+        if self.day_night:
+            self.ax.grid(True, linewidth=1)
+            plt.rcParams['text.color'] = 'black'        # Set default color for all text
+            plt.rcParams['axes.labelcolor'] = 'black'    # Set default color for axis labels
+            plt.rcParams['xtick.color'] = 'black'       # Set default color for x-tick labels
+            plt.rcParams['ytick.color'] = 'black'       # Set default color for y-tick labels
+        else:
+            self.ax.grid(True, linewidth=1)
 
+        for spine in self.ax.spines.values():
+            spine.set_linewidth(1)
+        
 
-        self.ax.set_xlim([0, 1])
-        self.ax.set_ylim([-60, 5])
-        self.ax.grid()
-
-        # Initialize additional attributes
-        self.selection_mode = False
-        self.selected_range = None
-        self.selection_rect = None
-
-        # Array to put the object of Draggable plotter
-        self.draggable_lines_mag = []
-        self.draggable_lines_upper = []
-        self.draggable_lines_lower = []
-
- 
-    #set input data
-    def update_plotter_data(self, data_dict):
-        for data_key, data_value in data_dict.items():
-            if hasattr(self, data_key):
-                setattr(self, data_key, data_value)
-            
-
-    def initiate_plot(self, table_data):
     
 
+
+        self.xdata_edges = []
+        # var to put the object of Draggable plotter
+        self.draggable_lines = None
+
+
+    def initiate_plot(self, table_data, data_dict):
+
         #reset plot if its not empty
-        if self.draggable_lines_mag or self.draggable_lines_upper or self.draggable_lines_lower:
+        if self.draggable_lines:
             print("clearing")
-
-            for draggable_line in self.draggable_lines_mag:
-                draggable_line.disconnect()
-
-            for draggable_line in self.draggable_lines_upper:
-                draggable_line.disconnect()
-
-            for draggable_line in self.draggable_lines_lower:
-                draggable_line.disconnect()
-
-            # Clear each list
-            self.draggable_lines_mag.clear()
-            self.draggable_lines_upper.clear()
-            self.draggable_lines_lower.clear()
+            self.draggable_lines.disconnect()
+            self.draggable_lines = None
 
         # Clear the axes to remove all plot elements
         self.ax.cla()
 
-        self.ax.set_xlim([0, 1])
-        self.ax.set_ylim([-60, 5])
-        self.ax.grid()
+        # self.ax.set_xlim([0, 1])
+        # self.ax.set_ylim([-1, 1])
+        if self.day_night:
+            pass
+        else:
+            self.ax.grid()
+
 
 
         highest_upper=0
         lowest_lower=0
+        # table_data = table_data[table_data[:, 3].argsort()]  # Sort table_data by the fourth column (start frequency)
+        table_data = sorted(table_data, key=lambda x: x[4])
+        
 
-        table_data = table_data[table_data[:, 3].argsort()]  # Sort table_data by the fourth column (start frequency)
-
+        xdata = np.linspace(0, 1, 500)
+        middle_y = np.full(xdata.shape, np.nan)
+        upper_y = np.full(xdata.shape, np.nan)
+        lower_y = np.full(xdata.shape, np.nan)
+        print(f"table_data {table_data}")
         for row in table_data:
-            magnitude, lower_bound, upper_bound, start_freq, end_freq = row
+            magnitude = None
+            type, gain, lower_bound, upper_bound, start_freq, end_freq = row
+            if type == 'stopband':
+                magnitude = 0
+            elif type == 'passband':
+                magnitude = 1
+            else:
+                raise ValueError(f"This type: {type} is not supported, only passband or stopband are supported.")
+        
+            magnitude *= gain
 
-            # Generate points between start and end frequencies with some distance between each points
-            #default accuracy is 200 for ease of creating plotter
-            freqs = np.linspace(start_freq, end_freq, 200)
-            midpoint=end_freq-start_freq
+            lower_bound = 10 ** (lower_bound / 20)
+            upper_bound = 10 ** (upper_bound / 20)
+            
+            self.xdata_edges.append(start_freq)
+            self.xdata_edges.append(end_freq)
 
-            line_magnitude, = self.ax.plot(freqs, np.full(freqs.shape, magnitude), 'gainsboro',linewidth=2.5)  # Plot magnitude
-            line_upper_bound, = self.ax.plot(freqs, np.full(freqs.shape, upper_bound), 'salmon',linewidth=2.5)  # Plot upper bound
-            line_lower_bound, = self.ax.plot(freqs, np.full(freqs.shape, lower_bound), 'aqua',linewidth=2.5)  # Plot lower bound
+            xdata_lower_index = np.searchsorted(xdata, start_freq)
+            xdata_upper_index = np.searchsorted(xdata, end_freq)
 
-            self.draggable_lines_mag.append(DraggablePlotter(line_magnitude, self, 'gainsboro',midpoint))
-            self.draggable_lines_upper.append(DraggablePlotter(line_upper_bound, self, 'salmon',midpoint))
-            self.draggable_lines_lower.append(DraggablePlotter(line_lower_bound, self, 'aqua',midpoint))
+            if not(start_freq in xdata):
+                xdata_upper_index = np.searchsorted(xdata, start_freq)
+                xdata = np.insert(xdata, xdata_upper_index, start_freq)
+                middle_y = np.insert(middle_y, xdata_upper_index, np.nan)
+                upper_y = np.insert(upper_y, xdata_upper_index, np.nan)
+                lower_y = np.insert(lower_y, xdata_upper_index, np.nan)
+                
+            if not(end_freq in xdata):
+                xdata_upper_index = np.searchsorted(xdata, end_freq)
+                xdata = np.insert(xdata, xdata_upper_index, end_freq)
+                middle_y = np.insert(middle_y, xdata_upper_index, np.nan)
+                upper_y = np.insert(upper_y, xdata_upper_index, np.nan)
+                lower_y = np.insert(lower_y, xdata_upper_index, np.nan)
+            
+            start_index = np.where(xdata == start_freq)[0][0]
+            end_index =  np.where(xdata == end_freq)[0][0]
+            middle_y[start_index:end_index] = magnitude
+            upper_y[start_index:end_index] = magnitude + upper_bound
+            lower_y[start_index:end_index] = magnitude - lower_bound
 
 
             #highest x and y to limit y
-            if highest_upper < upper_bound:
-                highest_upper = upper_bound + 10
+            if highest_upper < magnitude + upper_bound:
+                highest_upper = magnitude + upper_bound + 2
 
-            if lowest_lower > lower_bound:
-                lowest_lower=lower_bound - 10
+            if lowest_lower > magnitude - lower_bound:
+                lowest_lower = magnitude - lower_bound - 2
             
-        self.ax.set_ylim([lowest_lower, highest_upper])
+        # self.ax.set_ylim([lowest_lower, highest_upper])
+        
+        self.draggable_lines = DraggablePlotter(self.fig, self.ax,self.app.canvas, self.day_night, self.app.position_label, self.app)
+        self.update_plotter(data_dict, False)
+        self.draggable_lines.initialize_plot(xdata, middle_y, upper_y, lower_y)
 
-        for draggable_line in self.draggable_lines_mag:
-            draggable_line.connect()
 
-        for draggable_line in self.draggable_lines_upper:
-            draggable_line.connect()
 
-        for draggable_line in self.draggable_lines_lower:
-            draggable_line.connect()
 
-        if self.app:
-            self.app.canvas.draw()
+    def load_plot(self, input_dict, loaded_dict, history = None):
 
+        #reset plot if its not empty
+        if self.draggable_lines:
+            print("clearing")
+            self.draggable_lines.disconnect()
+            self.draggable_lines = None
+
+        # Clear the axes to remove all plot elements
+        self.ax.cla()
+
+        
+
+
+        xdata = np.array(loaded_dict['xdata'])
+        middle_y = np.array(loaded_dict['middle_y'])
+        upper_y = np.array(loaded_dict['upper_y'])
+        lower_y = np.array(loaded_dict['lower_y'])
+
+        
+        
+        self.draggable_lines = DraggablePlotter(self.fig, self.ax,self.app.canvas, self.day_night, self.app.position_label, self.app)
+        self.update_plotter(input_dict, False)
+        self.draggable_lines.initialize_plot(xdata, middle_y, upper_y, lower_y)
+        if history:
+            self.draggable_lines.set_history(history)
+
+
+
+    def update_plotter(self, data_dict, redraw = True):
+        if self.draggable_lines:
+            self.draggable_lines.update_plotter_data(data_dict, redraw)
+    
+    def undo_plot(self):
+        if self.draggable_lines:
+            self.draggable_lines.undo_plot()
+    
+    def redo_plot(self):
+        if self.draggable_lines:
+            self.draggable_lines.redo_plot()
+
+    def smoothen_plot(self):
+        if self.draggable_lines:
+            self.draggable_lines.smoothen_plot()
+
+    def apply_flatten(self):
+        if self.draggable_lines:
+            self.draggable_lines.apply_flatten()
+        
+    def delete_selected(self):
+        if self.draggable_lines:
+            self.draggable_lines.delete_selected()
+    
+    def mirror_upper_to_lower(self):
+        if self.draggable_lines:
+            self.draggable_lines.mirror_upper_to_lower()
+    
+    def mirror_lower_to_upper(self):
+        if self.draggable_lines:
+            self.draggable_lines.mirror_lower_to_upper()
+
+    def nyquist_to_sampling(self):
+        if self.draggable_lines:
+            ret = self.draggable_lines.nyquist_to_sampling()
+            return ret
+        else: return 1
+    
+    def sampling_to_nyquist(self):
+        if self.draggable_lines:
+            ret = self.draggable_lines.sampling_to_nyquist()
+            return ret
+        else: return 1
+        
+    def reset_draggable_points(self):
+        if self.draggable_lines:
+            ret = self.draggable_lines.reset_draggable_points()
+            return ret
+        else: return 1
+        
  
-    def get_frequency_bounds(self):
-        self.step = 50000
-        xdata = np.linspace(0, 1, self.step)
-        upper_ydata = np.full(xdata.shape, np.nan)
-        lower_ydata = np.full(xdata.shape, np.nan)
+    def get_frequency_bounds(self, only_plot = False):
+        if not(self.draggable_lines):
+            raise ValueError("Dragable line cannot be empty")
         
         #array to save the transition band
-        cutoffs_x = []
         cutoffs_upper_ydata = []
         cutoffs_lower_ydata = []
 
-         
-        for draggable_line in self.draggable_lines_upper:
-            current_xdata = draggable_line.get_xdata()
-            current_ydata = draggable_line.get_ydata()
+        cutoffs_x = copy.deepcopy(self.xdata_edges)
 
-            cutoffs_x.append(current_xdata[0])
-            cutoffs_x.append(current_xdata[-1])
-            
-            cutoffs_upper_ydata.append(current_ydata[0])
-            cutoffs_upper_ydata.append(current_ydata[-1])
+        xdata , middle_y , lower_y, upper_y = self.draggable_lines.get_plot_data()
 
-            # Interpolate current_ydata to match self.upper_xdata
-            interpolated_current_ydata = np.interp(xdata, current_xdata, current_ydata, left=np.nan, right=np.nan)
+        if only_plot:
+            return xdata , middle_y , lower_y, upper_y 
+        
+        for xcut in cutoffs_x:
+            index = np.where(xdata == xcut)[0][0]
+            cutoffs_upper_ydata.append(upper_y[index])
+            cutoffs_lower_ydata.append(lower_y[index])
+        
+        upper_ydata = copy.deepcopy(upper_y)
+        lower_ydata = copy.deepcopy(lower_y)
 
-            # Update upper_ydata with the interpolated values
-            upper_ydata = np.where(np.isnan(upper_ydata), interpolated_current_ydata, upper_ydata)
-
-        for draggable_line in self.draggable_lines_lower:
-            current_xdata = draggable_line.get_xdata()
-            current_ydata = draggable_line.get_ydata()
-
-            cutoffs_lower_ydata.append(current_ydata[0])
-            cutoffs_lower_ydata.append(current_ydata[-1])
-
-            # Interpolate current_ydata to match self.lower_xdata
-            interpolated_current_ydata = np.interp(xdata, current_xdata, current_ydata, left=np.nan, right=np.nan)
-
-            # Update lower_ydata with the interpolated values
-            lower_ydata = np.where(np.isnan(lower_ydata), interpolated_current_ydata, lower_ydata)
         return xdata, upper_ydata, lower_ydata ,cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata
+
+    def get_current_data(self):
+        x, middle_y, lower_y, upper_y = [], [], [], []
+        history = []
+
+        # Reset plot if it's not empty
+        if self.draggable_lines:
+            x, middle_y, lower_y, upper_y = self.draggable_lines.get_plot_data()
+            history = self.draggable_lines.get_history()
+            print("clearing")
+            self.draggable_lines.disconnect()
+            self.draggable_lines = None
+            self.ax.cla()  # Clear the axis
+        else:
+            return None
+        
+        return x, middle_y, lower_y, upper_y , history
+        
 
     
     
@@ -206,6 +295,7 @@ class MagnitudePlotter:
         pass
 
 
+        
 
 
 

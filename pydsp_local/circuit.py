@@ -1,7 +1,7 @@
 try:
     import modules
 except:
-    import pydsp.modules
+    import pydsp_local.modules
 
 
 

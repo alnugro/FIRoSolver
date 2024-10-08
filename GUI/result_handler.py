@@ -2,66 +2,36 @@ import numpy as np
 import json
 import os
 import sys
+from filelock import FileLock
+
+import sys
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QPushButton, QTableWidget, 
+    QTableWidgetItem, QAbstractItemView
+)
+from PyQt6.QtCore import Qt, QTimer
 
 try:
     
-    from pydsp.circuit import Circuit
-    from pydsp.modules import *
-    from pydsp.io_utility import *
-    from pydsp.file_writers import VHDLWriter
-    from .live_logger import LiveLogger
+    from pydsp_local.circuit import Circuit
+    from pydsp_local.modules import *
+    from pydsp_local.io_utility import *
+    from pydsp_local.file_writers import VHDLWriter
+    from .result_subwindow import PlotWindow
 
 
 except:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from pydsp.circuit import Circuit
-    from pydsp.modules import *
-    from pydsp.io_utility import *
-    from pydsp.file_writers import VHDLWriter
-    from live_logger import LiveLogger
+    from pydsp_local.circuit import Circuit
+    from pydsp_local.modules import *
+    from pydsp_local.io_utility import *
+    from pydsp_local.file_writers import VHDLWriter
+    from result_subwindow import PlotWindow 
 
 
-
-class ResultHandler():
-    def __init__(self, input_data):
-        # Explicit declaration of instance variables with default values (if applicable)
-        self.filter_type = None
-        self.order_upperbound = None
-
-        self.ignore_lowerbound = None
-        self.wordlength = None
-        self.adder_depth = None
-        self.avail_dsp = None
-        self.adder_wordlength_ext = None
-        self.gain_upperbound = None
-        self.gain_lowerbound = None
-        self.coef_accuracy = None
-        self.intW = None
-
-        self.gain_wordlength = None
-        self.gain_intW = None
-
-        self.gurobi_thread = None
-        self.pysat_thread = None
-        self.z3_thread = None
-
-        self.timeout = None
-        self.start_with_error_prediction = None
-
-        self.original_xdata = None
-        self.original_upperbound_lin = None
-        self.original_lowerbound_lin = None
-
-        self.cutoffs_x = None
-        self.cutoffs_upper_ydata_lin = None
-        self.cutoffs_lower_ydata_lin = None
-
-        self.solver_accuracy_multiplier = None
-
-        # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
-        for key, value in input_data.items():
-            if hasattr(self, key):  # Only set attributes that exist in the class
-                setattr(self, key, value)
+class PydspHandler():
+    def __init__(self):
+       pass
 
     def logger(self, logger_instance):
         return logger_instance
@@ -69,7 +39,7 @@ class ResultHandler():
     def create_pydsp_circuit(self, result_model, validate_flag = False):
         # Unpack the dictionary values into the respective variables
         h_res = result_model['h_res']
-        gain_res = result_model['gain']
+        self.gain = result_model['gain']
         h = result_model['h']
         alpha = result_model['alpha']
         beta = result_model['beta']
@@ -250,7 +220,7 @@ class ResultHandler():
         # circuit.print_info()
         if validate_flag:
             circuit.validate()
-            c[0].define_input_data([1*2**fracw])
+            c[0].define_input_data([1])
             for time_step in range(1):
                 for m in range(half_order):
                     raw_h_val = h_res_output[m].get_output(time_step) if h_res_output[m] != None else 0
@@ -264,8 +234,8 @@ class ResultHandler():
             return True
         
 
-
-        h_final = [h_val for h_val in h_ext if h_val is not None]
+        h_ext_breakdown = self.flip_filter_array(h_ext)
+        h_final = [h_val for h_val in h_ext_breakdown if h_val is not None]
         reg = [None for i in range(len(h_final)-1)]
         radd = [None for i in range(len(h_final)-1)]
         for i in range(len(reg)):
@@ -298,146 +268,168 @@ class ResultHandler():
         return result
    
 
-    def load_with_lock(self, file_lock ,valid_flag = True):
-        if valid_flag:
+    
+    
+class JsonUnloader():
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def load_with_lock(filename_id):
+        if filename_id == 0:
+            filename='problem_description.json'
+        elif filename_id == 1:
+            filename='result_valid.json'
+        elif filename_id == 2:
+            filename='result_leak.json'
+        else:
+            print("Invalid filename_id")
+            return
+        
+        lock_filename = filename + '.lock'
+        lock = FileLock(lock_filename)
+        loaded_data = None
+        with lock:  # Acquire lock before file access
+            with open(filename, 'r') as json_file:
+                loaded_data = json.load(json_file)
+        
+        return loaded_data
+        
+class DynamicTableWidget(QWidget):
+    def __init__(self, table_widget, valid_data, app = None):
+        super().__init__()
+        self.table = table_widget
+        self.valid_data = valid_data
+        self.last_max_key = 0
+        self.app = app  
+
+    def startTimer(self):
+        # Create a timer that calls updateTableData every 1 second
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.updateTableData)
+        self.timer.start(2000)  # 1000 ms = 1 second
+
+    def updateTableData(self):
+        if  self.valid_data:
             filename='result_valid.json'
         else:
             filename='result_leak.json'
-
-        with file_lock:  # Acquire lock before file access
-            with open(filename, 'r') as json_file:
-                loaded_data = json.load(json_file)
-
-            # print(loaded_data)
-            # Unpacking key-value pairs in a loop
-            # for key, value in loaded_data.items():
-            #     print(f"Key: {key}, Value: {value}")
         
-        return loaded_data
+        if not os.path.exists(filename):
+            return
+        
+        lock_filename = filename + '.lock'
+        lock = FileLock(lock_filename)
+        data = None
+
+        with lock:  # Acquire lock before file access
+            with open(filename, 'r') as json_file:
+                data = json.load(json_file)
+
+        max_key = max(map(int, data.keys())) if data else 0
+
+        if max_key > self.last_max_key:
+            for key in range(self.last_max_key + 1, max_key + 1):
+                if str(key) in data:
+                    self.addRow(data[str(key)], str(key))
+            self.last_max_key = max_key
+
+    def addRow(self, result_data, key):
+        # Get the current row count
+        rowCount = self.table.rowCount()
+
+        # Insert a new row
+        self.table.insertRow(rowCount)
+
+         # Add row number in the first column
+        self.table.setItem(rowCount, 0, QTableWidgetItem(str(result_data['problem_id'])))
+        self.table.setItem(rowCount, 1, QTableWidgetItem(str(key)))
+
+        # Add placeholder data in the second and third columns, converting to strings
+        self.table.setItem(rowCount, 2, QTableWidgetItem(str(result_data['total_adder'])))
+        self.table.setItem(rowCount, 3, QTableWidgetItem(str(result_data['adder_s'])))
+
+        # Create buttons in the fourth, fifth, and sixth columns
+        button1_plot= QPushButton(f'Plot Result')
+        button1_plot.clicked.connect(lambda _, row=rowCount + 1: self.buttonClicked(row, 1))
+        self.table.setCellWidget(rowCount, 4, button1_plot)
+
+        button2_show = QPushButton(f'Show Details')
+        button2_show.clicked.connect(lambda _, row=rowCount + 1: self.buttonClicked(row, 2))
+        self.table.setCellWidget(rowCount, 5, button2_show)
+
+        button3_vhdl = QPushButton(f'Generate VHDL Code')
+        button3_vhdl.clicked.connect(lambda _, row=rowCount + 1: self.buttonClicked(row, 3))
+        self.table.setCellWidget(rowCount, 6, button3_vhdl)
+
+    def buttonClicked(self, row, button_number):
+        print(f'Button {button_number} clicked for row {row}')
+        problem_id = self.table.item(row - 1, 0)
+        result_id = self.table.item(row - 1 , 1)
+
+        if button_number == 1:
+            self.plot_result(problem_id.text(), result_id.text())
+        elif button_number == 2:
+            self.show_details(problem_id.text(), result_id.text())
+        elif button_number == 3:
+            self.generate_vhdl(problem_id.text(), result_id.text())
+
+    def plot_result(self, problem_id, result_id):
+        file = 1 if self.valid_data else 2
+        result_data = JsonUnloader.load_with_lock(file)
+        problem_data = JsonUnloader.load_with_lock(0)
+
+        if result_id in result_data:
+            print(f"Plotting result for problem {problem_id}, result {result_id}")
+        else:
+            print(f"Result id {result_id} not found in data")
+            return
+        if problem_id in problem_data:
+            print(f"Plotting result for problem {problem_id}, result {result_id}")
+        else:  
+            print(f"Problem {problem_id} not found in data")
+            return
+        
+        # Create a new plot window
+        self.plot_window = PlotWindow(self.app.day_night, problem_data[problem_id], result_data[result_id])
+        self.plot_window.show()
+
+    def generate_vhdl(self, problem_id, result_id):
+        file = 1 if self.valid_data else 2
+        data = JsonUnloader.load_with_lock(file, self.valid_data)
+
+        if result_id in data:
+            print(f"Plotting result for problem {problem_id}, result {result_id}")
+        else:
+            print(f"Result id {result_id} not found in data")
+            return
+
+    def show_details(self, problem_id, result_id):
+        data = JsonUnloader.load_with_lock(0, self.valid_data)
+
+        if problem_id in data:
+            print(f"Showing details for problem {problem_id}, result {result_id}") 
+        else:
+            print(f"Problem {problem_id} not found in data")
+            return
+
+
+
 
 if __name__ == '__main__':
-    from backend_mediator import BackendMediator
-
-      # Test inputs
-    filter_type = 0
-    order_current = 20
-    accuracy = 3
-    wordlength = 14
-    gain_upperbound = 2
-    gain_lowerbound = 1
-    coef_accuracy = 10
-    intW = 4
-
-    adder_count = 4
-    adder_depth = 0
-    avail_dsp = 0
-    adder_wordlength_ext = 2
-    intW = 4
-
-    gain_wordlength = 6
-    gain_intW = 2
-
-    gurobi_thread = 10
-    pysat_thread = 0
-    z3_thread = 0
-
-    timeout = 0
-
-    space = order_current * accuracy * 50
-    # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
-    freq_upper = np.full(space, np.nan)
-    freq_lower = np.full(space, np.nan)
-
-    # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3*(space))
-    upper_half_point = int(0.6*(space))
-    end_point = space
-
-    freq_upper[0:lower_half_point] = 5
-    freq_lower[0:lower_half_point] = 0
-
-    freq_upper[upper_half_point:end_point] = -1
-    freq_lower[upper_half_point:end_point] = -1000
-
-
-    cutoffs_x = []
-    cutoffs_upper_ydata = []
-    cutoffs_lower_ydata = []
-
-    cutoffs_x.append(freqx_axis[0])
-    cutoffs_x.append(freqx_axis[lower_half_point-1])
-    cutoffs_x.append(freqx_axis[upper_half_point])
-    cutoffs_x.append(freqx_axis[end_point-1])
-
-    cutoffs_upper_ydata.append(freq_upper[0])
-    cutoffs_upper_ydata.append(freq_upper[lower_half_point-1])
-    cutoffs_upper_ydata.append(freq_upper[upper_half_point])
-    cutoffs_upper_ydata.append(freq_upper[end_point-1])
-
-    cutoffs_lower_ydata.append(freq_lower[0])
-    cutoffs_lower_ydata.append(freq_lower[lower_half_point-1])
-    cutoffs_lower_ydata.append(freq_lower[upper_half_point])
-    cutoffs_lower_ydata.append(freq_lower[end_point-1])
-
-
-    #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
-
-    #linearize the bound
-    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
-    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
-
-    cutoffs_upper_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_upper_ydata]
-    cutoffs_lower_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_lower_ydata]
-
 
     input_data = {
-        'filter_type': filter_type,
-        'order_upperbound': order_current,
-        'original_xdata': freqx_axis,
-        'original_upperbound_lin': upperbound_lin,
-        'original_lowerbound_lin': lowerbound_lin,
-        'ignore_lowerbound': ignore_lowerbound_lin,
-        'cutoffs_x': cutoffs_x,
-        'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
-        'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
-        'wordlength': wordlength,
-        'adder_count': adder_count,
-        'adder_depth': adder_depth,
-        'avail_dsp': avail_dsp,
-        'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
-        'gain_wordlength' : gain_wordlength,
-        'gain_intW' : gain_intW,
-        'gain_upperbound': gain_upperbound,
-        'gain_lowerbound': gain_lowerbound,
-        'coef_accuracy': coef_accuracy,
-        'intW': intW,
-        'gurobi_thread': gurobi_thread,
-        'pysat_thread': pysat_thread,
-        'z3_thread': z3_thread,
-        'timeout': 0,
-        'start_with_error_prediction': False,
-        'solver_accuracy_multiplier': accuracy,
-        'deepsearch': True,
-        'patch_multiplier' : 1,
-        'gurobi_auto_thread': False
+        'input_wordlength' : 9
     }
-    
-
 
     result = ResultHandler(input_data)
-    backend = BackendMediator(input_data)
-
-
-
-    loaded_data = result.load_with_lock(backend.file_lock, False)
+    loaded_data = result.load_with_lock( True)
 
     for key_subitem, value_subitem in loaded_data['0'].items():
             print(f"Key:{key_subitem}, Value: {value_subitem}")
-
-    result.create_pydsp_circuit(loaded_data['0'], False)
+    
+    pydsp = PydspHandler(input_data)
+    pydsp.create_pydsp_circuit(loaded_data['0'], True)
 
     # for key, value in loaded_data.items():
     #     for key_subitem, value_subitem in loaded_data[key].items():
