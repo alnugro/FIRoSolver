@@ -647,29 +647,64 @@ class FIRFilterPysat:
         for clause in cnf_iota:
             solver.add_clause(clause)
 
-        # Left Shifter in the result module (phi, h_ext logic)
-        phi_lits = []
+        # Updated Left Shifter in the result module (including new variables and clauses)
+        # Left Shifter in the result module (phi, h_ext, o, rho, o_xor, cout_res logic)
         for m in range(half_order + 1):
-            phi_lits.clear()
+            phi_lits = []
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
-                    solver.add_clause([-v2i(('phi', m, k)), -v2i(('t', m, j)), v2i(('h_ext', m, j + k))])
-                    solver.add_clause([-v2i(('phi', m, k)), v2i(('t', m, j)), -v2i(('h_ext', m, j + k))])
-
+                    solver.add_clause([-v2i(('phi', m, k)), -v2i(('t', m, j)), v2i(('o', m, j + k))])
+                    solver.add_clause([-v2i(('phi', m, k)), v2i(('t', m, j)), -v2i(('o', m, j + k))])
                 phi_lits.append(v2i(('phi', m, k)))
 
+            # Enforce that exactly one phi[m][k] is True
             cnf_phi = pb2cnf.equal_card_one(phi_lits)
             for clause in cnf_phi:
                 solver.add_clause(clause)
 
             for kf in range(1, self.adder_wordlength - 1):
                 for b in range(kf):
-                    solver.add_clause([-v2i(('phi', m, kf)), -v2i(('h_ext', m, b))])
+                    solver.add_clause([-v2i(('phi', m, kf)), -v2i(('o', m, b))])
                     solver.add_clause([-v2i(('phi', m, kf)), -v2i(('t', m, self.adder_wordlength - 1)), v2i(('t', m, self.adder_wordlength - 2 - b))])
                     solver.add_clause([-v2i(('phi', m, kf)), v2i(('t', m, self.adder_wordlength - 1)), -v2i(('t', m, self.adder_wordlength - 2 - b))])
 
-            solver.add_clause([-v2i(('t', m, self.adder_wordlength - 1)), v2i(('h_ext', m, self.adder_wordlength - 1))])
-            solver.add_clause([v2i(('t', m, self.adder_wordlength - 1)), -v2i(('h_ext', m, self.adder_wordlength - 1))])
+            solver.add_clause([-v2i(('t', m, self.adder_wordlength - 1)), v2i(('o', m, self.adder_wordlength - 1))])
+            solver.add_clause([v2i(('t', m, self.adder_wordlength - 1)), -v2i(('o', m, self.adder_wordlength - 1))])
+        
+        #xor
+        for m in range(half_order + 1):
+            for w in range(self.adder_wordlength):
+                solver.add_clause([v2i(('o', m, w)), v2i(('rho', m)), -v2i(('o_xor', m, w))])
+                solver.add_clause([v2i(('o', m, w)), -v2i(('rho', m)), v2i(('o_xor', m, w))])
+                solver.add_clause([-v2i(('o', m, w)), v2i(('rho', m)), v2i(('o_xor', m, w))])
+                solver.add_clause([-v2i(('o', m, w)), -v2i(('rho', m)), -v2i(('o_xor', m, w))])
+        
+        #ripple carry half adder 
+        for m in range(half_order + 1):
+            # Ripple carry half adder for w = 0
+            solver.add_clause([v2i(('o_xor', m, 0)), v2i(('rho', m)), -v2i(('h_ext', m, 0))])
+            solver.add_clause([v2i(('o_xor', m, 0)), -v2i(('rho', m)), v2i(('h_ext', m, 0))])
+            solver.add_clause([-v2i(('o_xor', m, 0)), v2i(('rho', m)), v2i(('h_ext', m, 0))])
+            solver.add_clause([-v2i(('o_xor', m, 0)), -v2i(('rho', m)), -v2i(('h_ext', m, 0))])
+
+            # Carry out for w = 0
+            solver.add_clause([v2i(('o_xor', m, 0)), -v2i(('cout_res', m, 0))])
+            solver.add_clause([-v2i(('o_xor', m, 0)), -v2i(('rho', m)), v2i(('cout_res', m, 0))])
+            solver.add_clause([v2i(('o_xor', m, 0)), v2i(('rho', m)), -v2i(('cout_res', m, 0))])
+            solver.add_clause([v2i(('rho', m)), -v2i(('cout_res', m, 0))])
+
+            # Ripple carry half adder for w > 0
+            for w in range(1, self.adder_wordlength):
+                solver.add_clause([v2i(('o_xor', m, w)), v2i(('cout_res', m, w - 1)), -v2i(('h_ext', m, w))])
+                solver.add_clause([v2i(('o_xor', m, w)), -v2i(('cout_res', m, w - 1)), v2i(('h_ext', m, w))])
+                solver.add_clause([-v2i(('o_xor', m, w)), v2i(('cout_res', m, w - 1)), v2i(('h_ext', m, w))])
+                solver.add_clause([-v2i(('o_xor', m, w)), -v2i(('cout_res', m, w - 1)), -v2i(('h_ext', m, w))])
+
+                # Carry out bits
+                solver.add_clause([v2i(('o_xor', m, w)), -v2i(('cout_res', m, w))])
+                solver.add_clause([-v2i(('o_xor', m, w)), -v2i(('cout_res', m, w - 1)), v2i(('cout_res', m, w))])
+                solver.add_clause([v2i(('o_xor', m, w)), v2i(('cout_res', m, w - 1)), -v2i(('cout_res', m, w))])
+                solver.add_clause([v2i(('cout_res', m, w - 1)), -v2i(('cout_res', m, w))])
 
         # Connect h_ext to h
         for m in range(half_order + 1):
@@ -691,10 +726,24 @@ class FIRFilterPysat:
                 solver.add_clause([-v2i(('psi_alpha', i, 0)), v2i(('alpha', i, 0))])
                 solver.add_clause([-v2i(('psi_beta', i, 0)), v2i(('beta', i, 0))])
 
-                for d in range(self.adder_depth):
+                psi_alpha_lits.append(v2i(('psi_alpha', i, 0)))
+                psi_beta_lits.append(v2i(('psi_beta', i, 0)))
+
+                if self.adder_depth == 1:
+                    continue
+
+                for d in range(1, self.adder_depth):
+                    for a in range(1, i):
+                        solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('alpha', i, a))])
+                        solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('psi_alpha', a, d - 1))])
+
+                        solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('beta', i, a))])
+                        solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('psi_beta', a, d - 1))])
+
                     psi_alpha_lits.append(v2i(('psi_alpha', i, d)))
                     psi_beta_lits.append(v2i(('psi_beta', i, d)))
 
+                
                 cnf_psi_alpha = pb2cnf.equal_card_one(psi_alpha_lits)
                 cnf_psi_beta = pb2cnf.equal_card_one(psi_beta_lits)
 
@@ -702,15 +751,6 @@ class FIRFilterPysat:
                     solver.add_clause(clause)
                 for clause in cnf_psi_beta:
                     solver.add_clause(clause)
-
-                if self.adder_depth > 1:
-                    for d in range(1, self.adder_depth):
-                        for a in range(i - 1):
-                            solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('alpha', i, a))])
-                            solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('psi_alpha', i, d - 1))])
-
-                            solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('beta', i, a))])
-                            solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('psi_beta', i, d - 1))])
 
         print("solver running")
         start_time = time.time()
@@ -950,5 +990,5 @@ if __name__ == "__main__":
                  )
 
     # Run solver and plot result
-    # fir_filter.runsolver(0,5,0)
-    fir_filter.run_barebone(0,5)
+    fir_filter.runsolver(0,5,0)
+    # fir_filter.run_barebone(0,5)

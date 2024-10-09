@@ -323,9 +323,9 @@ class MainProblem:
 
         
 
-    def z3_run_main(self, seed, adderm, h_zero_count=0):
+    def z3_run_main(self, adderm, h_zero_count=0):
 
-        result_model , satisfiability = self.z3_instance_creator().runsolver(seed, adderm,h_zero_count)
+        result_model , satisfiability = self.z3_instance_creator().runsolver(self.z3_thread, adderm,h_zero_count)
         
         return result_model , satisfiability
     
@@ -345,11 +345,10 @@ class MainProblem:
         try:
             # Conditionally create the Z3 pool
             if self.z3_thread > 0:
-                pool_z3 = ProcessPool(max_workers=self.z3_thread)
+                pool_z3 = ProcessPool(max_workers=1)
                 pools.append(pool_z3)
-                for i in range(self.z3_thread):
-                    future_single_z3 = pool_z3.schedule(self.z3_run_main, args=(i , adderm, h_zero_count,), timeout=self.timeout)
-                    futures_z3.append(future_single_z3)
+                future_single_z3 = pool_z3.schedule(self.z3_run_main, args=(adderm, h_zero_count,), timeout=self.timeout)
+                futures_z3.append(future_single_z3)
                     
             else:
                 pool_z3 = None

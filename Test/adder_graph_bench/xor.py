@@ -7,6 +7,7 @@ class bitshift():
     def __init__(self, out, wordlength, verbose=False):
         self.wordlength = wordlength
         self.out = out
+        #number of xor gates
         self.N = 4
         self.verbose = verbose
 
@@ -16,6 +17,7 @@ class bitshift():
         self.epsilon = [Bool(f'epsilon{i}') for i in range(1, self.N+1)]
         self.y = [[Bool(f'y{i}{w}') for w in range(self.wordlength)] for i in range(1, self.N+1)]
 
+        # test values
         for i in range(1, self.N+1):
             solver.add(self.epsilon[i-1])
             solver.add(self.w[i-1][2])

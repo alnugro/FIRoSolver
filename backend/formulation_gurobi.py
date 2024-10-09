@@ -29,6 +29,8 @@ class FIRFilterGurobi:
                  gain_lowerbound,
                  coef_accuracy,
                  intW,
+                 run_auto_thread=False,
+                 intfeasttol=None,
                  ):
         
         
@@ -480,11 +482,10 @@ class FIRFilterGurobi:
         
         model = gp.Model("fir_model")
         if self.run_auto_thread == False:
-            model.setParam('Threads', 0)
+            model.setParam('Threads', thread)
         
-        model.setParam('OutputFlag', 0)
-        model.setParam('TimeLimit', 1200)     #timeout
-
+        # model.setParam('OutputFlag', 0)
+        # model.setParam('TimeLimit', 1)     #timeout
 
 
         if solver_option == 'try_max_h_zero_count':
@@ -496,20 +497,20 @@ class FIRFilterGurobi:
             hmax = presolve_result['hmax_without_zero']
             hmin = presolve_result['hmin_without_zero']
         
-        # print("Running Gurobi with the following parameters:")
-        # print(f"thread: {thread}")
-        # print(f"minmax_option: {minmax_option}")
-        # print(f"h_zero_count: {h_zero_count}")
-        # print(f"filter_type: {self.filter_type}")
-        # print(f"order_current: {self.order}")
-        # print(f"freqx_axis: {self.freqx_axis}")
-        # print(f"upperbound_lin: {internal_upperbound_lin}")
-        # print(f"lowerbound_lin: {internal_lowerbound_lin}")
-        # print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
-        # print(f"gain_upperbound: {self.gain_upperbound}")
-        # print(f"gain_lowerbound: {self.gain_lowerbound}")
-        # print(f"wordlength: {self.wordlength}")
-        # print(f"fracW: {self.fracW}")
+        print("Running Gurobi with the following parameters:")
+        print(f"thread: {thread}")
+        print(f"adder_depth: {self.adder_depth}")
+        print(f"h_zero_count: {h_zero_count}")
+        print(f"filter_type: {self.filter_type}")
+        print(f"order_current: {self.order}")
+        print(f"freqx_axis: {self.freqx_axis}")
+        print(f"upperbound_lin: {internal_upperbound_lin}")
+        print(f"lowerbound_lin: {internal_lowerbound_lin}")
+        print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
+        print(f"gain_upperbound: {self.gain_upperbound}")
+        print(f"gain_lowerbound: {self.gain_lowerbound}")
+        print(f"wordlength: {self.wordlength}")
+        print(f"fracW: {self.fracW}")
 
         
         h = [[model.addVar(vtype=GRB.BINARY, name=f'h_{a}_{w}') for w in range(self.wordlength)] for a in range(half_order + 1)]
@@ -783,34 +784,66 @@ class FIRFilterGurobi:
 
         model.addConstr(iota_sum == connected_coefficient)
 
-        # Left shifter in result module
-        h_ext = [[model.addVar(vtype=GRB.BINARY, name=f'h_ext_{m}_{w}') for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
-        phi = [[model.addVar(vtype=GRB.BINARY, name=f'phi_{m}_{k}') for k in range(self.adder_wordlength - 1)] for m in range(half_order + 1)]
-
+        # Left Shifter in result module
+        # k is the shift selector
+        o = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+        phi = [[model.addVar(vtype=GRB.BINARY) for k in range(self.adder_wordlength - 1)] for m in range(half_order + 1)]
+        
         for m in range(half_order + 1):
             phi_sum = gp.LinExpr()
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
-                    # Equivalent to clause53_1 and clause53_2
-                    model.addConstr((1 - phi[m][k]) + (1 - t[m][j]) + h_ext[m][j+k] >= 1)
-                    model.addConstr((1 - phi[m][k]) + t[m][j] + (1 - h_ext[m][j+k]) >= 1)
-                
+                    model.addConstr((1 - phi[m][k]) + (1 - t[m][j]) + o[m][j + k] >= 1)
+                    model.addConstr((1 - phi[m][k]) + t[m][j] + (1 - o[m][j + k]) >= 1)
                 phi_sum += phi[m][k]
-
+            # AtMost and AtLeast (phi_sum == 1)
             model.addConstr(phi_sum == 1)
-
             for kf in range(1, self.adder_wordlength - 1):
                 for b in range(kf):
-                    # Equivalent to clause54, clause55, clause56
-                    model.addConstr((1 - phi[m][kf]) + (1 - h_ext[m][b]) >= 1)
+                    model.addConstr((1 - phi[m][kf]) + (1 - o[m][b]) >= 1)
                     model.addConstr((1 - phi[m][kf]) + (1 - t[m][self.adder_wordlength - 1]) + t[m][self.adder_wordlength - 2 - b] >= 1)
                     model.addConstr((1 - phi[m][kf]) + t[m][self.adder_wordlength - 1] + (1 - t[m][self.adder_wordlength - 2 - b]) >= 1)
 
-            # Equivalent to clause57_1 and clause57_2
-            model.addConstr((1 - t[m][self.adder_wordlength - 1]) + h_ext[m][self.adder_wordlength - 1] >= 1)
-            model.addConstr(t[m][self.adder_wordlength - 1] + (1 - h_ext[m][self.adder_wordlength - 1]) >= 1)
+            model.addConstr((1 - t[m][self.adder_wordlength - 1]) + o[m][self.adder_wordlength - 1] >= 1)
+            model.addConstr(t[m][self.adder_wordlength - 1] + (1 - o[m][self.adder_wordlength - 1]) >= 1)
 
+        rho = [model.addVar(vtype=GRB.BINARY) for m in range(half_order + 1)]
+        o_xor = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+        h_ext = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+        cout_res = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
 
+        #xor constraints
+        for m in range(half_order + 1):
+            for word in range(self.adder_wordlength):
+                model.addConstr(o[m][word] + rho[m] + (1 - o_xor[m][word]) >= 1)
+                model.addConstr(o[m][word] + (1 - rho[m]) + o_xor[m][word] >= 1)
+                model.addConstr((1 - o[m][word]) + rho[m] + o_xor[m][word] >= 1)
+                model.addConstr((1 - o[m][word]) + (1 - rho[m]) + (1 - o_xor[m][word]) >= 1)
+
+        #ripple carry constraints
+        for m in range(half_order + 1):
+            model.addConstr(o_xor[m][0] + rho[m] + (1 - h_ext[m][0]) >= 1)
+            model.addConstr(o_xor[m][0] + (1 - rho[m]) + h_ext[m][0] >= 1)
+            model.addConstr((1 - o_xor[m][0]) + rho[m] + h_ext[m][0] >= 1)
+            model.addConstr((1 - o_xor[m][0]) + (1 - rho[m]) + (1 - h_ext[m][0]) >= 1)
+
+            model.addConstr(o_xor[m][0] + (1 - cout_res[m][0]) >= 1)
+            model.addConstr((1 - o_xor[m][0]) + (1 - rho[m]) + cout_res[m][0] >= 1)
+            model.addConstr(o_xor[m][0] + rho[m] + (1 - cout_res[m][0]) >= 1)
+            model.addConstr(rho[m] + (1 - cout_res[m][0]) >= 1)
+
+            for word in range(1, self.adder_wordlength):
+                model.addConstr(o_xor[m][word] + cout_res[m][word - 1] + (1 - h_ext[m][word]) >= 1)
+                model.addConstr(o_xor[m][word] + (1 - cout_res[m][word - 1]) + h_ext[m][word] >= 1)
+                model.addConstr((1 - o_xor[m][word]) + cout_res[m][word - 1] + h_ext[m][word] >= 1)
+                model.addConstr((1 - o_xor[m][word]) + (1 - cout_res[m][word - 1]) + (1 - h_ext[m][word]) >= 1)
+
+                model.addConstr(o_xor[m][word] + (1 - cout_res[m][word]) >= 1)
+                model.addConstr((1 - o_xor[m][word]) + (1 - cout_res[m][word - 1]) + cout_res[m][word] >= 1)
+                model.addConstr(o_xor[m][word] + cout_res[m][word - 1] + (1 - cout_res[m][word]) >= 1)
+                model.addConstr(cout_res[m][word - 1] + (1 - cout_res[m][word]) >= 1)
+
+        #solver connection
         for m in range(half_order + 1):
             for word in range(self.adder_wordlength):
                 if word <= self.wordlength - 1:
@@ -826,25 +859,21 @@ class FIRFilterGurobi:
             psi_alpha = [[model.addVar(vtype=GRB.BINARY, name=f'psi_alpha_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.adder_count+1)]
             psi_beta = [[model.addVar(vtype=GRB.BINARY, name=f'psi_beta_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.adder_count+1)]
 
-            psi_alpha_sum = []
-            psi_beta_sum = []
+           
 
             for i in range(1, self.adder_count+1):
+                psi_alpha_sum = []
+                psi_beta_sum = []
                 # Clause 60: Not(psi_alpha[i-1][0]) or alpha[i-1][0]
                 model.addConstr(1 - psi_alpha[i-1][0] + alpha[i-1][0] >= 1)
                 
                 # Clause 61: Not(psi_beta[i-1][0]) or beta[i-1][0]
                 model.addConstr((1 - psi_beta[i-1][0]) + beta[i-1][0] >= 1)
                 
-                for d in range(self.adder_depth):
-                    psi_alpha_sum.append(psi_alpha[i-1][d])
-                    psi_beta_sum.append(psi_beta[i-1][d])
-
-                # AtMost and AtLeast for psi_alpha_sum and psi_beta_sum
-                model.addConstr(sum(psi_alpha_sum) == 1)
-                model.addConstr(sum(psi_beta_sum) == 1)
-
-                if d == 1:
+                psi_alpha_sum.append(psi_alpha[i-1][0])
+                psi_beta_sum.append(psi_beta[i-1][0])
+                
+                if self.adder_depth == 1:
                     continue
 
                 for d in range(1, self.adder_depth):
@@ -853,14 +882,22 @@ class FIRFilterGurobi:
                         model.addConstr((1 - psi_alpha[i-1][d]) + alpha[i-1][a] >= 1)
 
                         # Gurobi equivalent of clause64: Or(Not(psi_alpha[i - 1][d]), psi_alpha[i - 1][d - 1])
-                        model.addConstr((1 - psi_alpha[i-1][d]) + psi_alpha[i-1][d-1] >= 1)
+                        model.addConstr((1 - psi_alpha[i-1][d]) + psi_alpha[a][d-1] >= 1)
 
 
                         # Gurobi equivalent of clause65: Or(Not(psi_beta[i - 1][d]), beta[i - 1][a])
                         model.addConstr((1 - psi_beta[i-1][d]) + beta[i-1][a] >= 1)
 
                         # Gurobi equivalent of clause66: Or(Not(psi_beta[i - 1][d]), psi_beta[i - 1][d - 1])
-                        model.addConstr((1 - psi_beta[i-1][d]) + psi_beta[i-1][d-1] >= 1)
+                        model.addConstr((1 - psi_beta[i-1][d]) + psi_beta[a][d-1] >= 1)
+                    
+                    psi_alpha_sum.append(psi_alpha[i-1][d])
+                    psi_beta_sum.append(psi_beta[i-1][d])
+
+                # AtMost and AtLeast for psi_alpha_sum and psi_beta_sum
+                model.addConstr(sum(psi_alpha_sum) == 1)
+                model.addConstr(sum(psi_beta_sum) == 1)
+
         
         if solver_option == 'try_h_zero_count' or solver_option == 'try_max_h_zero_count':
             model.setObjective(0, GRB.MINIMIZE)
@@ -901,6 +938,16 @@ class FIRFilterGurobi:
 
        
         if model.status == GRB.OPTIMAL:
+            for i in range(1, self.adder_count+1):
+                for d in range(self.adder_depth):
+                    psi_alpha_val = psi_alpha[i-1][d].X
+                    psi_beta_val = psi_beta[i-1][d].X
+                    print(f"psi_alpha_{i}_{d}: {psi_alpha_val}")
+                    print(f"psi_beta_{i}_{d}: {psi_beta_val}")
+
+
+
+
             end_time = time.time()
 
             satisfiability = 'sat'
@@ -1028,6 +1075,17 @@ class FIRFilterGurobi:
                 iota_values.append(value)
             self.result_model.update({"iota": iota_values})
 
+            #store rho array
+            rho_values = []
+            for m in range(len(rho)):
+                value = 1 if rho[m].X > 0.5 else 0
+                rho_values.append(value)
+            self.result_model.update({"rho": rho_values})
+
+
+        elif model.Status == GRB.TIME_LIMIT:
+            print("Optimization stopped due to time limit.")
+            satisfiability = 'timeout'
         else:
             print("Gurobi: Unsatisfiable")
             end_time = time.time()
@@ -1053,13 +1111,13 @@ if __name__ == "__main__":
 
     # Test inputs
     filter_type = 0
-    order_current = 16
+    order_current = 20
     accuracy = 1
-    wordlength = 14
-    gain_upperbound = 6
+    wordlength = 11
+    gain_upperbound = 1
     gain_lowerbound = 1
     coef_accuracy = 4
-    intW = 1
+    intW = 2
 
     adder_count = 4
     adder_depth = 0
@@ -1067,31 +1125,33 @@ if __name__ == "__main__":
     adder_wordlength_ext = 2
     
     
-
+    delta = 0.071192
+    passband_error = delta
+    stopband_error = delta
     space = order_current * accuracy
     # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    freqx_axis = np.linspace(0, 1, space)
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3*(space))
-    upper_half_point = int(0.5*(space))
+    lower_half_point = int(0.3 * space)
+    upper_half_point = int(0.5 * space)
     end_point = space
 
-    freq_upper[0:lower_half_point] = 0.5
-    freq_lower[0:lower_half_point] = 0
+    freq_upper[0:lower_half_point] = 1 + passband_error
+    freq_lower[0:lower_half_point] = 1 - passband_error
 
-    freq_upper[upper_half_point:end_point] = -20
-    freq_lower[upper_half_point:end_point] = -1000
+    freq_upper[upper_half_point:end_point] = 0 + stopband_error
+    freq_lower[upper_half_point:end_point] = 0
 
 
     #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
+    ignore_lowerbound = -60
 
     #linearize the bound
-    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    upperbound_lin = np.copy(freq_upper)
+    lowerbound_lin = np.copy(freq_lower)
     ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
     
     
@@ -1148,8 +1208,8 @@ if __name__ == "__main__":
         
         print(presolve_result)
     # Run solver
-    target_result = fir_filter.runsolver(0,presolve_result,'try_max_h_zero_count',2, 0)
-
+    target_result = fir_filter.runsolver(0,presolve_result,'try_max_h_zero_count',2, 6)
+    print(target_result)
     # fir_filter.run_barebone(0,None,None)
     # target_result = fir_filter.run_barebone(1,'minimize_h',None, 0)
     

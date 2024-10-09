@@ -66,7 +66,7 @@ class SolverFunc():
                 input_coeffs -= max_positive_int_pbfunc
             overflow_coef.append(input_coeffs)
             overflow_lit.append(literal)
-            print("overflow happened in:", input_coeffs, " with literall: ", literal)
+            # print("overflow happened in:", input_coeffs, " with literall: ", literal)
         
         elif input_coeffs < max_negative_int_pbfunc:
             while input_coeffs < max_negative_int_pbfunc:
@@ -75,7 +75,7 @@ class SolverFunc():
                 input_coeffs -= max_negative_int_pbfunc
             overflow_coef.append(input_coeffs)
             overflow_lit.append(literal)
-            print("overflow happened in:", input_coeffs, " with literall: ", literal)
+            # print("overflow happened in:", input_coeffs, " with literall: ", literal)
         
         else:
             overflow_coef.append(input_coeffs)

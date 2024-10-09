@@ -331,9 +331,9 @@ class Presolver:
         return presolve_result
         
 
-    def z3_presolve(self, seed, solver_options=None, h_zero_count= None):
+    def z3_presolve(self, solver_options=None, h_zero_count= None):
 
-        satisfiability, h_res ,gain= self.z3_instance_creator().run_barebone(seed, solver_options,h_zero_count)
+        satisfiability, h_res ,gain= self.z3_instance_creator().run_barebone(self.z3_thread, solver_options,h_zero_count)
         
         return satisfiability, h_res ,gain
     
@@ -355,11 +355,10 @@ class Presolver:
         try:
             # Conditionally create the Z3 pool
             if self.z3_thread > 0:
-                pool_z3 = ProcessPool(max_workers=self.z3_thread)
+                pool_z3 = ProcessPool(max_workers=1)
                 pools.append(pool_z3)
-                for i in range(self.z3_thread):
-                    future_single_z3 = pool_z3.schedule(self.z3_presolve, args=(i , solver_options, h_zero_count,), timeout=self.timeout)
-                    futures_z3.append(future_single_z3)
+                future_single_z3 = pool_z3.schedule(self.z3_presolve, args=(solver_options, h_zero_count,), timeout=self.timeout)
+                futures_z3.append(future_single_z3)
                     
             else:
                 pool_z3 = None

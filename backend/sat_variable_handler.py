@@ -77,6 +77,18 @@ class VariableMapper:
             ('phi', m, k): f'phi_{m}_{k}' for m in range(half_order + 1) for k in range(adder_wordlength - 1)
         })
         variables.update({
+            ('rho', m): f'rho_{m}' for m in range(half_order + 1)
+        })
+        variables.update({
+            ('o', m, w): f'o_{m}_{w}' for m in range(half_order + 1) for w in range(adder_wordlength)
+        })
+        variables.update({
+            ('o_xor', m, w): f'o_xor_{m}_{w}' for m in range(half_order + 1) for w in range(adder_wordlength)
+        })
+        variables.update({
+            ('cout_res', m, w): f'cout_res_{m}_{w}' for m in range(half_order + 1) for w in range(adder_wordlength)
+        })
+        variables.update({
             ('psi_alpha', i, d): f'psi_alpha_{i}_{d}' for i in range(1, max_adder + 1) for d in range(adder_depth)
         })
         variables.update({
