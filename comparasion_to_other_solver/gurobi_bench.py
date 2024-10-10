@@ -48,7 +48,7 @@ if __name__ == "__main__":
     delta = 0.4
 
 
-    for i in range(10):
+    for i in range(40):
         passband_error = delta
         stopband_error = delta
         space = order_current * accuracy * 50

@@ -52,6 +52,9 @@ class BackendMediator(QObject):
                 'original_xdata': np.array(self.initial_solver_input['original_xdata']).tolist(), #convert them to list, ndarray is not supported with json
                 'original_upperbound_lin': np.array(self.initial_solver_input['original_upperbound_lin']).tolist(),
                 'original_lowerbound_lin': np.array(self.initial_solver_input['original_lowerbound_lin']).tolist(),
+                'cutoffs_x': np.array(self.initial_solver_input['cutoffs_x']).tolist(),
+                'cutoffs_upper_ydata_lin': np.array(self.initial_solver_input['cutoffs_upper_ydata_lin']).tolist(),
+                'cutoffs_lower_ydata_lin': np.array(self.initial_solver_input['cutoffs_lower_ydata_lin']).tolist(),
             })
         
         filename = 'problem_description.json'

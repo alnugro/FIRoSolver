@@ -342,7 +342,7 @@ if __name__ == '__main__':
             'wordlength': 11,
             'gain_upperbound': 2.63,
             'gain_lowerbound': 1,
-            'coef_accuracy': 5,
+            'coef_accuracy': 4,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,

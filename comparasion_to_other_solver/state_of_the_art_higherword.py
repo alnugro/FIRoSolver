@@ -339,11 +339,11 @@ if __name__ == '__main__':
         9: {#S1
             'filter_type': 1,
             'order_current': 29,
-            'accuracy': 3,
+            'accuracy': 2,
             'wordlength': 10,
             'gain_upperbound': 2.5,
             'gain_lowerbound': 1,
-            'coef_accuracy': 3,
+            'coef_accuracy': 4,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
@@ -363,11 +363,11 @@ if __name__ == '__main__':
         10: {#S2
             'filter_type': 1,
             'order_current': 55,
-            'accuracy': 3,
+            'accuracy': 2,
             'wordlength': 18,
             'gain_upperbound': 10.5,
             'gain_lowerbound': 1,
-            'coef_accuracy': 5,
+            'coef_accuracy': 4,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
@@ -387,11 +387,11 @@ if __name__ == '__main__':
         11: {#L2
             'filter_type': 0,
             'order_current': 64,
-            'accuracy': 3,
+            'accuracy': 2,
             'wordlength': 18,
             'gain_upperbound': 4.2,
             'gain_lowerbound': 1,
-            'coef_accuracy': 6,
+            'coef_accuracy': 4,
             'intW': 4,
             'adder_count': None,
             'adder_depth': 0,
@@ -411,11 +411,11 @@ if __name__ == '__main__':
         12: {#X1
             'filter_type': 0,
             'order_current': 16,
-            'accuracy': 4,
+            'accuracy': 2,
             'wordlength': 13,
             'gain_upperbound': 1.7,
             'gain_lowerbound': 1,
-            'coef_accuracy': 6,
+            'coef_accuracy': 4,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
@@ -435,11 +435,11 @@ if __name__ == '__main__':
         13: {#G1
             'filter_type': 0,
             'order_current': 18,
-            'accuracy': 6,
+            'accuracy': 2,
             'wordlength': 8,
             'gain_upperbound': 2.65,
             'gain_lowerbound': 1,
-            'coef_accuracy': 6,
+            'coef_accuracy': 4,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
@@ -459,11 +459,11 @@ if __name__ == '__main__':
         14: {#Y1
             'filter_type': 1,
             'order_current': 31,
-            'accuracy': 4,
+            'accuracy': 2,
             'wordlength': 13,
             'gain_upperbound': 2.6,
             'gain_lowerbound': 1,
-            'coef_accuracy': 6,
+            'coef_accuracy': 4,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
@@ -483,11 +483,11 @@ if __name__ == '__main__':
         15: {#Y2
             'filter_type': 1,
             'order_current': 41,
-            'accuracy': 3,
+            'accuracy': 2,
             'wordlength': 14,
             'gain_upperbound': 2.65,
             'gain_lowerbound': 1,
-            'coef_accuracy': 6,
+            'coef_accuracy': 4,
             'intW': 2,
             'adder_count': None,
             'adder_depth': 0,
@@ -505,134 +505,135 @@ if __name__ == '__main__':
             'upper_cutoff': 0.5,
         }
     }
-    test_key = 1
-    print(test_run[test_key])
-    # Accessing the dictionary for the test_key 1 and assigning variables
-    filter_type = test_run[test_key]['filter_type']
-    order_current = test_run[test_key]['order_current']
-    accuracy = test_run[test_key]['accuracy']
-    wordlength = test_run[test_key]['wordlength']
-    gain_upperbound = test_run[test_key]['gain_upperbound']
-    gain_lowerbound = test_run[test_key]['gain_lowerbound']
-    coef_accuracy = test_run[test_key]['coef_accuracy']
-    intW = test_run[test_key]['intW']
-    adder_count = test_run[test_key]['adder_count']
-    adder_depth = test_run[test_key]['adder_depth']
-    avail_dsp = test_run[test_key]['avail_dsp']
-    adder_wordlength_ext = test_run[test_key]['adder_wordlength_ext']
-    gain_wordlength = test_run[test_key]['gain_wordlength']
-    gain_intW = test_run[test_key]['gain_intW']
-    gurobi_thread = test_run[test_key]['gurobi_thread']
-    pysat_thread = test_run[test_key]['pysat_thread']
-    z3_thread = test_run[test_key]['z3_thread']
-    timeout = test_run[test_key]['timeout']
-    
-    passband_error = test_run[test_key]['passband_error']
-    stopband_error = test_run[test_key]['stopband_error']
-    
-    lower_cutoff = test_run[test_key]['lower_cutoff']
-    upper_cutoff = test_run[test_key]['upper_cutoff']
-
-
-
-    space = order_current * accuracy * 20 #original accuracy
-    # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space)
-    freq_upper = np.full(space, np.nan)
-    freq_lower = np.full(space, np.nan)
-
-
-    # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(lower_cutoff*(space))
-    upper_half_point = int(upper_cutoff*(space))
-    end_point = space
-
-    freq_upper[0:lower_half_point] = 1 + passband_error
-    freq_lower[0:lower_half_point] = 1 - passband_error
-
-    freq_upper[upper_half_point:end_point] = 0 + stopband_error
-    freq_lower[upper_half_point:end_point] = 0 #will be ignored
-
-
-    cutoffs_x = []
-    cutoffs_upper_ydata = []
-    cutoffs_lower_ydata = []
-
-    cutoffs_x.append(0)
-    cutoffs_x.append(lower_cutoff)
-    cutoffs_x.append(upper_cutoff)
-    cutoffs_x.append(1)
-
-    cutoffs_upper_ydata.append(1 + passband_error)
-    cutoffs_upper_ydata.append(1 + passband_error)
-    cutoffs_upper_ydata.append(0 + stopband_error)
-    cutoffs_upper_ydata.append(0 + stopband_error)
-
-    cutoffs_lower_ydata.append(1 - passband_error)
-    cutoffs_lower_ydata.append(1 - passband_error)
-    cutoffs_lower_ydata.append(0)
-    cutoffs_lower_ydata.append(0)
-
-
-    #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -100
-
-    #linearize the bound
-    upperbound_lin = np.copy(freq_upper)
-    lowerbound_lin = np.copy(freq_lower)
-    ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
-
-    cutoffs_upper_ydata_lin = np.copy(cutoffs_upper_ydata)
-    cutoffs_lower_ydata_lin = np.copy(cutoffs_lower_ydata)
-
-    # print(np.array(upperbound_lin).tolist())
-    # print(np.array(lowerbound_lin).tolist())
-    # print(ignore_lowerbound)
-    
-    
-
-
-    input_data = {
-        'filter_type': filter_type,
-        'order_upperbound': order_current,
-        'original_xdata': freqx_axis,
-        'original_upperbound_lin': upperbound_lin,
-        'original_lowerbound_lin': lowerbound_lin,
-        'ignore_lowerbound': ignore_lowerbound_lin,
-        'cutoffs_x': cutoffs_x,
-        'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
-        'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
-        'wordlength': wordlength,
-        'adder_count': adder_count,
-        'adder_depth': adder_depth,
-        'avail_dsp': avail_dsp,
-        'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
-        'gain_wordlength' : gain_wordlength,
-        'gain_intW' : gain_intW,
-        'gain_upperbound': gain_upperbound,
-        'gain_lowerbound': gain_lowerbound,
-        'coef_accuracy': coef_accuracy,
-        'intW': intW,
-        'gurobi_thread': gurobi_thread,
-        'pysat_thread': pysat_thread,
-        'z3_thread': z3_thread,
-        'timeout': 0,
-        'start_with_error_prediction': False,
-        'solver_accuracy_multiplier': accuracy,
-        'deepsearch': False,
-        'patch_multiplier' : 1,
-        'gurobi_auto_thread': False
-    }
-    
-
-    # Instantiate the BackendMediator
-    tester = TestBench(input_data, test_key)
-    tester.run_solver()
-    
-    
+    for i in range(9,16):
+        test_key = i
+        print(test_run[test_key])
+        # Accessing the dictionary for the test_key 1 and assigning variables
+        filter_type = test_run[test_key]['filter_type']
+        order_current = test_run[test_key]['order_current']
+        accuracy = test_run[test_key]['accuracy']
+        wordlength = test_run[test_key]['wordlength']
+        gain_upperbound = test_run[test_key]['gain_upperbound']
+        gain_lowerbound = test_run[test_key]['gain_lowerbound']
+        coef_accuracy = test_run[test_key]['coef_accuracy']
+        intW = test_run[test_key]['intW']
+        adder_count = test_run[test_key]['adder_count']
+        adder_depth = test_run[test_key]['adder_depth']
+        avail_dsp = test_run[test_key]['avail_dsp']
+        adder_wordlength_ext = test_run[test_key]['adder_wordlength_ext']
+        gain_wordlength = test_run[test_key]['gain_wordlength']
+        gain_intW = test_run[test_key]['gain_intW']
+        gurobi_thread = test_run[test_key]['gurobi_thread']
+        pysat_thread = test_run[test_key]['pysat_thread']
+        z3_thread = test_run[test_key]['z3_thread']
+        timeout = test_run[test_key]['timeout']
         
-    print("Test ", test_key, " is completed")
+        passband_error = test_run[test_key]['passband_error']
+        stopband_error = test_run[test_key]['stopband_error']
+        
+        lower_cutoff = test_run[test_key]['lower_cutoff']
+        upper_cutoff = test_run[test_key]['upper_cutoff']
 
-    print("Benchmark completed and results saved to state_of_the_art_basic.txt")
+
+
+        space = order_current * accuracy * 20 #original accuracy
+        # Initialize freq_upper and freq_lower with NaN values
+        freqx_axis = np.linspace(0, 1, space)
+        freq_upper = np.full(space, np.nan)
+        freq_lower = np.full(space, np.nan)
+
+
+        # Manually set specific values for the elements of freq_upper and freq_lower in dB
+        lower_half_point = int(lower_cutoff*(space))
+        upper_half_point = int(upper_cutoff*(space))
+        end_point = space
+
+        freq_upper[0:lower_half_point] = 1 + passband_error
+        freq_lower[0:lower_half_point] = 1 - passband_error
+
+        freq_upper[upper_half_point:end_point] = 0 + stopband_error
+        freq_lower[upper_half_point:end_point] = 0 #will be ignored
+
+
+        cutoffs_x = []
+        cutoffs_upper_ydata = []
+        cutoffs_lower_ydata = []
+
+        cutoffs_x.append(0)
+        cutoffs_x.append(lower_cutoff)
+        cutoffs_x.append(upper_cutoff)
+        cutoffs_x.append(1)
+
+        cutoffs_upper_ydata.append(1 + passband_error)
+        cutoffs_upper_ydata.append(1 + passband_error)
+        cutoffs_upper_ydata.append(0 + stopband_error)
+        cutoffs_upper_ydata.append(0 + stopband_error)
+
+        cutoffs_lower_ydata.append(1 - passband_error)
+        cutoffs_lower_ydata.append(1 - passband_error)
+        cutoffs_lower_ydata.append(0)
+        cutoffs_lower_ydata.append(0)
+
+
+        #beyond this bound lowerbound will be ignored
+        ignore_lowerbound = -100
+
+        #linearize the bound
+        upperbound_lin = np.copy(freq_upper)
+        lowerbound_lin = np.copy(freq_lower)
+        ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
+
+        cutoffs_upper_ydata_lin = np.copy(cutoffs_upper_ydata)
+        cutoffs_lower_ydata_lin = np.copy(cutoffs_lower_ydata)
+
+        # print(np.array(upperbound_lin).tolist())
+        # print(np.array(lowerbound_lin).tolist())
+        # print(ignore_lowerbound)
+        
+        
+
+
+        input_data = {
+            'filter_type': filter_type,
+            'order_upperbound': order_current,
+            'original_xdata': freqx_axis,
+            'original_upperbound_lin': upperbound_lin,
+            'original_lowerbound_lin': lowerbound_lin,
+            'ignore_lowerbound': ignore_lowerbound_lin,
+            'cutoffs_x': cutoffs_x,
+            'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
+            'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
+            'wordlength': wordlength,
+            'adder_count': adder_count,
+            'adder_depth': adder_depth,
+            'avail_dsp': avail_dsp,
+            'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
+            'gain_wordlength' : gain_wordlength,
+            'gain_intW' : gain_intW,
+            'gain_upperbound': gain_upperbound,
+            'gain_lowerbound': gain_lowerbound,
+            'coef_accuracy': coef_accuracy,
+            'intW': intW,
+            'gurobi_thread': gurobi_thread,
+            'pysat_thread': pysat_thread,
+            'z3_thread': z3_thread,
+            'timeout': 0,
+            'start_with_error_prediction': False,
+            'solver_accuracy_multiplier': accuracy,
+            'deepsearch': False,
+            'patch_multiplier' : 1,
+            'gurobi_auto_thread': False
+        }
+        
+
+        # Instantiate the BackendMediator
+        tester = TestBench(input_data, test_key)
+        tester.run_solver()
+        
+        
+            
+        print("Test ", test_key, " is completed")
+
+        print("Benchmark completed and results saved to state_of_the_art_basic.txt")
 
 
