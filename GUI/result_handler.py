@@ -422,14 +422,14 @@ if __name__ == '__main__':
         'input_wordlength' : 9
     }
 
-    result = ResultHandler(input_data)
+    result = JsonUnloader()
     loaded_data = result.load_with_lock( True)
 
     for key_subitem, value_subitem in loaded_data['0'].items():
             print(f"Key:{key_subitem}, Value: {value_subitem}")
     
-    pydsp = PydspHandler(input_data)
-    pydsp.create_pydsp_circuit(loaded_data['0'], True)
+    pydsp = PydspHandler()
+    pydsp.create_pydsp_circuit(loaded_data['3'], True)
 
     # for key, value in loaded_data.items():
     #     for key_subitem, value_subitem in loaded_data[key].items():

@@ -1,285 +1,320 @@
-import copy
-import tkinter as tk
-from tkinter import ttk
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from scipy.signal import medfilt, freqz, firwin
-from matplotlib.patches import Rectangle
+# Bound ci,0 to be an odd number
+for i in range(1, self.adder_count + 1):
+    model.addConstr(c[i][0] == 1)
 
-class DraggableLine(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Draggable Line Example")
+# Last c or c[N+1] is connected to ground, so all zeroes
+for w in range(self.adder_wordlength):
+    model.addConstr(c[self.adder_count + 1][w] == 0)
 
-        # Create a frame for the slider and plot
-        self.frame = ttk.Frame(self)
-        self.frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+# Input multiplexer constraints
+for i in range(1, self.adder_count + 1):
+    alpha_sum = gp.LinExpr()
+    beta_sum = gp.LinExpr()
+    for a in range(i):
+        for word in range(self.adder_wordlength):
+            # Equivalent to clause1_1 and clause1_2
+            model.addConstr(-alpha[i-1][a] - c[a][word] + l[i-1][word] >= -1)
+            model.addConstr(-alpha[i-1][a] + c[a][word] - l[i-1][word] >= -1)
 
-        # Create a slider for the Gaussian width
-        self.gaussian_width_slider = tk.Scale(self.frame, from_=0.01, to=0.1, resolution=0.01, orient=tk.HORIZONTAL, label='Gaussian Width')
-        self.gaussian_width_slider.set(0.05)
-        self.gaussian_width_slider.pack(side=tk.TOP, fill=tk.X, pady=10)
+            # Equivalent to clause2_1 and clause2_2
+            model.addConstr(-beta[i-1][a] - c[a][word] + r[i-1][word] >= -1)
+            model.addConstr(-beta[i-1][a] + c[a][word] - r[i-1][word] >= -1)
 
-        # Create a slider for the median filter kernel size
-        self.kernel_slider = tk.Scale(self.frame, from_=1, to=21, resolution=2, orient=tk.HORIZONTAL, label='Median Filter Kernel Size')
-        self.kernel_slider.set(5)
-        self.kernel_slider.pack(side=tk.TOP, fill=tk.X, pady=10)
+        alpha_sum += alpha[i-1][a]
+        beta_sum += beta[i-1][a]
 
-        # Create a slider for the cutoff frequency of the low-pass filter
-        self.cutoff_slider = tk.Scale(self.frame, from_=0.01, to=0.5, resolution=0.01, orient=tk.HORIZONTAL, label='Cutoff Frequency')
-        self.cutoff_slider.set(0.1)
-        self.cutoff_slider.pack(side=tk.TOP, fill=tk.X, pady=10)
+    # AtMost and AtLeast constraints for alpha and beta sums
+    model.addConstr(alpha_sum == 1)
+    model.addConstr(beta_sum == 1)
 
-        # Create buttons for smoothen, undo, redo, and selection mode
-        self.button_frame = ttk.Frame(self.frame)
-        self.button_frame.pack(side=tk.TOP, fill=tk.X)
+# Left Shifter constraints
+gamma = [[model.addVar(vtype=GRB.BINARY, name=f'gamma_{i}_{k}') for k in range(self.adder_wordlength - 1)] for i in range(1, self.adder_count + 1)]
+s = [[model.addVar(vtype=GRB.BINARY, name=f's_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        self.smoothen_button = ttk.Button(self.button_frame, text="Smoothen", command=self.smoothen_plot)
-        self.smoothen_button.pack(side=tk.LEFT, padx=5, pady=5)
+for i in range(1, self.adder_count + 1):
+    gamma_sum = gp.LinExpr()
+    for k in range(self.adder_wordlength - 1):
+        for j in range(self.adder_wordlength - 1 - k):
+            # Equivalent to clause3_1 and clause3_2
+            model.addConstr(-gamma[i-1][k] - l[i-1][j] + s[i-1][j+k] >= -1)
+            model.addConstr(-gamma[i-1][k] + l[i-1][j] - s[i-1][j+k] >= -1)
 
-        self.undo_button = ttk.Button(self.button_frame, text="Undo", command=self.undo_plot)
-        self.undo_button.pack(side=tk.LEFT, padx=5, pady=5)
+        gamma_sum += gamma[i-1][k]
 
-        self.redo_button = ttk.Button(self.button_frame, text="Redo", command=self.redo_plot)
-        self.redo_button.pack(side=tk.LEFT, padx=5, pady=5)
+    model.addConstr(gamma_sum == 1)
 
-        self.selection_mode_button = ttk.Button(self.button_frame, text="Selection Mode", command=self.toggle_selection_mode)
-        self.selection_mode_button.pack(side=tk.LEFT, padx=5, pady=5)
+    for kf in range(1, self.adder_wordlength - 1):
+        for b in range(kf):
+            # Equivalent to clause4, clause5, and clause6
+            model.addConstr(-gamma[i-1][kf] - s[i-1][b] >= -1)
+            model.addConstr(-gamma[i-1][kf] - l[i-1][self.adder_wordlength - 1] + l[i-1][self.adder_wordlength - 2 - b] >= -1)
+            model.addConstr(-gamma[i-1][kf] + l[i-1][self.adder_wordlength - 1] - l[i-1][self.adder_wordlength - 2 - b] >= -1)
 
-        # Create a slider to set the flat level
-        self.flat_level_slider = tk.Scale(self.frame, from_=-60.0, to=0.0, resolution=1.0, orient=tk.HORIZONTAL, label='Flat Level (dB)')
-        self.flat_level_slider.set(0.0)
-        self.flat_level_slider.pack(side=tk.TOP, fill=tk.X, pady=10)
+    # Equivalent to clause7_1 and clause7_2
+    model.addConstr(-l[i-1][self.adder_wordlength - 1] + s[i-1][self.adder_wordlength - 1] >= 0)
+    model.addConstr(l[i-1][self.adder_wordlength - 1] - s[i-1][self.adder_wordlength - 1] >= 0)
 
-        # Apply changes button
-        self.apply_flatten_button = ttk.Button(self.frame, text="Apply Flatten", command=self.apply_flatten)
-        self.apply_flatten_button.pack(side=tk.TOP, padx=5, pady=5)
+# Delta selector constraints
+delta = [model.addVar(vtype=GRB.BINARY, name=f'delta_{i}') for i in range(1, self.adder_count + 1)]
+u = [[model.addVar(vtype=GRB.BINARY, name=f'u_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+x = [[model.addVar(vtype=GRB.BINARY, name=f'x_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        # Create a placeholder for the plot
-        self.fig, self.ax = plt.subplots(figsize=(8, 4))
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame)
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+for i in range(1, self.adder_count + 1):
+    for word in range(self.adder_wordlength):
+        # Equivalent to clause8_1 and clause8_2
+        model.addConstr(-delta[i-1] - s[i-1][word] + x[i-1][word] >= -1)
+        model.addConstr(-delta[i-1] + s[i-1][word] - x[i-1][word] >= -1)
 
-        self.draggable_point = None
-        self.dragging = False
-        self.just_undone = False
-        self.history = []
-        self.future = []
-        self.move_only = False
-        self.selection_mode = False
-        self.selected_range = None
-        self.selection_rect = None
+        # Equivalent to clause9_1 and clause9_2
+        model.addConstr(-delta[i-1] - r[i-1][word] + u[i-1][word] >= -1)
+        model.addConstr(-delta[i-1] + r[i-1][word] - u[i-1][word] >= -1)
 
-        self.initialize_plot()
+        # Equivalent to clause10_1 and clause10_2
+        model.addConstr(delta[i-1] - s[i-1][word] + u[i-1][word] >= 0)
+        model.addConstr(delta[i-1] + s[i-1][word] - u[i-1][word] >= 0)
 
-        # Set up close event handler
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        # Equivalent to clause11_1 and clause11_2
+        model.addConstr(delta[i-1] - r[i-1][word] + x[i-1][word] >= 0)
+        model.addConstr(delta[i-1] + r[i-1][word] - x[i-1][word] >= 0)
 
-    def initialize_plot(self):
-        # Generate initial data (impulse response of a low-pass filter)
-        self.numtaps = 101
-        self.cutoff = self.cutoff_slider.get()
-        self.h = firwin(self.numtaps, self.cutoff)
-        self.w, self.h_response = freqz(self.h, worN=8000)
-        self.x = self.w / np.pi
-        self.y = 20 * np.log10(np.abs(self.h_response))
-        self.y = np.clip(self.y, -60, None)  # Clip to -60 dB for better visualization
-        self.save_state()
+# XOR constraints
+epsilon = [model.addVar(vtype=GRB.BINARY, name=f'epsilon_{i}') for i in range(1, self.adder_count + 1)]
+y = [[model.addVar(vtype=GRB.BINARY, name=f'y_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        # Plot the data
-        self.line, = self.ax.plot(self.x, self.y, 'b')
-        self.draggable_point, = self.ax.plot([self.x[4000]], [self.y[4000]], 'ro', picker=5)
-        
-        self.ax.set_title('Draggable Line Example')
-        self.ax.set_xlabel('Normalized Frequency (0-1)')
-        self.ax.set_ylabel('Magnitude (dB)')
-        self.ax.set_xlim([0, 1])
-        self.ax.set_ylim([-60, 5])
-        self.ax.grid()
+for i in range(1, self.adder_count + 1):
+    for word in range(self.adder_wordlength):
+        # Equivalent to clause12, clause13, clause14, clause15
+        model.addConstr(u[i-1][word] + epsilon[i-1] - y[i-1][word] >= 0)
+        model.addConstr(u[i-1][word] - epsilon[i-1] + y[i-1][word] >= 0)
+        model.addConstr(-u[i-1][word] + epsilon[i-1] + y[i-1][word] >= 0)
+        model.addConstr(-u[i-1][word] - epsilon[i-1] - y[i-1][word] >= -2)
 
-        # Connect event handlers
-        self.cid_motion = self.fig.canvas.mpl_connect('motion_notify_event', self.on_motion)
-        self.cid_click = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-        self.cid_release = self.fig.canvas.mpl_connect('button_release_event', self.on_release)
-        self.canvas.draw()
+# Ripple carry constraints
+z = [[model.addVar(vtype=GRB.BINARY, name=f'z_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+cout = [[model.addVar(vtype=GRB.BINARY, name=f'cout_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-    def save_state(self):
-        # Save the current state for undo functionality
-        self.history.append((self.x.copy(), self.y.copy()))
-        # Clear the future stack when a new state is saved
-        self.future.clear()
-        print("State saved. History length:", len(self.history))
+for i in range(1, self.adder_count + 1):
+    # Clauses for sum = a ⊕ b ⊕ cin at 0
+    model.addConstr(x[i-1][0] + y[i-1][0] + epsilon[i-1] - z[i-1][0] >= 0)
+    model.addConstr(x[i-1][0] + y[i-1][0] - epsilon[i-1] + z[i-1][0] >= 0)
+    model.addConstr(x[i-1][0] - y[i-1][0] + epsilon[i-1] + z[i-1][0] >= 0)
+    model.addConstr(-x[i-1][0] + y[i-1][0] + epsilon[i-1] + z[i-1][0] >= 0)
+    model.addConstr(-x[i-1][0] - y[i-1][0] - epsilon[i-1] + z[i-1][0] >= -2)
+    model.addConstr(-x[i-1][0] - y[i-1][0] + epsilon[i-1] - z[i-1][0] >= -2)
+    model.addConstr(-x[i-1][0] + y[i-1][0] - epsilon[i-1] - z[i-1][0] >= -2)
+    model.addConstr(x[i-1][0] - y[i-1][0] - epsilon[i-1] - z[i-1][0] >= -2)
 
-    def undo_plot(self):
-        if len(self.history) > 1:
-            # Move the current state to the future stack
-            self.future.append(self.history.pop())
-            # Restore the previous state
-            self.x, self.y = copy.deepcopy(self.history[-1])
-            self.just_undone = True
-            print("Undo performed. History length:", len(self.history), "Future length:", len(self.future))
-            self.redraw_plot()
+    # Clauses for cout = (a AND b) OR (cin AND (a ⊕ b))
+    model.addConstr(-x[i-1][0] - y[i-1][0] + cout[i-1][0] >= -1)
+    model.addConstr(x[i-1][0] + y[i-1][0] - cout[i-1][0] >= 0)
+    model.addConstr(-x[i-1][0] - epsilon[i-1] + cout[i-1][0] >= -1)
+    model.addConstr(x[i-1][0] + epsilon[i-1] - cout[i-1][0] >= 0)
+    model.addConstr(-y[i-1][0] - epsilon[i-1] + cout[i-1][0] >= -1)
+    model.addConstr(y[i-1][0] + epsilon[i-1] - cout[i-1][0] >= 0)
 
-    def redo_plot(self):
-        if self.future:
-            # Restore the next state from the future stack
-            self.history.append(self.future.pop())
-            self.x, self.y = copy.deepcopy(self.history[-1])
-            self.just_undone = False
-            print("Redo performed. History length:", len(self.history), "Future length:", len(self.future))
-            self.redraw_plot()
+    for kf in range(1, self.adder_wordlength):
+        # Clauses for sum = a ⊕ b ⊕ cin at kf
+        model.addConstr(x[i-1][kf] + y[i-1][kf] + cout[i-1][kf-1] - z[i-1][kf] >= 0)
+        model.addConstr(x[i-1][kf] + y[i-1][kf] - cout[i-1][kf-1] + z[i-1][kf] >= 0)
+        model.addConstr(x[i-1][kf] - y[i-1][kf] + cout[i-1][kf-1] + z[i-1][kf] >= 0)
+        model.addConstr(-x[i-1][kf] + y[i-1][kf] + cout[i-1][kf-1] + z[i-1][kf] >= 0)
+        model.addConstr(-x[i-1][kf] - y[i-1][kf] - cout[i-1][kf-1] + z[i-1][kf] >= -2)
+        model.addConstr(-x[i-1][kf] - y[i-1][kf] + cout[i-1][kf-1] - z[i-1][kf] >= -2)
+        model.addConstr(-x[i-1][kf] + y[i-1][kf] - cout[i-1][kf-1] - z[i-1][kf] >= -2)
+        model.addConstr(x[i-1][kf] - y[i-1][kf] - cout[i-1][kf-1] - z[i-1][kf] >= -2)
 
-    def toggle_selection_mode(self):
-        self.selection_mode = not self.selection_mode
-        if self.selection_mode:
-            self.selection_mode_button.config(text="Exit Selection Mode")
-            print("Selection mode enabled.")
+        # Clauses for cout = (a AND b) OR (cin AND (a ⊕ b)) at kf
+        model.addConstr(-x[i-1][kf] - y[i-1][kf] + cout[i-1][kf] >= -1)
+        model.addConstr(x[i-1][kf] + y[i-1][kf] - cout[i-1][kf] >= 0)
+        model.addConstr(-x[i-1][kf] - cout[i-1][kf-1] + cout[i-1][kf] >= -1)
+        model.addConstr(x[i-1][kf] + cout[i-1][kf-1] - cout[i-1][kf] >= 0)
+        model.addConstr(-y[i-1][kf] - cout[i-1][kf-1] + cout[i-1][kf] >= -1)
+        model.addConstr(y[i-1][kf] + cout[i-1][kf-1] - cout[i-1][kf] >= 0)
+
+    # Adjusted constraint for the last bit
+    model.addConstr(epsilon[i-1] + x[i-1][self.adder_wordlength-1] + u[i-1][self.adder_wordlength-1] - z[i-1][self.adder_wordlength-1] >= 0)
+    model.addConstr(epsilon[i-1] - x[i-1][self.adder_wordlength-1] - u[i-1][self.adder_wordlength-1] + z[i-1][self.adder_wordlength-1] >= -1)
+    model.addConstr(-epsilon[i-1] + x[i-1][self.adder_wordlength-1] - u[i-1][self.adder_wordlength-1] - z[i-1][self.adder_wordlength-1] >= -2)
+    model.addConstr(-epsilon[i-1] - x[i-1][self.adder_wordlength-1] + u[i-1][self.adder_wordlength-1] + z[i-1][self.adder_wordlength-1] >= -1)
+
+# Right shift constraints
+zeta = [[model.addVar(vtype=GRB.BINARY, name=f'zeta_{i}_{k}') for k in range(self.adder_wordlength - 1)] for i in range(1, self.adder_count + 1)]
+
+for i in range(1, self.adder_count + 1):
+    zeta_sum = gp.LinExpr()
+    for k in range(self.adder_wordlength - 1):
+        for j in range(self.adder_wordlength - 1 - k):
+            # Equivalent to clause48_1 and clause48_2
+            model.addConstr(-zeta[i-1][k] - z[i-1][j+k] + c[i][j] >= -1)
+            model.addConstr(-zeta[i-1][k] + z[i-1][j+k] - c[i][j] >= -1)
+
+        zeta_sum += zeta[i-1][k]
+
+    model.addConstr(zeta_sum == 1)
+
+    for kf in range(1, self.adder_wordlength - 1):
+        for b in range(kf):
+            # Equivalent to clause49_1, clause49_2, clause50
+            model.addConstr(-zeta[i-1][kf] - z[i-1][self.adder_wordlength - 1] + c[i][self.adder_wordlength - 2 - b] >= -1)
+            model.addConstr(-zeta[i-1][kf] + z[i-1][self.adder_wordlength - 1] - c[i][self.adder_wordlength - 2 - b] >= -1)
+            model.addConstr(-zeta[i-1][kf] - z[i-1][b] >= -1)
+
+    # Equivalent to clause51_1 and clause51_2
+    model.addConstr(-z[i-1][self.adder_wordlength - 1] + c[i][self.adder_wordlength - 1] >= 0)
+    model.addConstr(z[i-1][self.adder_wordlength - 1] - c[i][self.adder_wordlength - 1] >= 0)
+
+# Set connected coefficient
+connected_coefficient = half_order + 1 - self.avail_dsp
+
+# Solver connection
+theta = [[model.addVar(vtype=GRB.BINARY, name=f'theta_{i}_{m}') for m in range(half_order + 1)] for i in range(self.adder_count + 2)]
+iota = [model.addVar(vtype=GRB.BINARY, name=f'iota_{m}') for m in range(half_order + 1)]
+t = [[model.addVar(vtype=GRB.BINARY, name=f't_{m}_{w}') for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+
+iota_sum = gp.LinExpr()
+for m in range(half_order + 1):
+    theta_or = gp.LinExpr()
+    for i in range(self.adder_count + 2):
+        for word in range(self.adder_wordlength):
+            # Equivalent to clause52_1 and clause52_2
+            model.addConstr(-theta[i][m] - iota[m] - c[i][word] + t[m][word] >= -2)
+            model.addConstr(-theta[i][m] - iota[m] + c[i][word] - t[m][word] >= -2)
+        theta_or += theta[i][m]
+    model.addConstr(theta_or >= 1)
+
+for m in range(half_order + 1):
+    iota_sum += iota[m]
+
+model.addConstr(iota_sum == connected_coefficient)
+
+# Left Shifter in result module
+# k is the shift selector
+o = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+phi = [[model.addVar(vtype=GRB.BINARY) for k in range(self.adder_wordlength - 1)] for m in range(half_order + 1)]
+
+for m in range(half_order + 1):
+    phi_sum = gp.LinExpr()
+    for k in range(self.adder_wordlength - 1):
+        for j in range(self.adder_wordlength - 1 - k):
+            model.addConstr(-phi[m][k] - t[m][j] + o[m][j + k] >= -1)
+            model.addConstr(-phi[m][k] + t[m][j] - o[m][j + k] >= -1)
+        phi_sum += phi[m][k]
+    # AtMost and AtLeast (phi_sum == 1)
+    model.addConstr(phi_sum == 1)
+    for kf in range(1, self.adder_wordlength - 1):
+        for b in range(kf):
+            model.addConstr(-phi[m][kf] - o[m][b] >= -1)
+            model.addConstr(-phi[m][kf] - t[m][self.adder_wordlength - 1] + t[m][self.adder_wordlength - 2 - b] >= -1)
+            model.addConstr(-phi[m][kf] + t[m][self.adder_wordlength - 1] - t[m][self.adder_wordlength - 2 - b] >= -1)
+
+    model.addConstr(-t[m][self.adder_wordlength - 1] + o[m][self.adder_wordlength - 1] >= 0)
+    model.addConstr(t[m][self.adder_wordlength - 1] - o[m][self.adder_wordlength - 1] >= 0)
+
+rho = [model.addVar(vtype=GRB.BINARY) for m in range(half_order + 1)]
+o_xor = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+h_ext = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+cout_res = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+
+# XOR constraints
+for m in range(half_order + 1):
+    for word in range(self.adder_wordlength):
+        model.addConstr(o[m][word] + rho[m] - o_xor[m][word] >= 0)
+        model.addConstr(o[m][word] - rho[m] + o_xor[m][word] >= 0)
+        model.addConstr(-o[m][word] + rho[m] + o_xor[m][word] >= 0)
+        model.addConstr(-o[m][word] - rho[m] - o_xor[m][word] >= -2)
+
+# Ripple carry constraints
+for m in range(half_order + 1):
+    model.addConstr(o_xor[m][0] + rho[m] - h_ext[m][0] >= 0)
+    model.addConstr(o_xor[m][0] - rho[m] + h_ext[m][0] >= 0)
+    model.addConstr(-o_xor[m][0] + rho[m] + h_ext[m][0] >= 0)
+    model.addConstr(-o_xor[m][0] - rho[m] - h_ext[m][0] >= -2)
+
+    model.addConstr(o_xor[m][0] - cout_res[m][0] >= 0)
+    model.addConstr(-o_xor[m][0] - rho[m] + cout_res[m][0] >= -1)
+    model.addConstr(o_xor[m][0] + rho[m] - cout_res[m][0] >= 0)
+    model.addConstr(rho[m] - cout_res[m][0] >= 0)
+
+    for word in range(1, self.adder_wordlength):
+        model.addConstr(o_xor[m][word] + cout_res[m][word - 1] - h_ext[m][word] >= 0)
+        model.addConstr(o_xor[m][word] - cout_res[m][word - 1] + h_ext[m][word] >= 0)
+        model.addConstr(-o_xor[m][word] + cout_res[m][word - 1] + h_ext[m][word] >= 0)
+        model.addConstr(-o_xor[m][word] - cout_res[m][word - 1] - h_ext[m][word] >= -2)
+
+        model.addConstr(o_xor[m][word] - cout_res[m][word] >= 0)
+        model.addConstr(-o_xor[m][word] - cout_res[m][word - 1] + cout_res[m][word] >= -1)
+        model.addConstr(o_xor[m][word] + cout_res[m][word - 1] - cout_res[m][word] >= 0)
+        model.addConstr(cout_res[m][word - 1] - cout_res[m][word] >= 0)
+
+# Solver connection
+for m in range(half_order + 1):
+    for word in range(self.adder_wordlength):
+        if word <= self.wordlength - 1:
+            # Equivalent to clause58 and clause59
+            model.addConstr(-h[m][word] + h_ext[m][word] >= 0)
+            model.addConstr(h[m][word] - h_ext[m][word] >= 0)
         else:
-            self.selection_mode_button.config(text="Selection Mode")
-            print("Selection mode disabled.")
+            model.addConstr(-h[m][self.wordlength - 1] + h_ext[m][word] >= 0)
+            model.addConstr(h[m][self.wordlength - 1] - h_ext[m][word] >= 0)
 
-    def on_click(self, event):
-        if event.inaxes != self.ax:
-            print("no figure set when check if mouse is on line")
-            return
+if self.adder_depth > 0:
+    # Binary variables for psi_alpha and psi_beta
+    psi_alpha = [[model.addVar(vtype=GRB.BINARY, name=f'psi_alpha_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.adder_count+1)]
+    psi_beta = [[model.addVar(vtype=GRB.BINARY, name=f'psi_beta_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.adder_count+1)]
 
-        if self.selection_mode:
-            self.selected_range = [event.xdata, None]
-            self.selection_rect = Rectangle((event.xdata, self.ax.get_ylim()[0]), 0, self.ax.get_ylim()[1] - self.ax.get_ylim()[0], color='gray', alpha=0.3)
-            self.ax.add_patch(self.selection_rect)
-            self.canvas.draw()
-            print(f"Selection started at {event.xdata}.")
-        else:
-            contains, _ = self.draggable_point.contains(event)
-            if event.button == 1 and contains:  # Left click
-                self.dragging = True
-                self.move_only = False
-                print("Left click drag started.")
-            elif event.button == 3:  # Right click
-                self.dragging = True
-                self.move_only = True
-                self.update_draggable_point(event, move_only=True)
-                print("Right click move started.")
+    for i in range(1, self.adder_count+1):
+        psi_alpha_sum = []
+        psi_beta_sum = []
+        # Adjusted constraints for psi_alpha and psi_beta
+        model.addConstr(-psi_alpha[i-1][0] + alpha[i-1][0] >= 0)
+        model.addConstr(-psi_beta[i-1][0] + beta[i-1][0] >= 0)
 
-    def on_release(self, event):
-        if self.selection_mode and self.selected_range:
-            self.selected_range[1] = event.xdata
-            self.selection_mode = False
-            self.selection_mode_button.config(text="Selection Mode")
-            if self.selection_rect:
-                self.selection_rect.set_width(self.selected_range[1] - self.selected_range[0])
-                self.canvas.draw()
-            print(f"Selection ended at {event.xdata}. Range: {self.selected_range}")
-        elif self.dragging:
-            if self.just_undone:
-                # Clear the future states after the current state
-                print("Clearing future states from history after undo.")
-                self.history = self.history[:len(self.history)]
-                self.just_undone = False  # Reset the flag since a new action is started
-            if not self.move_only:
-                self.save_state()
-                print("Drag ended and state saved.")
-            self.dragging = False
-            self.move_only = False
-    
-    def on_motion(self, event):
-        if event.inaxes != self.ax:
-            return
+        psi_alpha_sum.append(psi_alpha[i-1][0])
+        psi_beta_sum.append(psi_beta[i-1][0])
 
-        if self.dragging:
-            self.update_draggable_point(event, move_only=self.move_only)
-        elif self.selection_mode and self.selected_range:
-            if self.selection_rect:
-                self.selection_rect.set_width(event.xdata - self.selected_range[0])
-                self.canvas.draw()
+        if self.adder_depth == 1:
+            continue
 
-    def update_draggable_point(self, event, move_only=False):
-        x = event.xdata
-        y = event.ydata
-        if x is None or y is None:
-            return
-    
-        if move_only:
-            idx = np.argmin(np.abs(self.x - x))
-            y = self.y[idx]
-            self.draggable_point.set_data([self.x[idx]], [y])
-        else:
-            idx = np.argmin(np.abs(self.x - x))
-            x = self.x[idx]
-            self.draggable_point.set_data([x], [y])
-            sigma = self.gaussian_width_slider.get()
-            influence = np.exp(-0.5 * ((self.x - x) / sigma) ** 2)
-            delta_y = y - self.y[idx]
-        
-            # Apply Gaussian influence in the decibel domain
-            self.y += influence * delta_y
+        for d in range(1, self.adder_depth):
+            for a in range(i-1):
+                # Adjusted constraints for psi_alpha and psi_beta
+                model.addConstr(-psi_alpha[i-1][d] + alpha[i-1][a] >= 0)
+                model.addConstr(-psi_alpha[i-1][d] + psi_alpha[a][d-1] >= 0)
+                model.addConstr(-psi_beta[i-1][d] + beta[i-1][a] >= 0)
+                model.addConstr(-psi_beta[i-1][d] + psi_beta[a][d-1] >= 0)
 
-        self.redraw_plot()
+            psi_alpha_sum.append(psi_alpha[i-1][d])
+            psi_beta_sum.append(psi_beta[i-1][d])
 
+        # AtMost and AtLeast for psi_alpha_sum and psi_beta_sum
+        model.addConstr(sum(psi_alpha_sum) == 1)
+        model.addConstr(sum(psi_beta_sum) == 1)
 
-    def smoothen_plot(self):
-        kernel_size = self.kernel_slider.get()  # Get the kernel size from the slider
-        self.y = medfilt(self.y, kernel_size)
-        self.save_state()  # Save state after smoothing
-        self.redraw_plot()
+if solver_option == 'try_h_zero_count' or solver_option == 'try_max_h_zero_count':
+    model.setObjective(0, GRB.MINIMIZE)
+    if h_zero_count == None:
+        raise TypeError("Gurobi: h_zero_count in Barebone cant be empty when try_h_zero_count is chosen")
 
-    def apply_flatten(self):
-        if not self.selected_range:
-            print("No range selected.")
-            return
-        
-        start, end = self.selected_range
-        if start is None or end is None:
-            print("Incomplete range selection.")
-            return
+    h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+    h_zero_sum = 0
+    for m in range(half_order + 1):
+        for w in range(self.wordlength):
+            model.addGenConstrIndicator(h_zero[m], True, h[m][w] == 0)
+        h_zero_sum += h_zero[m]
+    model.addConstr(h_zero_sum >= h_zero_count)
 
-        # Ensure start is less than end
-        start, end = sorted([start, end])
-        
-        target_y = self.flat_level_slider.get()
-        indices = (self.x >= start) & (self.x <= end)
-        self.y[indices] = target_y
-        
-        self.save_state()  # Save state after flattening
-        self.redraw_plot()
-        print(f"Applied flattening from {start} to {end} at level {target_y}.")
-        if self.selection_rect:
-            self.selection_rect.remove()
-            self.selection_rect = None
+elif solver_option == 'find_max_zero':
+    h_zero = [model.addVar(vtype=GRB.BINARY, name=f'h_zero_{a}') for a in range(half_order + 1)]
+    h_zero_sum = 0
+    for m in range(half_order + 1):
+        for w in range(self.wordlength):
+            model.addGenConstrIndicator(h_zero[m], True, h[m][w] == 0)
+        h_zero_sum += h_zero[m]
+    model.setObjective(h_zero_sum, GRB.MAXIMIZE)
 
-    def redraw_plot(self):
-        # Clear the previous plot
-        self.ax.clear()
+else:
+    model.setObjective(0, GRB.MAXIMIZE)
 
-        # Plot the updated line
-        self.ax.plot(self.x, self.y, 'b')
-
-        # Update the draggable point
-        current_x, current_y = self.draggable_point.get_data()
-        idx = np.argmin(np.abs(self.x - current_x))
-        self.draggable_point.set_data([self.x[idx]], [self.y[idx]])
-        self.ax.plot([self.x[idx]], [self.y[idx]], 'ro', picker=5)
-
-        self.ax.set_title('Draggable Line Example')
-        self.ax.set_xlabel('Normalized Frequency (0-1)')
-        self.ax.set_ylabel('Magnitude (dB)')
-        self.ax.set_xlim([0, 1])
-        self.ax.set_ylim([-60, 5])
-        self.ax.grid()
-
-        self.canvas.draw()
-
-    def on_closing(self):
-        # Disconnect matplotlib event handlers
-        self.fig.canvas.mpl_disconnect(self.cid_motion)
-        self.fig.canvas.mpl_disconnect(self.cid_click)
-        self.fig.canvas.mpl_disconnect(self.cid_release)
-        # Perform additional cleanup
-        self.quit()  # Stop the Tkinter main loop
-        self.destroy()  # Destroy the Tkinter window
-        plt.close(self.fig)  # Close the Matplotlib figure
-
-if __name__ == "__main__":
-    app = DraggableLine()
-    app.mainloop()
+print("solver running")
+start_time = time.time()
+model.optimize()

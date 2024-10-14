@@ -483,7 +483,17 @@ class FIRFilterGurobi:
         model = gp.Model("fir_model")
         if self.run_auto_thread == False:
             model.setParam('Threads', thread)
-        
+
+        model.setParam('Method', 2)
+        model.setParam('SolutionLimit', 1)
+        model.setParam('MipFocus', 1)
+
+        model.setParam('Cuts', 0)
+        model.setParam('Presolve', 2)
+
+        if adderm > 2:
+            norelax = (adderm**2) *  (half_order - h_zero_count)
+            model.setParam('NoRelHeurWork', norelax)
         # model.setParam('OutputFlag', 0)
         # model.setParam('TimeLimit', 1)     #timeout
 
@@ -604,13 +614,13 @@ class FIRFilterGurobi:
             for a in range(i):
                 for word in range(self.adder_wordlength):
                     # Equivalent to clause1_1 and clause1_2
-                    model.addConstr((1 - alpha[i-1][a]) + (1 - c[a][word]) + l[i-1][word] >= 1)
-                    model.addConstr((1 - alpha[i-1][a]) + c[a][word] + (1 - l[i-1][word]) >= 1)
-                    
+                    model.addConstr(-alpha[i-1][a] - c[a][word] + l[i-1][word] >= -1)
+                    model.addConstr(-alpha[i-1][a] + c[a][word] - l[i-1][word] >= -1)
+
                     # Equivalent to clause2_1 and clause2_2
-                    model.addConstr((1 - beta[i-1][a]) + (1 - c[a][word]) + r[i-1][word] >= 1)
-                    model.addConstr((1 - beta[i-1][a]) + c[a][word] + (1 - r[i-1][word]) >= 1)
-                
+                    model.addConstr(-beta[i-1][a] - c[a][word] + r[i-1][word] >= -1)
+                    model.addConstr(-beta[i-1][a] + c[a][word] - r[i-1][word] >= -1)
+
                 alpha_sum += alpha[i-1][a]
                 beta_sum += beta[i-1][a]
 
@@ -627,23 +637,23 @@ class FIRFilterGurobi:
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
                     # Equivalent to clause3_1 and clause3_2
-                    model.addConstr((1 - gamma[i-1][k]) + (1 - l[i-1][j]) + s[i-1][j+k] >= 1)
-                    model.addConstr((1 - gamma[i-1][k]) + l[i-1][j] + (1 - s[i-1][j+k]) >= 1)
+                    model.addConstr(-gamma[i-1][k] - l[i-1][j] + s[i-1][j+k] >= -1)
+                    model.addConstr(-gamma[i-1][k] + l[i-1][j] - s[i-1][j+k] >= -1)
 
                 gamma_sum += gamma[i-1][k]
-            
+
             model.addConstr(gamma_sum == 1)
 
             for kf in range(1, self.adder_wordlength - 1):
                 for b in range(kf):
                     # Equivalent to clause4, clause5, and clause6
-                    model.addConstr((1 - gamma[i-1][kf]) + (1 - s[i-1][b]) >= 1)
-                    model.addConstr((1 - gamma[i-1][kf]) + (1 - l[i-1][self.adder_wordlength - 1]) + l[i-1][self.adder_wordlength - 2 - b] >= 1)
-                    model.addConstr((1 - gamma[i-1][kf]) + l[i-1][self.adder_wordlength - 1] + (1 - l[i-1][self.adder_wordlength - 2 - b]) >= 1)
+                    model.addConstr(-gamma[i-1][kf] - s[i-1][b] >= -1)
+                    model.addConstr(-gamma[i-1][kf] - l[i-1][self.adder_wordlength - 1] + l[i-1][self.adder_wordlength - 2 - b] >= -1)
+                    model.addConstr(-gamma[i-1][kf] + l[i-1][self.adder_wordlength - 1] - l[i-1][self.adder_wordlength - 2 - b] >= -1)
 
             # Equivalent to clause7_1 and clause7_2
-            model.addConstr((1 - l[i-1][self.adder_wordlength - 1]) + s[i-1][self.adder_wordlength - 1] >= 1)
-            model.addConstr(l[i-1][self.adder_wordlength - 1] + (1 - s[i-1][self.adder_wordlength - 1]) >= 1)
+            model.addConstr(-l[i-1][self.adder_wordlength - 1] + s[i-1][self.adder_wordlength - 1] >= 0)
+            model.addConstr(l[i-1][self.adder_wordlength - 1] - s[i-1][self.adder_wordlength - 1] >= 0)
 
         # Delta selector constraints
         delta = [model.addVar(vtype=GRB.BINARY, name=f'delta_{i}') for i in range(1, self.adder_count + 1)]
@@ -653,20 +663,20 @@ class FIRFilterGurobi:
         for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 # Equivalent to clause8_1 and clause8_2
-                model.addConstr((1 - delta[i-1]) + (1 - s[i-1][word]) + x[i-1][word] >= 1)
-                model.addConstr((1 - delta[i-1]) + s[i-1][word] + (1 - x[i-1][word]) >= 1)
+                model.addConstr(-delta[i-1] - s[i-1][word] + x[i-1][word] >= -1)
+                model.addConstr(-delta[i-1] + s[i-1][word] - x[i-1][word] >= -1)
 
                 # Equivalent to clause9_1 and clause9_2
-                model.addConstr((1 - delta[i-1]) + (1 - r[i-1][word]) + u[i-1][word] >= 1)
-                model.addConstr((1 - delta[i-1]) + r[i-1][word] + (1 - u[i-1][word]) >= 1)
+                model.addConstr(-delta[i-1] - r[i-1][word] + u[i-1][word] >= -1)
+                model.addConstr(-delta[i-1] + r[i-1][word] - u[i-1][word] >= -1)
 
                 # Equivalent to clause10_1 and clause10_2
-                model.addConstr(delta[i-1] + (1 - s[i-1][word]) + u[i-1][word] >= 1)
-                model.addConstr(delta[i-1] + s[i-1][word] + (1 - u[i-1][word]) >= 1)
+                model.addConstr(delta[i-1] - s[i-1][word] + u[i-1][word] >= 0)
+                model.addConstr(delta[i-1] + s[i-1][word] - u[i-1][word] >= 0)
 
                 # Equivalent to clause11_1 and clause11_2
-                model.addConstr(delta[i-1] + (1 - r[i-1][word]) + x[i-1][word] >= 1)
-                model.addConstr(delta[i-1] + r[i-1][word] + (1 - x[i-1][word]) >= 1)
+                model.addConstr(delta[i-1] - r[i-1][word] + x[i-1][word] >= 0)
+                model.addConstr(delta[i-1] + r[i-1][word] - x[i-1][word] >= 0)
 
         # XOR constraints
         epsilon = [model.addVar(vtype=GRB.BINARY, name=f'epsilon_{i}') for i in range(1, self.adder_count + 1)]
@@ -675,10 +685,10 @@ class FIRFilterGurobi:
         for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 # Equivalent to clause12, clause13, clause14, clause15
-                model.addConstr(u[i-1][word] + epsilon[i-1] + (1 - y[i-1][word] )>= 1)
-                model.addConstr(u[i-1][word] + (1 - epsilon[i-1]) + y[i-1][word] >= 1)
-                model.addConstr((1 - u[i-1][word]) + epsilon[i-1] + y[i-1][word] >= 1)
-                model.addConstr((1 - u[i-1][word]) + (1 - epsilon[i-1]) + (1 - y[i-1][word]) >= 1)
+                model.addConstr(u[i-1][word] + epsilon[i-1] - y[i-1][word] >= 0)
+                model.addConstr(u[i-1][word] - epsilon[i-1] + y[i-1][word] >= 0)
+                model.addConstr(-u[i-1][word] + epsilon[i-1] + y[i-1][word] >= 0)
+                model.addConstr(-u[i-1][word] - epsilon[i-1] - y[i-1][word] >= -2)
 
         # Ripple carry constraints
         z = [[model.addVar(vtype=GRB.BINARY, name=f'z_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
@@ -686,53 +696,47 @@ class FIRFilterGurobi:
 
         for i in range(1, self.adder_count + 1):
             # Clauses for sum = a ⊕ b ⊕ cin at 0
-            model.addConstr(x[i-1][0] + y[i-1][0] + epsilon[i-1] + (1 - z[i-1][0]) >= 1)
-            model.addConstr(x[i-1][0] + y[i-1][0] + (1 - epsilon[i-1]) + z[i-1][0] >= 1)
-            model.addConstr(x[i-1][0] + (1 - y[i-1][0]) + epsilon[i-1] + z[i-1][0] >= 1)
-            model.addConstr((1 - x[i-1][0]) + y[i-1][0] + epsilon[i-1] + z[i-1][0] >= 1)
-            model.addConstr((1 - x[i-1][0]) + (1 - y[i-1][0]) + (1 - epsilon[i-1]) + z[i-1][0] >= 1)
-            model.addConstr((1 - x[i-1][0]) + (1 - y[i-1][0]) + epsilon[i-1] + (1 - z[i-1][0]) >= 1)
-            model.addConstr((1 - x[i-1][0]) + y[i-1][0] + (1 - epsilon[i-1]) + (1 - z[i-1][0]) >= 1)
-            model.addConstr(x[i-1][0] + (1 - y[i-1][0]) + (1 - epsilon[i-1]) + (1 - z[i-1][0]) >= 1)
-
+            model.addConstr(x[i-1][0] + y[i-1][0] + epsilon[i-1] - z[i-1][0] >= 0)
+            model.addConstr(x[i-1][0] + y[i-1][0] - epsilon[i-1] + z[i-1][0] >= 0)
+            model.addConstr(x[i-1][0] - y[i-1][0] + epsilon[i-1] + z[i-1][0] >= 0)
+            model.addConstr(-x[i-1][0] + y[i-1][0] + epsilon[i-1] + z[i-1][0] >= 0)
+            model.addConstr(-x[i-1][0] - y[i-1][0] - epsilon[i-1] + z[i-1][0] >= -2)
+            model.addConstr(-x[i-1][0] - y[i-1][0] + epsilon[i-1] - z[i-1][0] >= -2)
+            model.addConstr(-x[i-1][0] + y[i-1][0] - epsilon[i-1] - z[i-1][0] >= -2)
+            model.addConstr(x[i-1][0] - y[i-1][0] - epsilon[i-1] - z[i-1][0] >= -2)
 
             # Clauses for cout = (a AND b) OR (cin AND (a ⊕ b))
-            model.addConstr((1 - x[i-1][0]) + (1 - y[i-1][0]) + cout[i-1][0] >= 1)
-            model.addConstr(x[i-1][0] + y[i-1][0] + (1 - cout[i-1][0]) >= 1)
-            model.addConstr((1 - x[i-1][0]) + (1 - epsilon[i-1]) + cout[i-1][0] >= 1)
-            model.addConstr(x[i-1][0] + epsilon[i-1] + (1 - cout[i-1][0]) >= 1)
-            model.addConstr((1 - y[i-1][0]) + (1 - epsilon[i-1]) + cout[i-1][0] >= 1)
-            model.addConstr(y[i-1][0] + epsilon[i-1] + (1 - cout[i-1][0]) >= 1)
-
-
-
+            model.addConstr(-x[i-1][0] - y[i-1][0] + cout[i-1][0] >= -1)
+            model.addConstr(x[i-1][0] + y[i-1][0] - cout[i-1][0] >= 0)
+            model.addConstr(-x[i-1][0] - epsilon[i-1] + cout[i-1][0] >= -1)
+            model.addConstr(x[i-1][0] + epsilon[i-1] - cout[i-1][0] >= 0)
+            model.addConstr(-y[i-1][0] - epsilon[i-1] + cout[i-1][0] >= -1)
+            model.addConstr(y[i-1][0] + epsilon[i-1] - cout[i-1][0] >= 0)
 
             for kf in range(1, self.adder_wordlength):
                 # Clauses for sum = a ⊕ b ⊕ cin at kf
-                model.addConstr(x[i-1][kf] + y[i-1][kf] + cout[i-1][kf-1] + (1 - z[i-1][kf]) >= 1)
-                model.addConstr(x[i-1][kf] + y[i-1][kf] + (1 - cout[i-1][kf-1]) + z[i-1][kf] >= 1)
-                model.addConstr(x[i-1][kf] + (1 - y[i-1][kf]) + cout[i-1][kf-1] + z[i-1][kf] >= 1)
-                model.addConstr((1 - x[i-1][kf]) + y[i-1][kf] + cout[i-1][kf-1] + z[i-1][kf] >= 1)
-                model.addConstr((1 - x[i-1][kf]) + (1 - y[i-1][kf]) + (1 - cout[i-1][kf-1]) + z[i-1][kf] >= 1)
-                model.addConstr((1 - x[i-1][kf]) + (1 - y[i-1][kf]) + cout[i-1][kf-1] + (1 - z[i-1][kf]) >= 1)
-                model.addConstr((1 - x[i-1][kf]) + y[i-1][kf] + (1 - cout[i-1][kf-1]) + (1 - z[i-1][kf]) >= 1)
-                model.addConstr(x[i-1][kf] + (1 - y[i-1][kf]) + (1 - cout[i-1][kf-1]) + (1 - z[i-1][kf]) >= 1)
-
+                model.addConstr(x[i-1][kf] + y[i-1][kf] + cout[i-1][kf-1] - z[i-1][kf] >= 0)
+                model.addConstr(x[i-1][kf] + y[i-1][kf] - cout[i-1][kf-1] + z[i-1][kf] >= 0)
+                model.addConstr(x[i-1][kf] - y[i-1][kf] + cout[i-1][kf-1] + z[i-1][kf] >= 0)
+                model.addConstr(-x[i-1][kf] + y[i-1][kf] + cout[i-1][kf-1] + z[i-1][kf] >= 0)
+                model.addConstr(-x[i-1][kf] - y[i-1][kf] - cout[i-1][kf-1] + z[i-1][kf] >= -2)
+                model.addConstr(-x[i-1][kf] - y[i-1][kf] + cout[i-1][kf-1] - z[i-1][kf] >= -2)
+                model.addConstr(-x[i-1][kf] + y[i-1][kf] - cout[i-1][kf-1] - z[i-1][kf] >= -2)
+                model.addConstr(x[i-1][kf] - y[i-1][kf] - cout[i-1][kf-1] - z[i-1][kf] >= -2)
 
                 # Clauses for cout = (a AND b) OR (cin AND (a ⊕ b)) at kf
-                model.addConstr((1 - x[i-1][kf]) + (1 - y[i-1][kf]) + cout[i-1][kf] >= 1)
-                model.addConstr(x[i-1][kf] + y[i-1][kf] + (1 - cout[i-1][kf]) >= 1)
-                model.addConstr((1 - x[i-1][kf]) + (1 - cout[i-1][kf-1]) + cout[i-1][kf] >= 1)
-                model.addConstr(x[i-1][kf] + cout[i-1][kf-1] + (1 - cout[i-1][kf]) >= 1)
-                model.addConstr((1 - y[i-1][kf]) + (1 - cout[i-1][kf-1]) + cout[i-1][kf] >= 1)
-                model.addConstr(y[i-1][kf] + cout[i-1][kf-1] + (1 - cout[i-1][kf]) >= 1)
+                model.addConstr(-x[i-1][kf] - y[i-1][kf] + cout[i-1][kf] >= -1)
+                model.addConstr(x[i-1][kf] + y[i-1][kf] - cout[i-1][kf] >= 0)
+                model.addConstr(-x[i-1][kf] - cout[i-1][kf-1] + cout[i-1][kf] >= -1)
+                model.addConstr(x[i-1][kf] + cout[i-1][kf-1] - cout[i-1][kf] >= 0)
+                model.addConstr(-y[i-1][kf] - cout[i-1][kf-1] + cout[i-1][kf] >= -1)
+                model.addConstr(y[i-1][kf] + cout[i-1][kf-1] - cout[i-1][kf] >= 0)
 
-
-            model.addConstr(epsilon[i-1] + x[i-1][self.adder_wordlength-1] + u[i-1][self.adder_wordlength-1] + (1 - z[i-1][self.adder_wordlength-1]) >= 1)
-            model.addConstr(epsilon[i-1] + (1 - x[i-1][self.adder_wordlength-1]) + (1 - u[i-1][self.adder_wordlength-1]) + z[i-1][self.adder_wordlength-1] >= 1)
-            model.addConstr((1 - epsilon[i-1]) + x[i-1][self.adder_wordlength-1] + (1 - u[i-1][self.adder_wordlength-1]) + (1 - z[i-1][self.adder_wordlength-1]) >= 1)
-            model.addConstr((1 - epsilon[i-1]) + (1 - x[i-1][self.adder_wordlength-1]) + u[i-1][self.adder_wordlength-1] + z[i-1][self.adder_wordlength-1] >= 1)
-
+            # Adjusted constraint for the last bit
+            model.addConstr(epsilon[i-1] + x[i-1][self.adder_wordlength-1] + u[i-1][self.adder_wordlength-1] - z[i-1][self.adder_wordlength-1] >= 0)
+            model.addConstr(epsilon[i-1] - x[i-1][self.adder_wordlength-1] - u[i-1][self.adder_wordlength-1] + z[i-1][self.adder_wordlength-1] >= -1)
+            model.addConstr(-epsilon[i-1] + x[i-1][self.adder_wordlength-1] - u[i-1][self.adder_wordlength-1] - z[i-1][self.adder_wordlength-1] >= -2)
+            model.addConstr(-epsilon[i-1] - x[i-1][self.adder_wordlength-1] + u[i-1][self.adder_wordlength-1] + z[i-1][self.adder_wordlength-1] >= -1)
 
         # Right shift constraints
         zeta = [[model.addVar(vtype=GRB.BINARY, name=f'zeta_{i}_{k}') for k in range(self.adder_wordlength - 1)] for i in range(1, self.adder_count + 1)]
@@ -742,23 +746,23 @@ class FIRFilterGurobi:
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
                     # Equivalent to clause48_1 and clause48_2
-                    model.addConstr((1 - zeta[i-1][k]) + (1 - z[i-1][j+k]) + c[i][j] >= 1)
-                    model.addConstr((1 - zeta[i-1][k]) + z[i-1][j+k] + (1 - c[i][j]) >= 1)
+                    model.addConstr(-zeta[i-1][k] - z[i-1][j+k] + c[i][j] >= -1)
+                    model.addConstr(-zeta[i-1][k] + z[i-1][j+k] - c[i][j] >= -1)
 
                 zeta_sum += zeta[i-1][k]
-            
+
             model.addConstr(zeta_sum == 1)
 
             for kf in range(1, self.adder_wordlength - 1):
                 for b in range(kf):
                     # Equivalent to clause49_1, clause49_2, clause50
-                    model.addConstr((1 - zeta[i-1][kf]) + (1 - z[i-1][self.adder_wordlength - 1]) + c[i][self.adder_wordlength - 2 - b] >= 1)
-                    model.addConstr((1 - zeta[i-1][kf]) + z[i-1][self.adder_wordlength - 1] + (1 - c[i][self.adder_wordlength - 2 - b]) >= 1)
-                    model.addConstr((1 - zeta[i-1][kf]) + (1 - z[i-1][b]) >= 1)
+                    model.addConstr(-zeta[i-1][kf] - z[i-1][self.adder_wordlength - 1] + c[i][self.adder_wordlength - 2 - b] >= -1)
+                    model.addConstr(-zeta[i-1][kf] + z[i-1][self.adder_wordlength - 1] - c[i][self.adder_wordlength - 2 - b] >= -1)
+                    model.addConstr(-zeta[i-1][kf] - z[i-1][b] >= -1)
 
             # Equivalent to clause51_1 and clause51_2
-            model.addConstr((1 - z[i-1][self.adder_wordlength - 1]) + c[i][self.adder_wordlength - 1] >= 1)
-            model.addConstr(z[i-1][self.adder_wordlength - 1] + (1 - c[i][self.adder_wordlength - 1]) >= 1)
+            model.addConstr(-z[i-1][self.adder_wordlength - 1] + c[i][self.adder_wordlength - 1] >= 0)
+            model.addConstr(z[i-1][self.adder_wordlength - 1] - c[i][self.adder_wordlength - 1] >= 0)
 
         # Set connected coefficient
         connected_coefficient = half_order + 1 - self.avail_dsp
@@ -774,8 +778,8 @@ class FIRFilterGurobi:
             for i in range(self.adder_count + 2):
                 for word in range(self.adder_wordlength):
                     # Equivalent to clause52_1 and clause52_2
-                    model.addConstr((1 - theta[i][m]) + (1 - iota[m]) + (1 - c[i][word]) + t[m][word] >= 1)
-                    model.addConstr((1 - theta[i][m]) + (1 - iota[m]) + c[i][word] + (1 - t[m][word]) >= 1)
+                    model.addConstr(-theta[i][m] - iota[m] - c[i][word] + t[m][word] >= -2)
+                    model.addConstr(-theta[i][m] - iota[m] + c[i][word] - t[m][word] >= -2)
                 theta_or += theta[i][m]
             model.addConstr(theta_or >= 1)
 
@@ -788,109 +792,98 @@ class FIRFilterGurobi:
         # k is the shift selector
         o = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
         phi = [[model.addVar(vtype=GRB.BINARY) for k in range(self.adder_wordlength - 1)] for m in range(half_order + 1)]
-        
+
         for m in range(half_order + 1):
             phi_sum = gp.LinExpr()
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
-                    model.addConstr((1 - phi[m][k]) + (1 - t[m][j]) + o[m][j + k] >= 1)
-                    model.addConstr((1 - phi[m][k]) + t[m][j] + (1 - o[m][j + k]) >= 1)
+                    model.addConstr(-phi[m][k] - t[m][j] + o[m][j + k] >= -1)
+                    model.addConstr(-phi[m][k] + t[m][j] - o[m][j + k] >= -1)
                 phi_sum += phi[m][k]
             # AtMost and AtLeast (phi_sum == 1)
             model.addConstr(phi_sum == 1)
             for kf in range(1, self.adder_wordlength - 1):
                 for b in range(kf):
-                    model.addConstr((1 - phi[m][kf]) + (1 - o[m][b]) >= 1)
-                    model.addConstr((1 - phi[m][kf]) + (1 - t[m][self.adder_wordlength - 1]) + t[m][self.adder_wordlength - 2 - b] >= 1)
-                    model.addConstr((1 - phi[m][kf]) + t[m][self.adder_wordlength - 1] + (1 - t[m][self.adder_wordlength - 2 - b]) >= 1)
+                    model.addConstr(-phi[m][kf] - o[m][b] >= -1)
+                    model.addConstr(-phi[m][kf] - t[m][self.adder_wordlength - 1] + t[m][self.adder_wordlength - 2 - b] >= -1)
+                    model.addConstr(-phi[m][kf] + t[m][self.adder_wordlength - 1] - t[m][self.adder_wordlength - 2 - b] >= -1)
 
-            model.addConstr((1 - t[m][self.adder_wordlength - 1]) + o[m][self.adder_wordlength - 1] >= 1)
-            model.addConstr(t[m][self.adder_wordlength - 1] + (1 - o[m][self.adder_wordlength - 1]) >= 1)
+            model.addConstr(-t[m][self.adder_wordlength - 1] + o[m][self.adder_wordlength - 1] >= 0)
+            model.addConstr(t[m][self.adder_wordlength - 1] - o[m][self.adder_wordlength - 1] >= 0)
 
         rho = [model.addVar(vtype=GRB.BINARY) for m in range(half_order + 1)]
         o_xor = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
         h_ext = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
         cout_res = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
 
-        #xor constraints
+        # XOR constraints
         for m in range(half_order + 1):
             for word in range(self.adder_wordlength):
-                model.addConstr(o[m][word] + rho[m] + (1 - o_xor[m][word]) >= 1)
-                model.addConstr(o[m][word] + (1 - rho[m]) + o_xor[m][word] >= 1)
-                model.addConstr((1 - o[m][word]) + rho[m] + o_xor[m][word] >= 1)
-                model.addConstr((1 - o[m][word]) + (1 - rho[m]) + (1 - o_xor[m][word]) >= 1)
+                model.addConstr(o[m][word] + rho[m] - o_xor[m][word] >= 0)
+                model.addConstr(o[m][word] - rho[m] + o_xor[m][word] >= 0)
+                model.addConstr(-o[m][word] + rho[m] + o_xor[m][word] >= 0)
+                model.addConstr(-o[m][word] - rho[m] - o_xor[m][word] >= -2)
 
-        #ripple carry constraints
+        # Ripple carry constraints
         for m in range(half_order + 1):
-            model.addConstr(o_xor[m][0] + rho[m] + (1 - h_ext[m][0]) >= 1)
-            model.addConstr(o_xor[m][0] + (1 - rho[m]) + h_ext[m][0] >= 1)
-            model.addConstr((1 - o_xor[m][0]) + rho[m] + h_ext[m][0] >= 1)
-            model.addConstr((1 - o_xor[m][0]) + (1 - rho[m]) + (1 - h_ext[m][0]) >= 1)
+            model.addConstr(o_xor[m][0] + rho[m] - h_ext[m][0] >= 0)
+            model.addConstr(o_xor[m][0] - rho[m] + h_ext[m][0] >= 0)
+            model.addConstr(-o_xor[m][0] + rho[m] + h_ext[m][0] >= 0)
+            model.addConstr(-o_xor[m][0] - rho[m] - h_ext[m][0] >= -2)
 
-            model.addConstr(o_xor[m][0] + (1 - cout_res[m][0]) >= 1)
-            model.addConstr((1 - o_xor[m][0]) + (1 - rho[m]) + cout_res[m][0] >= 1)
-            model.addConstr(o_xor[m][0] + rho[m] + (1 - cout_res[m][0]) >= 1)
-            model.addConstr(rho[m] + (1 - cout_res[m][0]) >= 1)
+            model.addConstr(o_xor[m][0] - cout_res[m][0] >= 0)
+            model.addConstr(-o_xor[m][0] - rho[m] + cout_res[m][0] >= -1)
+            model.addConstr(o_xor[m][0] + rho[m] - cout_res[m][0] >= 0)
+            model.addConstr(rho[m] - cout_res[m][0] >= 0)
 
             for word in range(1, self.adder_wordlength):
-                model.addConstr(o_xor[m][word] + cout_res[m][word - 1] + (1 - h_ext[m][word]) >= 1)
-                model.addConstr(o_xor[m][word] + (1 - cout_res[m][word - 1]) + h_ext[m][word] >= 1)
-                model.addConstr((1 - o_xor[m][word]) + cout_res[m][word - 1] + h_ext[m][word] >= 1)
-                model.addConstr((1 - o_xor[m][word]) + (1 - cout_res[m][word - 1]) + (1 - h_ext[m][word]) >= 1)
+                model.addConstr(o_xor[m][word] + cout_res[m][word - 1] - h_ext[m][word] >= 0)
+                model.addConstr(o_xor[m][word] - cout_res[m][word - 1] + h_ext[m][word] >= 0)
+                model.addConstr(-o_xor[m][word] + cout_res[m][word - 1] + h_ext[m][word] >= 0)
+                model.addConstr(-o_xor[m][word] - cout_res[m][word - 1] - h_ext[m][word] >= -2)
 
-                model.addConstr(o_xor[m][word] + (1 - cout_res[m][word]) >= 1)
-                model.addConstr((1 - o_xor[m][word]) + (1 - cout_res[m][word - 1]) + cout_res[m][word] >= 1)
-                model.addConstr(o_xor[m][word] + cout_res[m][word - 1] + (1 - cout_res[m][word]) >= 1)
-                model.addConstr(cout_res[m][word - 1] + (1 - cout_res[m][word]) >= 1)
+                model.addConstr(o_xor[m][word] - cout_res[m][word] >= 0)
+                model.addConstr(-o_xor[m][word] - cout_res[m][word - 1] + cout_res[m][word] >= -1)
+                model.addConstr(o_xor[m][word] + cout_res[m][word - 1] - cout_res[m][word] >= 0)
+                model.addConstr(cout_res[m][word - 1] - cout_res[m][word] >= 0)
 
-        #solver connection
+        # Solver connection
         for m in range(half_order + 1):
             for word in range(self.adder_wordlength):
                 if word <= self.wordlength - 1:
                     # Equivalent to clause58 and clause59
-                    model.addConstr(h[m][word] + (1 - h_ext[m][word]) >= 1)
-                    model.addConstr((1 - h[m][word]) + h_ext[m][word] >= 1)
+                    model.addConstr(-h[m][word] + h_ext[m][word] >= 0)
+                    model.addConstr(h[m][word] - h_ext[m][word] >= 0)
                 else:
-                    model.addConstr(h[m][self.wordlength - 1] + (1 - h_ext[m][word]) >= 1)
-                    model.addConstr((1 - h[m][self.wordlength - 1]) + h_ext[m][word] >= 1)
+                    model.addConstr(-h[m][self.wordlength - 1] + h_ext[m][word] >= 0)
+                    model.addConstr(h[m][self.wordlength - 1] - h_ext[m][word] >= 0)
 
         if self.adder_depth > 0:
             # Binary variables for psi_alpha and psi_beta
             psi_alpha = [[model.addVar(vtype=GRB.BINARY, name=f'psi_alpha_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.adder_count+1)]
             psi_beta = [[model.addVar(vtype=GRB.BINARY, name=f'psi_beta_{i}_{d}') for d in range(self.adder_depth)] for i in range(1, self.adder_count+1)]
 
-           
-
             for i in range(1, self.adder_count+1):
                 psi_alpha_sum = []
                 psi_beta_sum = []
-                # Clause 60: Not(psi_alpha[i-1][0]) or alpha[i-1][0]
-                model.addConstr(1 - psi_alpha[i-1][0] + alpha[i-1][0] >= 1)
-                
-                # Clause 61: Not(psi_beta[i-1][0]) or beta[i-1][0]
-                model.addConstr((1 - psi_beta[i-1][0]) + beta[i-1][0] >= 1)
-                
+                # Adjusted constraints for psi_alpha and psi_beta
+                model.addConstr(-psi_alpha[i-1][0] + alpha[i-1][0] >= 0)
+                model.addConstr(-psi_beta[i-1][0] + beta[i-1][0] >= 0)
+
                 psi_alpha_sum.append(psi_alpha[i-1][0])
                 psi_beta_sum.append(psi_beta[i-1][0])
-                
+
                 if self.adder_depth == 1:
                     continue
 
                 for d in range(1, self.adder_depth):
                     for a in range(i-1):
-                        # Gurobi equivalent of clause63: Or(Not(psi_alpha[i - 1][d]), alpha[i - 1][a])
-                        model.addConstr((1 - psi_alpha[i-1][d]) + alpha[i-1][a] >= 1)
+                        # Adjusted constraints for psi_alpha and psi_beta
+                        model.addConstr(-psi_alpha[i-1][d] + alpha[i-1][a] >= 0)
+                        model.addConstr(-psi_alpha[i-1][d] + psi_alpha[a][d-1] >= 0)
+                        model.addConstr(-psi_beta[i-1][d] + beta[i-1][a] >= 0)
+                        model.addConstr(-psi_beta[i-1][d] + psi_beta[a][d-1] >= 0)
 
-                        # Gurobi equivalent of clause64: Or(Not(psi_alpha[i - 1][d]), psi_alpha[i - 1][d - 1])
-                        model.addConstr((1 - psi_alpha[i-1][d]) + psi_alpha[a][d-1] >= 1)
-
-
-                        # Gurobi equivalent of clause65: Or(Not(psi_beta[i - 1][d]), beta[i - 1][a])
-                        model.addConstr((1 - psi_beta[i-1][d]) + beta[i-1][a] >= 1)
-
-                        # Gurobi equivalent of clause66: Or(Not(psi_beta[i - 1][d]), psi_beta[i - 1][d - 1])
-                        model.addConstr((1 - psi_beta[i-1][d]) + psi_beta[a][d-1] >= 1)
-                    
                     psi_alpha_sum.append(psi_alpha[i-1][d])
                     psi_beta_sum.append(psi_beta[i-1][d])
 
@@ -898,7 +891,6 @@ class FIRFilterGurobi:
                 model.addConstr(sum(psi_alpha_sum) == 1)
                 model.addConstr(sum(psi_beta_sum) == 1)
 
-        
         if solver_option == 'try_h_zero_count' or solver_option == 'try_max_h_zero_count':
             model.setObjective(0, GRB.MINIMIZE)
             if h_zero_count == None:
@@ -925,8 +917,9 @@ class FIRFilterGurobi:
             model.setObjective(0, GRB.MAXIMIZE)
 
         print("solver running")
-        start_time=time.time()
+        start_time = time.time()
         model.optimize()
+
 
 
 

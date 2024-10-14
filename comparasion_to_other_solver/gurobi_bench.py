@@ -35,7 +35,7 @@ if __name__ == "__main__":
     gain_wordlength = wordlength + gain_intW - intW
     
 
-    gurobi_thread = 1
+    gurobi_thread = 12
     pysat_thread = 0
     z3_thread = 0
 
@@ -49,6 +49,8 @@ if __name__ == "__main__":
 
 
     for i in range(40):
+        print(f"order: {order_current}")
+        print(f"delta: {delta}")
         passband_error = delta
         stopband_error = delta
         space = order_current * accuracy * 50
@@ -185,3 +187,4 @@ if __name__ == "__main__":
         order_current += 2
         delta = round(delta * 0.75, 6)
         backend = None
+        print(target_result)

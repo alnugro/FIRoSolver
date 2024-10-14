@@ -148,7 +148,7 @@ class BackendMediator(QObject):
         data = process.readAllStandardOutput()
         stdout = bytes(data).decode('utf-8')
         self.stdout_buffers[solver_name] += stdout
-        # print(stdout)
+        print(stdout)
         # Process complete lines
         while '\n' in self.stdout_buffers[solver_name]:
             line, self.stdout_buffers[solver_name] = self.stdout_buffers[solver_name].split('\n', 1)
@@ -228,7 +228,7 @@ if __name__ == '__main__':
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
     lower_half_point = int(0.3 * space)
-    upper_half_point = int(0.6 * space)
+    upper_half_point = int(0.5 * space)
     end_point = space
 
     freq_upper[0:lower_half_point] = 5
