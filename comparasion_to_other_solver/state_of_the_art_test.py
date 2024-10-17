@@ -177,10 +177,10 @@ class TestBench():
                     print(f"Deep Search canceled, no search space for h_zero: Taking either A_S(h_zero_max) or A_S(A_M_Min(h_zero_max)) as the best solution")
                     best_adderm3 = best_adderm if total_adder >= total_adder2 else best_adderm2
                     total_adder3 = total_adder if total_adder >= total_adder2 else total_adder2
-                    if total_adder >= total_adder2 and result1_valid:
+                    if total_adder <= total_adder2 and result1_valid:
                         target_result3 = target_result  
 
-                    elif total_adder2 >= total_adder and result2_valid:
+                    elif total_adder2 <= total_adder and result2_valid:
                         target_result3 = target_result2
                     
                     else: 
@@ -204,10 +204,10 @@ class TestBench():
                         print(f"Deep Search canceled, all search space unsat: Taking either A_S(h_zero_max) or A_S(A_M_Min(h_zero_max)) as the best solution")
                         best_adderm3 = best_adderm if total_adder >= total_adder2 else best_adderm2
                         total_adder3 = total_adder if total_adder >= total_adder2 else total_adder2
-                        if total_adder >= total_adder2 and result1_valid:
+                        if total_adder <= total_adder2 and result1_valid:
                             target_result3 = target_result  
 
-                        elif total_adder2 >= total_adder and result2_valid:
+                        elif total_adder2 <= total_adder and result2_valid:
                             target_result3 = target_result2
                         
                         else: target_result3 = {}
@@ -423,12 +423,12 @@ if __name__ == '__main__':
             'adder_wordlength_ext': 4,
             'gain_wordlength': 6,
             'gain_intW': 2,
-            'gurobi_thread': 3,
+            'gurobi_thread': 16,
             'pysat_thread': 0,
             'z3_thread': 0,
             'timeout': 0,
-            'passband_error':  0.0001,
-            'stopband_error':  0.0001,
+            'passband_error':  0.01,
+            'stopband_error':  0.01,
             'lower_cutoff': 0.2,
             'upper_cutoff': 0.8,
         },
@@ -505,7 +505,7 @@ if __name__ == '__main__':
             'upper_cutoff': 0.5,
         }
     }
-    for i in range(1,8):
+    for i in range(4,5):
         test_key = i
         print(test_run[test_key])
         # Accessing the dictionary for the test_key 1 and assigning variables
@@ -620,7 +620,7 @@ if __name__ == '__main__':
             'timeout': 0,
             'start_with_error_prediction': False,
             'solver_accuracy_multiplier': accuracy,
-            'deepsearch': False,
+            'deepsearch': True,
             'patch_multiplier' : 1,
             'gurobi_auto_thread': False
         }

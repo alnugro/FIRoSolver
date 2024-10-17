@@ -13,7 +13,7 @@ except:
 class FIRFilterZ3:
     def __init__(self, 
                  filter_type, 
-                 order_current, 
+                 half_order, 
                  freqx_axis, 
                  upperbound_lin, 
                  lowerbound_lin, 
@@ -32,7 +32,7 @@ class FIRFilterZ3:
                  ):
         
         self.filter_type = filter_type
-        self.order_current = order_current
+        self.half_order = half_order
         self.freqx_axis = freqx_axis
         self.upperbound_lin = upperbound_lin
         self.lowerbound_lin = lowerbound_lin
@@ -66,7 +66,6 @@ class FIRFilterZ3:
     def get_solver_func_dict(self):
         input_data_sf = {
         'filter_type': self.filter_type,
-        'order_upperbound': self.order_current,
         }
 
         return input_data_sf
@@ -80,7 +79,7 @@ class FIRFilterZ3:
 
         ctx = z3.Context()
 
-        half_order = (self.order_current // 2)
+        half_order = self.half_order - 1 #-1 is because i am lazy to change the code
         
         sf = SolverFunc(self.get_solver_func_dict())
 
@@ -111,7 +110,6 @@ class FIRFilterZ3:
         # print("Running Gurobi with the following parameters:")
         # print(f"h_zero_count: {h_zero_count}")
         # print(f"filter_type: {self.filter_type}")
-        # print(f"order_current: {self.order_current}")
         # print(f"freqx_axis: {self.freqx_axis}")
         # print(f"upperbound_lin: {internal_upperbound_lin}")
         # print(f"lowerbound_lin: {internal_lowerbound_lin}")
@@ -293,11 +291,9 @@ class FIRFilterZ3:
         ctx = z3.Context()
 
 
-        self.order_current = int(self.order_current)
-        half_order = (self.order_current // 2)
+        half_order = self.half_order - 1 #-1 is because i am lazy to change the code
 
         print("solver called")
-        print("filter order:", self.order_current)
         print("ignore lower than:", self.ignore_lowerbound_lin)
         # linearize the bounds
         internal_upperbound_lin = [

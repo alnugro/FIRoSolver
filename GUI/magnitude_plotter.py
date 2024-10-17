@@ -94,15 +94,15 @@ class MagnitudePlotter:
             self.xdata_edges.append(start_freq)
             self.xdata_edges.append(end_freq)
 
-            xdata_lower_index = np.searchsorted(xdata, start_freq)
-            xdata_upper_index = np.searchsorted(xdata, end_freq)
+            # xdata_lower_index = np.searchsorted(xdata, start_freq)
+            # xdata_upper_index = np.searchsorted(xdata, end_freq)
 
             if not(start_freq in xdata):
-                xdata_upper_index = np.searchsorted(xdata, start_freq)
-                xdata = np.insert(xdata, xdata_upper_index, start_freq)
-                middle_y = np.insert(middle_y, xdata_upper_index, np.nan)
-                upper_y = np.insert(upper_y, xdata_upper_index, np.nan)
-                lower_y = np.insert(lower_y, xdata_upper_index, np.nan)
+                xdata_lower_index = np.searchsorted(xdata, start_freq)
+                xdata = np.insert(xdata, xdata_lower_index, start_freq)
+                middle_y = np.insert(middle_y, xdata_lower_index, np.nan)
+                upper_y = np.insert(upper_y, xdata_lower_index, np.nan)
+                lower_y = np.insert(lower_y, xdata_lower_index, np.nan)
                 
             if not(end_freq in xdata):
                 xdata_upper_index = np.searchsorted(xdata, end_freq)
@@ -113,20 +113,12 @@ class MagnitudePlotter:
             
             start_index = np.where(xdata == start_freq)[0][0]
             end_index =  np.where(xdata == end_freq)[0][0]
-            middle_y[start_index:end_index] = magnitude
-            upper_y[start_index:end_index] = magnitude + upper_bound
-            lower_y[start_index:end_index] = magnitude - lower_bound
+            middle_y[start_index:end_index+1] = magnitude
+            upper_y[start_index:end_index+1] = magnitude + upper_bound
+            lower_y[start_index:end_index+1] = magnitude - lower_bound
 
 
-            #highest x and y to limit y
-            if highest_upper < magnitude + upper_bound:
-                highest_upper = magnitude + upper_bound + 2
-
-            if lowest_lower > magnitude - lower_bound:
-                lowest_lower = magnitude - lower_bound - 2
-            
-        # self.ax.set_ylim([lowest_lower, highest_upper])
-        
+                    
         self.draggable_lines = DraggablePlotter(self.fig, self.ax,self.app.canvas, self.day_night, self.app.position_label, self.app)
         self.update_plotter(data_dict, False)
         self.draggable_lines.initialize_plot(xdata, middle_y, upper_y, lower_y)

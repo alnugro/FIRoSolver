@@ -3,7 +3,6 @@ import numpy as np
 class SolverFunc():
     def __init__(self,input_data):
         self.filter_type = None
-        self.order_upperbound = None
 
         self.original_xdata = None
         self.original_upperbound_lin = None
@@ -46,7 +45,7 @@ class SolverFunc():
             return 2*np.cos(omega*np.pi*(m+0.5))
 
         if self.filter_type == 2:
-            return 2*np.sin(omega*np.pi*(m-1))
+            return 2*np.sin(omega*np.pi*(m+1))
 
         if self.filter_type == 3:
             return 2*np.sin(omega*np.pi*(m+0.5))

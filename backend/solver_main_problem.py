@@ -55,6 +55,7 @@ class MainProblem:
         self.avail_dsp = None
         self.adder_wordlength_ext = None
 
+        self.half_order = None
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
             if hasattr(self, key):  # Only set attributes that exist in the class
@@ -72,7 +73,6 @@ class MainProblem:
         self.h_res = None
         self.satisfiability = 'unsat'
 
-        self.half_order = (self.order_upperbound // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2) - 1
         self.max_zero_reduced = 0
 
         self.result_model = {}
@@ -80,7 +80,7 @@ class MainProblem:
     def try_asserted(self, presolve_result,adderm,h_zero):
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -115,7 +115,7 @@ class MainProblem:
     def find_best_adder_s(self, presolve_result):
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -174,7 +174,7 @@ class MainProblem:
     def find_best_adder_m(self, presolve_result):
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -196,7 +196,7 @@ class MainProblem:
         best_adderm = -1  # Default value if no 'sat' is found
         target_result = None
         target_result_best = None
-        print(f"presolve_result min adderm {presolve_result['min_adderm_without_zero']}")
+        # print(f"presolve_result min adderm {presolve_result['min_adderm_without_zero']}")
         max_h_zero = None
 
         while True:            
@@ -230,7 +230,7 @@ class MainProblem:
     def deep_search(self,presolve_result ,input_data_dict):
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -258,7 +258,7 @@ class MainProblem:
 
         # Initialize vars
         min_total_adder = total_adder_s if total_adder_s <= total_adder_m else total_adder_m
-        found_min_flag = False
+
         target_result_best = None
         h_zero_best = None
         best_adderm = None
@@ -267,11 +267,18 @@ class MainProblem:
             print(f"value to test is {h_zero_val}")
 
             while True:
-                target_adderm = min_total_adder - self.half_order +  h_zero_val #calculate better adderm from current best -1
+
+                if self.filter_type == 0:
+                    adder_s = 2 * (self.half_order - h_zero_val - 1)
+                else:
+                    adder_s = 2 * (self.half_order - h_zero_val - 1) + 1
+
+                target_adderm = min_total_adder - adder_s +1 #calculate better adderm from current best -1
+                if target_adderm < 0:
+                    break
                 target_result, satisfiability_loc ,h_zero_loc = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'try_h_zero_count' ,target_adderm, h_zero_val)
                 if satisfiability_loc == 'sat':
                     min_total_adder -= 1
-                    found_min_flag = True
                     target_result_best = target_result
                     h_zero_best = h_zero_loc
                     best_adderm = target_adderm
@@ -439,7 +446,7 @@ class MainProblem:
     def z3_instance_creator(self):
         z3_instance = FIRFilterZ3(
                     self.filter_type, 
-                    self.order_upperbound, 
+                    self.half_order, 
                     self.xdata, 
                     self.upperbound_lin, 
                     self.lowerbound_lin, 
@@ -462,7 +469,7 @@ class MainProblem:
     def pysat_instance_creator(self):
         pysat_instance = FIRFilterPysat(
                     self.filter_type, 
-                    self.order_upperbound, 
+                    self.half_order, 
                     self.xdata, 
                     self.upperbound_lin,
                     self.lowerbound_lin,

@@ -190,9 +190,9 @@ if __name__ == "__main__":
     # Example usage:
     b = 0
 
-    b_frac = [-11.220184543019636,1.44,9.2222]  # example input coefficients
-    nbits = 20  # number of bits
-    nfrac = 14 # bits for fractional
+    b_frac = [75,99]  # example input coefficients
+    nbits = 8  # number of bits
+    nfrac = 0 # bits for fractional
     boolean = Rat2bool()
     
     # test = [-5]
@@ -203,13 +203,13 @@ if __name__ == "__main__":
     
     
     
-    # A = boolean.abs_frac2bool(b_frac, nbits, nfrac)
+    A = boolean.abs_frac2bool(b_frac, nbits, nfrac)
     
     # print(f"input frac:\n", b_frac)
     # print("\nleftmost is LSB")
 
-    # print("Boolean representation (abs_frac2bool):\n", A)
-    # calculated_values = boolean.bool2frac(A, nfrac)
+    print("Boolean representation (abs_frac2bool):\n", A)
+    calculated_values = boolean.bool2frac(A, nfrac)
     # print("Reconstructed values from boolean (abs_frac2bool):\n", calculated_values)
 
     Y = boolean.frac2csd(b_frac, nbits, nfrac)

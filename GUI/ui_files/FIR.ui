@@ -310,7 +310,7 @@
           <bool>false</bool>
          </property>
          <property name="currentIndex">
-          <number>4</number>
+          <number>0</number>
          </property>
          <widget class="QWidget" name="tab_2">
           <attribute name="title">
@@ -1293,6 +1293,9 @@
                           <property name="singleStep">
                            <double>0.100000000000000</double>
                           </property>
+                          <property name="value">
+                           <double>-100.000000000000000</double>
+                          </property>
                          </widget>
                         </item>
                        </layout>
@@ -1860,7 +1863,7 @@
            <item>
             <widget class="QTabWidget" name="tabWidget_4">
              <property name="currentIndex">
-              <number>1</number>
+              <number>0</number>
              </property>
              <widget class="QWidget" name="Basic">
               <attribute name="title">
@@ -2517,7 +2520,7 @@
                            </size>
                           </property>
                           <property name="value">
-                           <number>14</number>
+                           <number>10</number>
                           </property>
                          </widget>
                         </item>
@@ -2650,6 +2653,9 @@
                           <property name="maximum">
                            <number>999999999</number>
                           </property>
+                          <property name="value">
+                           <number>4</number>
+                          </property>
                          </widget>
                         </item>
                        </layout>
@@ -2681,6 +2687,9 @@
                           </property>
                           <property name="maximum">
                            <number>999999999</number>
+                          </property>
+                          <property name="value">
+                           <number>2</number>
                           </property>
                          </widget>
                         </item>
@@ -3237,6 +3246,9 @@ li.checked::marker { content: &quot;\2612&quot;; }
                            <height>30</height>
                           </size>
                          </property>
+                         <property name="value">
+                          <number>4</number>
+                         </property>
                         </widget>
                        </item>
                       </layout>
@@ -3323,7 +3335,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
                       </property>
                       <layout class="QHBoxLayout" name="horizontalLayout_30">
                        <item>
-                        <widget class="QCheckBox" name="gurobi_auto_thread_but">
+                        <widget class="QCheckBox" name="gurobi_auto_thread_check">
                          <property name="text">
                           <string>Automatic Thread Gurobi</string>
                          </property>
@@ -3759,7 +3771,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
            <item>
             <widget class="QTabWidget" name="result_wid">
              <property name="currentIndex">
-              <number>0</number>
+              <number>1</number>
              </property>
              <widget class="QWidget" name="tab_6">
               <attribute name="title">
@@ -4717,7 +4729,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
        <bool>false</bool>
       </property>
       <property name="currentIndex">
-       <number>2</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="tab_3">
        <attribute name="title">

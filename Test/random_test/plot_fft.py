@@ -15,30 +15,19 @@ def rework_list(arr):
 
 # Define your FIR filter coefficients
 h = [
-  472,
-  248,
-  0,
-  96,
-  42,
-  32,
-  36,
-  0,
-  21,
-  8,
-  6,
-  6
+  0.5, 0.25, 0.0, -0.125
 ]
 fir_coefficients_np = np.array(h)  # Example coefficients
-fir_coefficients_word = [coef/2**10 for coef in fir_coefficients_np]
+fir_coefficients_word = [coef for coef in fir_coefficients_np]
 fir_coefficients = rework_list(fir_coefficients_word)
 
 # Compute the FFT of the coefficients
-N = 1000  # Number of points for the FFT
+N = 100  # Number of points for the FFT
 frequency_response = np.fft.fft(fir_coefficients, N)
-frequencies= np.fft.fftfreq(N, d=1.0)  # Extract positive frequencies up to Nyquist
+frequencies= np.fft.fftfreq(N, d=0.5)  # Extract positive frequencies up to Nyquist
 
 
-print(frequencies)
+
 
 # Compute the magnitude and phase response for positive frequencies
 magnitude_response = np.abs(frequency_response)
@@ -46,6 +35,14 @@ magnitude_response = np.abs(frequency_response)
 
 # # Normalize frequencies to range from 0 to 1
 # normalized_frequencies = frequencies / np.max(frequencies)
+
+pair = []
+for i in range(50):
+    pair.append((np.array(frequencies[i]).tolist(), np.array(magnitude_response[i]).tolist()))
+print(frequencies[:50])
+print(magnitude_response[:50])
+print(pair)
+print(fir_coefficients)
 
 # Plot the magnitude response
 plt.figure(figsize=(12, 6))

@@ -1,9 +1,9 @@
 
 import numpy as np
 
-from solver_func import SolverFunc
-from backend_main import SolverBackend
-from formulation_gurobi import FIRFilterGurobi
+from backend.solver_func import SolverFunc
+from backend.backend_main import SolverBackend
+from backend.formulation_gurobi import FIRFilterGurobi
 
 # try:
 #     from .formulation_pysat import FIRFilterPysat

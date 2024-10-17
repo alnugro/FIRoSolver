@@ -60,6 +60,7 @@ class BoundErrorHandler:
         self.solver_accuracy_multiplier = None
 
         self.patch_multiplier = None
+        self.half_order = None
 
 
 
@@ -75,7 +76,6 @@ class BoundErrorHandler:
         self.h_res = None
         self.gain_res = None
 
-        self.half_order = (self.order_upperbound // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2) - 1
         self.ignore_error = 10 ** (-60 / 20) #gurobi feasibility accuracy 1e-6
 
         self.plot_flag = False #turn this on to graph result
@@ -87,7 +87,6 @@ class BoundErrorHandler:
     def get_solver_func_dict(self):
         input_data_sf = {
         'filter_type': self.filter_type,
-        'order_upperbound': self.order_upperbound,
         }
 
         return input_data_sf
@@ -105,7 +104,7 @@ class BoundErrorHandler:
             term_sum_exprs = 0
             
             # Compute the sum of products of coefficients and the cosine/sine terms with much higher cm accuracy
-            for j in range(self.half_order+1):
+            for j in range(self.half_order):
                 cm_const = sf.cm_handler(j, omega)
                 term_sum_exprs += h_res[j] * cm_const
             

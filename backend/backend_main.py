@@ -84,8 +84,17 @@ class SolverBackend():
         })
 
         self.end_result = None
-        self.half_order = (self.order_upperbound // 2) + 1 if self.filter_type == 0 or self.filter_type == 2 else ((self.order_upperbound + 1) / 2)
 
+        if self.filter_type == 1 or self.filter_type == 3:
+            self.half_order = (self.order_upperbound + 1) // 2
+        elif self.filter_type == 0:
+            self.half_order = (self.order_upperbound // 2) + 1
+        else:
+            self.half_order = self.order_upperbound// 2
+
+        self.input_data.update({
+            'half_order': self.half_order
+        })
 
         self.xdata_temp = None
         self.upperbound_lin_temp = None
@@ -172,10 +181,15 @@ class SolverBackend():
         else:
             target_result, best_adderm, adder_s_h_zero_best= main.find_best_adder_s_z3_paysat(presolve_result)
         
-        adder_s = self.half_order - presolve_result['max_zero'] - 1
-        total_adder = (2*adder_s) + best_adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + 1 + best_adderm
-        print(f"self.half_order {self.half_order}")
+        half_adder_s = self.half_order - adder_s_h_zero_best - 1
 
+        if self.filter_type == 0:
+            adder_s = 2 * half_adder_s
+        else:
+            adder_s =( 2 * half_adder_s) + 1
+
+        total_adder = adder_s + best_adderm
+        print(f"self.half_order {self.half_order}")
         print(f"max_zero {presolve_result['max_zero']}")
         print(f"total_adder {total_adder}")
         print(f"h {target_result}")
@@ -183,9 +197,10 @@ class SolverBackend():
         print(f"best_adderm {best_adderm}")
 
         target_result.update({
-            'total_adder': total_adder,
-            'adder_m':best_adderm,
-            'adder_s': adder_s,
+            'total_adder': int(total_adder),
+            'adder_m': int(best_adderm),
+            'adder_s': int(adder_s),
+            'half_adder_s': int(half_adder_s),
             'half_order':self.half_order,
             'wordlength': self.wordlength,
             'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
@@ -201,8 +216,14 @@ class SolverBackend():
         main = MainProblem(self.input_data)
         target_result, best_adderm, adderm_h_zero_best = main.find_best_adder_m(presolve_result)
 
-        adder_s = self.half_order - adderm_h_zero_best - 1
-        total_adder = (2 * adder_s) + best_adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + 1 + best_adderm
+        half_adder_s = self.half_order - adderm_h_zero_best - 1
+
+        if self.filter_type == 0:
+            adder_s = 2 * half_adder_s
+        else:
+            adder_s =( 2 * half_adder_s) + 1
+
+        total_adder = adder_s + best_adderm
 
         print(f"self.half_order {self.half_order}")
         print(f"h_zero_best {adderm_h_zero_best}")
@@ -212,9 +233,10 @@ class SolverBackend():
         print(f"best_adderm {best_adderm}")
 
         target_result.update({
-            'total_adder': total_adder,
-            'adder_m':best_adderm,
-            'adder_s': adder_s,
+            'total_adder': int(total_adder),
+            'adder_m': int(best_adderm),
+            'adder_s': int(adder_s),
+            'half_adder_s': int(half_adder_s),
             'half_order':self.half_order,
             'wordlength': self.wordlength,
             'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
@@ -230,8 +252,12 @@ class SolverBackend():
         total_adder = None
         adder_s = None
         if h_zero_best:
-            adder_s = self.half_order - h_zero_best - 1
-            total_adder = (2*adder_s) - 1 + best_adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + best_adderm
+            half_adder_s = self.half_order - h_zero_best - 1
+            if self.filter_type == 0:
+                adder_s = 2 * half_adder_s
+            else:
+                adder_s =( 2 * half_adder_s) + 1
+            total_adder = adder_s + best_adderm
 
         # print(f"self.half_order {self.half_order}")
         # print(f"h_zero_best {h_zero_best}")
@@ -241,10 +267,10 @@ class SolverBackend():
         # print(f"total_adder {total_adder}")
         # print(f"best_adderm {best_adderm}")
             target_result.update({
-                'total_adder': total_adder,
-                'adder_m':best_adderm,
-                'adder_s': adder_s,
-                'half_order':self.half_order,
+                'total_adder': int(total_adder),
+                'adder_m': int(best_adderm),
+                'adder_s': int(adder_s),
+                'half_adder_s': int(half_adder_s),
                 'wordlength': self.wordlength,
                 'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
                 'adder_depth': self.adder_depth,
@@ -429,8 +455,8 @@ if __name__ == "__main__":
     gain_wordlength = 13
     gain_intW = 4
 
-    gurobi_thread = 0
-    pysat_thread = 10
+    gurobi_thread = 5
+    pysat_thread = 0
     z3_thread = 0
 
     timeout = 0
@@ -529,7 +555,7 @@ if __name__ == "__main__":
     presolve_result = backend.solver_presolve()
     print(presolve_result)
     # target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
-    #     # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
+    target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
     
     # while True:
     #     leaks, leaks_mag = backend.result_validator(target_result['h_res'],target_result['gain'])

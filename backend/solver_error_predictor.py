@@ -52,6 +52,9 @@ class ErrorPredictor:
         self.cutoffs_upper_ydata_lin = None
         self.cutoffs_lower_ydata_lin = None
 
+        self.half_order = None
+
+
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
             if hasattr(self, key):  # Only set attributes that exist in the class
@@ -71,7 +74,6 @@ class ErrorPredictor:
     def get_solver_func_dict(self):
         input_data_sf = {
         'filter_type': self.filter_type,
-        'order_upperbound': self.order_upperbound,
         }
 
         return input_data_sf
@@ -237,7 +239,7 @@ class ErrorPredictor:
         freq_lower_lin = None
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -333,7 +335,6 @@ class ErrorPredictor:
         freq_lower_with_error_pred = np.copy(freq_lower)
         sf = SolverFunc(self.get_solver_func_dict())
 
-        half_order = (self.order_upperbound // 2) +1 if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2)
 
         for omega in range(len(self.xdata)):
             delta_omega = []
@@ -341,7 +342,7 @@ class ErrorPredictor:
             if np.isnan(freq_upper[omega]) or np.isnan(freq_lower[omega]):
                 continue
 
-            for m in range(half_order):
+            for m in range(self.half_order):
                 #calculate const
                 cm = sf.cm_handler(m, self.xdata[omega])
                 z_result_temp = h_res[m] * cm
@@ -390,7 +391,7 @@ class ErrorPredictor:
     def gurobi_instance_creator(self):
         gurobi_instance = FIRFilterGurobi(
              self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -411,7 +412,7 @@ class ErrorPredictor:
     def z3_instance_creator(self):
         z3_instance = FIRFilterZ3(
                     self.filter_type, 
-                    self.order_upperbound, 
+                    self.half_order, 
                     self.xdata, 
                     self.upperbound_lin, 
                     self.lowerbound_lin, 
@@ -434,7 +435,7 @@ class ErrorPredictor:
     def pysat_instance_creator(self):
         pysat_instance = FIRFilterPysat(
                     self.filter_type, 
-                    self.order_upperbound, 
+                    self.half_order, 
                     self.xdata, 
                     self.upperbound_lin,
                     self.lowerbound_lin,

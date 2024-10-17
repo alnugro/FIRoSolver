@@ -53,6 +53,8 @@ class Presolver:
         self.cutoffs_upper_ydata_lin = None
         self.cutoffs_lower_ydata_lin = None
 
+        self.half_order = None
+
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
             if hasattr(self, key):  # Only set attributes that exist in the class
@@ -69,7 +71,6 @@ class Presolver:
         self.h_res = None
         self.satisfiability = 'unsat'
 
-        self.half_order = (self.order_upperbound // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_upperbound // 2) - 1
         self.max_zero_reduced = 0
 
     def minmax_h_zero_worker_func(self,input_m):
@@ -78,7 +79,7 @@ class Presolver:
 
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -107,7 +108,7 @@ class Presolver:
 
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -161,7 +162,7 @@ class Presolver:
 
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
-            self.order_upperbound, #you pass upperbound directly to gurobi
+            self.half_order, #you pass upperbound directly to gurobi
             self.xdata, 
             self.upperbound_lin, 
             self.lowerbound_lin, 
@@ -224,14 +225,14 @@ class Presolver:
 
 
         print("\nFinding Minimum and Maximum For each Filter Coefficients......\n")
-        half_order_list = [m for m in range(self.half_order + 1 )]
+        half_order_list = [m for m in range(self.half_order)]
         self.h_max = []
         self.h_min = []
 
         self.max_h_zero_for_minmax = max_h_zero
 
-        self.h_max = [None for m in range(self.half_order + 1 )] 
-        self.h_min = [None for m in range(self.half_order + 1 )]
+        self.h_max = [None for m in range(self.half_order)] 
+        self.h_min = [None for m in range(self.half_order)]
         #run h_zero minmax finder using threadpool
         self.run_minmax_h_zero_threadpool( half_order_list)
 
@@ -240,8 +241,8 @@ class Presolver:
 
         self.max_h_zero_for_minmax = max_h_zero
 
-        self.h_max_without_zero = [None for m in range(self.half_order + 1 )] 
-        self.h_min_without_zero = [None for m in range(self.half_order + 1 )]
+        self.h_max_without_zero = [None for m in range(self.half_order)] 
+        self.h_min_without_zero = [None for m in range(self.half_order)]
 
         self.run_minmax_h_threadpool( half_order_list)
 
@@ -282,7 +283,7 @@ class Presolver:
         
       
         #binary search to find the h_zero count sat transition point
-        low, high = 0, self.order_upperbound
+        low, high = 0, self.half_order
         iteration = 1
         max_h_zero = -1  # Default value if no 'sat' is found
         
@@ -450,7 +451,7 @@ class Presolver:
     def z3_instance_creator(self):
         z3_instance = FIRFilterZ3(
                     self.filter_type, 
-                    self.order_upperbound, 
+                    self.half_order, 
                     self.xdata, 
                     self.upperbound_lin, 
                     self.lowerbound_lin, 
@@ -473,7 +474,7 @@ class Presolver:
     def pysat_instance_creator(self):
         pysat_instance = FIRFilterPysat(
                     self.filter_type, 
-                    self.order_upperbound, 
+                    self.half_order, 
                     self.xdata, 
                     self.upperbound_lin,
                     self.lowerbound_lin,

@@ -17,7 +17,7 @@ from concurrent.futures import TimeoutError, CancelledError, wait, ALL_COMPLETED
 
 
 try:
-    from .live_logger import LiveLogger
+    from ...GUI.live_logger import LiveLogger
     from backend.backend_runner import BackendRunner
     from backend.backend_main import SolverBackend
 

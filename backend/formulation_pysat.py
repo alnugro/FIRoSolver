@@ -19,7 +19,7 @@ except:
 class FIRFilterPysat:
     def __init__(self, 
                  filter_type, 
-                 order_current, 
+                 half_order, 
                  freqx_axis, 
                  freq_upper, 
                  freq_lower, 
@@ -35,7 +35,7 @@ class FIRFilterPysat:
                  ):
         
         self.filter_type = filter_type
-        self.order_current = order_current
+        self.half_order = half_order
         self.freqx_axis = freqx_axis
         self.upperbound = freq_upper
         self.lowerbound = freq_lower
@@ -68,7 +68,6 @@ class FIRFilterPysat:
     def get_solver_func_dict(self):
         input_data_sf = {
         'filter_type': self.filter_type,
-        'order_upperbound': self.order_current,
         }
 
         return input_data_sf
@@ -82,7 +81,7 @@ class FIRFilterPysat:
         self.gain_res = 0
         self.model = []
 
-        half_order = (self.order_current // 2)
+        half_order = self.half_order - 1 #-1 is because i am lazy to change the code
 
         sf = SolverFunc(self.get_solver_func_dict())
         internal_upperbound_lin = [f if not np.isnan(f) else np.nan for f in self.upperbound]
@@ -92,7 +91,6 @@ class FIRFilterPysat:
 
        
         # print(f"filter_type: {self.filter_type}")
-        # print(f"order_current: {self.order_current}")
         # print(f"freqx_axis: {self.freqx_axis}")
         # print(f"upperbound_lin: {internal_upperbound_lin}")
         # print(f"lowerbound_lin: {internal_lowerbound_lin}")
@@ -295,7 +293,7 @@ class FIRFilterPysat:
         self.max_adder = adderm
         self.h_res = []
         self.gain_res = 0
-        half_order = (self.order_current // 2)
+        half_order = self.half_order - 1 #-1 is because i am lazy to change the code
         
         print("Pysat solver called")
         var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.max_adder, self.adder_depth)

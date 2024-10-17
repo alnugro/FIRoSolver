@@ -56,6 +56,7 @@ class BackendRunner:
         self.deepsearch = None
         self.problem_id = None
 
+
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in solver_input.items():
             if hasattr(self, key):  # Only set attributes that exist in the class
@@ -99,7 +100,7 @@ class BackendRunner:
          
         # start presolve
         presolve_result = backend.solver_presolve()
-
+        print(presolve_result)
         
 
         print(f"@MSG@ : Presolve done")
@@ -110,7 +111,7 @@ class BackendRunner:
         print(f"@MSG@ : Finding best A_S(h_zero_max)")
         target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
             # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
-
+        
         target_result.update({
            'option' : 'A_S(h_zero_max)'
         })
@@ -194,10 +195,10 @@ class BackendRunner:
                 print(f"@MSG@ : Deep Search canceled, no search space for h_zero: Taking either A_S(h_zero_max) or A_S(A_M_Min(h_zero_max)) as the best solution")
                 best_adderm3 = best_adderm if total_adder >= total_adder2 else best_adderm2
                 total_adder3 = total_adder if total_adder >= total_adder2 else total_adder2
-                if total_adder >= total_adder2 and result1_valid:
+                if total_adder <= total_adder2 and result1_valid:
                     target_result3 = target_result  
 
-                elif total_adder2 >= total_adder and result2_valid:
+                elif total_adder2 <= total_adder and result2_valid:
                     target_result3 = target_result2
                 
                 else: target_result3 = {}
@@ -215,10 +216,10 @@ class BackendRunner:
                     print(f"@MSG@ : Deep Search canceled, all search space unsat: Taking either A_S(h_zero_max) or A_S(A_M_Min(h_zero_max)) as the best solution")
                     best_adderm3 = best_adderm if total_adder >= total_adder2 else best_adderm2
                     total_adder3 = total_adder if total_adder >= total_adder2 else total_adder2
-                    if total_adder >= total_adder2 and result1_valid:
+                    if total_adder <= total_adder2 and result1_valid:
                         target_result3 = target_result  
 
-                    elif total_adder2 >= total_adder and result2_valid:
+                    elif total_adder2 <= total_adder and result2_valid:
                         target_result3 = target_result2
                     
                     else: target_result3 = {}
@@ -262,17 +263,17 @@ class BackendRunner:
                         break
 
             
-        if result1_valid:
-            target_result.update({
-                    'option' : 'optimal'
-                 })
-            self.update_json_with_lock( target_result , 'result_valid.json')
-        else:
-            target_result = {}
-            target_result.update({
-                    'option' : 'optimal'
-                 })
-            self.update_json_with_lock( target_result , 'result_valid.json')
+        # if result1_valid and not self.deepsearch:
+        #     target_result.update({
+        #             'option' : 'optimal'
+        #          })
+        #     self.update_json_with_lock( target_result , 'result_valid.json')
+        # else:
+        #     target_result = {}
+        #     target_result.update({
+        #             'option' : 'optimal'
+        #          })
+        #     self.update_json_with_lock( target_result , 'result_valid.json')
         
         
 

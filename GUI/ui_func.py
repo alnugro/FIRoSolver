@@ -30,7 +30,7 @@ class UIFunc:
 
 
 
-    def solver_input_dict_generator_re(self, xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata):
+    def solver_input_dict_generator(self, xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata):
         input_data = {
         'filter_type': self.main_window.filter_type_drop.currentIndex(),
         'order_upperbound': self.main_window.order_upper_box.value(),
@@ -62,38 +62,7 @@ class UIFunc:
         }
         return input_data
     
-    def solver_input_dict_generator(self):
-        input_data = {
-        'filter_type': 0,
-        'order_upperbound': 30,
-        'original_xdata': self.original_xdata,
-        'original_upperbound_lin': self.upperbound_lin,
-        'original_lowerbound_lin': self.lowerbound_lin,
-        'ignore_lowerbound': 0.1,
-        'cutoffs_x': self.cutoffs_x,
-        'cutoffs_upper_ydata_lin': self.cutoffs_upper_ydata_lin,
-        'cutoffs_lower_ydata_lin': self.cutoffs_lower_ydata_lin,
-        'wordlength': 15,
-        'adder_depth': 0,
-        'avail_dsp': 0,
-        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
-        'gain_wordlength' : 6,
-        'gain_intW' : 2,
-        'gain_upperbound': 3,
-        'gain_lowerbound': 1,
-        'coef_accuracy': 6,
-        'intW': 6,
-        'gurobi_thread': 5,
-        'pysat_thread': 5,
-        'z3_thread': 4,
-        'timeout': 0,
-        'start_with_error_prediction': False,
-        'solver_accuracy_multiplier': 9,
-        'deepsearch': True,
-        'patch_multiplier' : 1,
-        'gurobi_auto_thread': False
-        }
-        return input_data
+    
     
     def delete_json_files(self):
         pass

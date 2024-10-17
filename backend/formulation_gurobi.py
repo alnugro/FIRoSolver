@@ -15,7 +15,7 @@ except:
 class FIRFilterGurobi:
     def __init__(self, 
                  filter_type, 
-                 order, 
+                 half_order, 
                  freqx_axis, 
                  upperbound_lin, 
                  lowerbound_lin, 
@@ -36,7 +36,7 @@ class FIRFilterGurobi:
         
         
         self.filter_type = filter_type
-        self.order = order
+        self.half_order = half_order
         self.freqx_axis = freqx_axis
 
         self.h_res = []
@@ -70,7 +70,6 @@ class FIRFilterGurobi:
     def get_solver_func_dict(self):
         input_data_sf = {
         'filter_type': self.filter_type,
-        'order_upperbound': self.order,
         }
 
         return input_data_sf
@@ -81,9 +80,7 @@ class FIRFilterGurobi:
         self.h_res = []
         self.gain_res = 0
         target_result = {}
-        self.order_current = int(self.order)
-        half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
-        
+        half_order = self.half_order - 1 #-1 is because i am lazy to change the code
         print("Gurobi solver called")
         sf = SolverFunc(self.get_solver_func_dict())
 
@@ -102,7 +99,6 @@ class FIRFilterGurobi:
         # print(f"minmax_option: {minmax_option}")
         # print(f"h_zero_count: {h_zero_count}")
         # print(f"filter_type: {self.filter_type}")
-        # print(f"order_current: {self.order}")
         # print(f"freqx_axis: {self.freqx_axis}")
         # print(f"upperbound_lin: {internal_upperbound_lin}")
         # print(f"lowerbound_lin: {internal_lowerbound_lin}")
@@ -251,9 +247,7 @@ class FIRFilterGurobi:
         self.h_res = []
         self.gain_res = []
         target_result = {}
-        self.order_current = int(self.order)
-        half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
-        
+        half_order = self.half_order - 1 #-1 is because i am lazy to change the code
         print("Gurobi solver called")
         sf = SolverFunc(self.get_solver_func_dict())
 
@@ -270,7 +264,6 @@ class FIRFilterGurobi:
         # print(f"minmax_option: {minmax_option}")
         # print(f"h_zero_count: {h_zero_count}")
         # print(f"filter_type: {self.filter_type}")
-        # print(f"order_current: {self.order}")
         # print(f"freqx_axis: {self.freqx_axis}")
         # print(f"upperbound_lin: {internal_upperbound_lin}")
         # print(f"lowerbound_lin: {internal_lowerbound_lin}")
@@ -464,13 +457,9 @@ class FIRFilterGurobi:
         if adderm != None:
             self.adder_count = adderm
 
-        self.order_current = int(self.order)
-        half_order = (self.order_current // 2) if self.filter_type == 0 or self.filter_type == 2 else (self.order_current // 2) - 1
-        
+        half_order = self.half_order - 1 #-1 is because i am lazy to change the code
         print("solver called")
         sf = SolverFunc(self.get_solver_func_dict())
-
-        print("filter order:", self.order_current)
 
         
          # linearize the bounds
@@ -484,15 +473,22 @@ class FIRFilterGurobi:
         if self.run_auto_thread == False:
             model.setParam('Threads', thread)
 
-        model.setParam('Method', 2)
-        model.setParam('SolutionLimit', 1)
-        model.setParam('MipFocus', 1)
-
-        model.setParam('Cuts', 0)
         model.setParam('Presolve', 2)
+        model.setParam('Method', 2)
+
+        if solver_option == 'try_max_h_zero_count' or solver_option == 'try_h_zero_count':
+            model.setParam('SolutionLimit', 1)
+            model.setParam('MipFocus', 1)
+            model.setParam('Cuts', 0)
+
+        
 
         if adderm > 2:
-            norelax = (adderm**2) *  (half_order - h_zero_count)
+            if h_zero_count == None:
+                norelax = (adderm**2) *  (half_order)
+            else:
+                norelax = (adderm**2) *  (half_order - h_zero_count)
+
             model.setParam('NoRelHeurWork', norelax)
         # model.setParam('OutputFlag', 0)
         # model.setParam('TimeLimit', 1)     #timeout
@@ -512,7 +508,6 @@ class FIRFilterGurobi:
         print(f"adder_depth: {self.adder_depth}")
         print(f"h_zero_count: {h_zero_count}")
         print(f"filter_type: {self.filter_type}")
-        print(f"order_current: {self.order}")
         print(f"freqx_axis: {self.freqx_axis}")
         print(f"upperbound_lin: {internal_upperbound_lin}")
         print(f"lowerbound_lin: {internal_lowerbound_lin}")
@@ -937,9 +932,6 @@ class FIRFilterGurobi:
                     psi_beta_val = psi_beta[i-1][d].X
                     print(f"psi_alpha_{i}_{d}: {psi_alpha_val}")
                     print(f"psi_beta_{i}_{d}: {psi_beta_val}")
-
-
-
 
             end_time = time.time()
 

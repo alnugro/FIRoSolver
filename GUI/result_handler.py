@@ -300,7 +300,7 @@ class DynamicTableWidget(QWidget):
         super().__init__()
         self.table = table_widget
         self.valid_data = valid_data
-        self.last_max_key = 0
+        self.last_max_key = -1
         self.app = app  
 
     def startTimer(self):
@@ -326,7 +326,7 @@ class DynamicTableWidget(QWidget):
             with open(filename, 'r') as json_file:
                 data = json.load(json_file)
 
-        max_key = max(map(int, data.keys())) if data else 0
+        max_key = max(map(int, data.keys())) if data else -1
 
         if max_key > self.last_max_key:
             for key in range(self.last_max_key + 1, max_key + 1):
@@ -429,7 +429,8 @@ if __name__ == '__main__':
             print(f"Key:{key_subitem}, Value: {value_subitem}")
     
     pydsp = PydspHandler()
-    pydsp.create_pydsp_circuit(loaded_data['3'], True)
+    pydsp.create_pydsp_circuit(loaded_data['0'], True)
+    pydsp.create_pydsp_circuit(loaded_data['0'], False)
 
     # for key, value in loaded_data.items():
     #     for key_subitem, value_subitem in loaded_data[key].items():

@@ -156,9 +156,9 @@ class MainWindow(QMainWindow):
         #widget to add
         # Finding child widgets based on their type
         self.interpolate_transition_band_check = self.findChild(QCheckBox, 'interpolate_transition_band_check')
-        self.start_with_error_prediction_check = self.findChild(QPushButton, 'start_with_error_prediction_check')
-        self.deepsearch_check = self.findChild(QPushButton, 'deepsearch_check')
-        self.gurobi_auto_thread = self.findChild(QCheckBox, 'gurobi_auto_thread')
+        self.start_with_error_prediction_check = self.findChild(QCheckBox, 'start_with_error_prediction_check')
+        self.deepsearch_check = self.findChild(QCheckBox, 'deepsearch_check')
+        self.gurobi_auto_thread_check = self.findChild(QCheckBox, 'gurobi_auto_thread_check')
 
         self.solver_accuracy_multiplier_box = self.findChild(QSpinBox, 'solver_accuracy_multiplier_box')
         self.adder_depth_box = self.findChild(QSpinBox, 'adder_depth_box')
@@ -530,6 +530,12 @@ class MainWindow(QMainWindow):
             self.logger.plog("Solver is currently running")
             return
         
+
+        if self.gurobi_thread_box.value() == 0 and not self.gurobi_auto_thread_check.isChecked() and self.z3_thread_box.value() == 0 and self.pysat_thread_box.value() == 0:
+            self.logger.plog("Solver threads can't be 0")
+            return
+            
+
         if not(self.plot_generated_flag):
             self.logger.plog("No bounds found, Please generate the bounds first in magnitude plotter!")
             return
@@ -552,15 +558,16 @@ class MainWindow(QMainWindow):
                 continue
             raise ValueError(f"Bounds is not the same at {i}, upper: {upper_ydata[i]} and lower: {lower_ydata[i]}. Contact Developer")
         
-        ui_functionality = UIFunc(self, xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
+        ui_functionality = UIFunc(self)
         
         #do this if transition band interpolation is chosen
-        if self.interpolate_transition_band_but:
+        if self.interpolate_transition_band_check.isChecked():
             upper_ydata, lower_ydata = ui_functionality.interpolate_transition_band()
 
         
-        initial_input_dictionary = ui_functionality.solver_input_dict_generator()
+        initial_input_dictionary = ui_functionality.solver_input_dict_generator(xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
 
+        print(initial_input_dictionary)
         self.mediator = BackendMediator(initial_input_dictionary)
 
         # Connect signals to print output and errors

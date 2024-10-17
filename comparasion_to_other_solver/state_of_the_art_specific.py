@@ -486,7 +486,7 @@ if __name__ == '__main__':
         'timeout': 0,
         'start_with_error_prediction': False,
         'solver_accuracy_multiplier': accuracy,
-        'deepsearch': False,
+        'deepsearch': True,
         'patch_multiplier' : 1,
         'gurobi_auto_thread': False
     }

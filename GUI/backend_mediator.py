@@ -41,6 +41,8 @@ class BackendMediator(QObject):
             'problem_id' : self.problem_id
         })
 
+        self.verbose = True
+
 
     def generate_bound_description(self):
         problem_dict = copy.deepcopy(self.initial_solver_input)
@@ -148,7 +150,8 @@ class BackendMediator(QObject):
         data = process.readAllStandardOutput()
         stdout = bytes(data).decode('utf-8')
         self.stdout_buffers[solver_name] += stdout
-        print(stdout)
+        if self.verbose:
+            print(stdout)
         # Process complete lines
         while '\n' in self.stdout_buffers[solver_name]:
             line, self.stdout_buffers[solver_name] = self.stdout_buffers[solver_name].split('\n', 1)
