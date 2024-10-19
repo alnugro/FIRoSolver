@@ -146,7 +146,11 @@ class MainProblem:
         
             max_h_zero = presolve_result['max_zero']
             print(f"checking adderm of: {iteration}")
+            start_time = time.time()
             target_result, satisfiability_loc, _ = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'try_max_h_zero_count' ,iteration, max_h_zero)
+            end_time = time.time()
+            duration = end_time - start_time
+            print(f"@MSG@ : iteration {iteration} took {duration} seconds")
 
             if satisfiability_loc == 'unsat':
                 iteration += 1

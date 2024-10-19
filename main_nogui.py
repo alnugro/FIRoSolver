@@ -18,8 +18,8 @@ class IterationManager(QObject):
         super().__init__()
         self.total_iterations = total_iterations
         self.current_iteration = 0
-        self.delta = 0.1
-        self.order_current = 16
+        self.delta = 0.03
+        self.order_current = 30
 
     def start(self):
         self.start_next_iteration()
@@ -34,10 +34,10 @@ class IterationManager(QObject):
             # Test inputs (use your actual data preparation logic)
             filter_type = 0
             accuracy = 2
-            wordlength = 10
+            wordlength = 12
             gain_upperbound = 1
             gain_lowerbound = 1
-            coef_accuracy = 6
+            coef_accuracy = 3
             intW = 1
 
             adder_count = None
@@ -48,7 +48,7 @@ class IterationManager(QObject):
             gain_intW = 4       
             gain_wordlength = wordlength + gain_intW - intW
 
-            gurobi_thread = 10
+            gurobi_thread = 5
             pysat_thread = 0
             z3_thread = 0
 
@@ -62,7 +62,7 @@ class IterationManager(QObject):
             freq_upper = np.full(space, np.nan)
             freq_lower = np.full(space, np.nan)
 
-            lower_half_point = int(0.3 * space)
+            lower_half_point = int(0.32 * space)
             upper_half_point = int(0.5 * space)
             end_point = space
 

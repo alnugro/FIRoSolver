@@ -41,7 +41,7 @@ class BackendMediator(QObject):
             'problem_id' : self.problem_id
         })
 
-        self.verbose = True
+        self.verbose = False
 
 
     def generate_bound_description(self):
