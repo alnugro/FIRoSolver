@@ -448,7 +448,7 @@ class FIRFilterGurobi:
 
 
 
-    def runsolver(self, thread ,presolve_result ,solver_option = None, adderm = None , h_zero_count = None):
+    def runsolver(self, thread ,presolve_result = None ,solver_option = None, adderm = None , h_zero_count = None):
         
         self.result_model = {}
         self.h_res = []
@@ -478,31 +478,31 @@ class FIRFilterGurobi:
 
         if solver_option == 'try_max_h_zero_count' or solver_option == 'try_h_zero_count':
             model.setParam('SolutionLimit', 1)
-            model.setParam('MipFocus', 1)
-            model.setParam('Cuts', 0)
+            model.setParam('MIPFocus', 1)
+            # model.setParam('Cuts', 0)
 
         
 
         if adderm > 2:
             if h_zero_count == None:
-                norelax = (adderm**2) *  (half_order)
+                norelax = (adderm**2) *  (half_order) * 10
             else:
-                norelax = (adderm**2) *  (half_order - h_zero_count)
+                norelax = (adderm**2) *  (half_order - h_zero_count) * 10
 
             model.setParam('NoRelHeurWork', norelax)
         # model.setParam('OutputFlag', 0)
         # model.setParam('TimeLimit', 1)     #timeout
 
-
-        if solver_option == 'try_max_h_zero_count':
-            self.gain_lowerbound = presolve_result['min_gain']
-            hmax = presolve_result['hmax']
-            hmin = presolve_result['hmin']
-        else:
-            self.gain_lowerbound = presolve_result['min_gain_without_zero']
-            hmax = presolve_result['hmax_without_zero']
-            hmin = presolve_result['hmin_without_zero']
-        
+        if presolve_result != None:
+            if solver_option == 'try_max_h_zero_count':
+                self.gain_lowerbound = presolve_result['min_gain']
+                hmax = presolve_result['hmax']
+                hmin = presolve_result['hmin']
+            else:
+                self.gain_lowerbound = presolve_result['min_gain_without_zero']
+                hmax = presolve_result['hmax_without_zero']
+                hmin = presolve_result['hmin_without_zero']
+            
         print("Running Gurobi with the following parameters:")
         print(f"thread: {thread}")
         print(f"adder_depth: {self.adder_depth}")
@@ -559,30 +559,23 @@ class FIRFilterGurobi:
                         weight = 2**(w-self.fracW)
 
                     h_sum_temp+= h[m][w]*weight
-
-                model.addConstr(h_sum_temp <= hmax[m])
-                model.addConstr(h_sum_temp >= hmin[m])
+                if presolve_result != None:
+                    model.addConstr(h_sum_temp <= hmax[m])
+                    model.addConstr(h_sum_temp >= hmin[m])
 
 
 
         # Bitshift SAT starts here
 
         # Define binary variables for c, l, r, alpha, beta, gamma, delta, etc.
-        c = [[model.addVar(vtype=GRB.BINARY, name=f'c_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(self.adder_count + 2)]
+        c = [[model.addVar(vtype=GRB.BINARY, name=f'c_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(self.adder_count + 2 + self.avail_dsp)]
         l = [[model.addVar(vtype=GRB.BINARY, name=f'l_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
         r = [[model.addVar(vtype=GRB.BINARY, name=f'r_{i}_{w}') for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
         alpha = [[model.addVar(vtype=GRB.BINARY, name=f'alpha_{i}_{a}') for a in range(i)] for i in range(1, self.adder_count + 1)]
         beta = [[model.addVar(vtype=GRB.BINARY, name=f'beta_{i}_{a}') for a in range(i)] for i in range(1, self.adder_count + 1)]
 
-        # # c0,w is always 0 except at index fracW
-        # for w in range(self.fracW + 1, self.adder_wordlength):
-        #     model.addConstr(c[0][w] == 0)
-
-        # for w in range(self.fracW):
-        #     model.addConstr(c[0][w] == 0)
-
-        # model.addConstr(c[0][self.fracW] == 1)
+        
 
         
         # c0,w is always 0 except at 0 so input
@@ -591,7 +584,9 @@ class FIRFilterGurobi:
 
         model.addConstr(c[0][0] == 1)
 
-
+        # dsp are odd numbers
+        for k in range(self.adder_count + 2, self.avail_dsp+1):
+            model.addConstr(c[k][0] == 1)
 
 
         # Bound ci,0 to be an odd number
@@ -759,30 +754,21 @@ class FIRFilterGurobi:
             model.addConstr(-z[i-1][self.adder_wordlength - 1] + c[i][self.adder_wordlength - 1] >= 0)
             model.addConstr(z[i-1][self.adder_wordlength - 1] - c[i][self.adder_wordlength - 1] >= 0)
 
-        # Set connected coefficient
-        connected_coefficient = half_order + 1 - self.avail_dsp
-
         # Solver connection
-        theta = [[model.addVar(vtype=GRB.BINARY, name=f'theta_{i}_{m}') for m in range(half_order + 1)] for i in range(self.adder_count + 2)]
-        iota = [model.addVar(vtype=GRB.BINARY, name=f'iota_{m}') for m in range(half_order + 1)]
+        theta = [[model.addVar(vtype=GRB.BINARY, name=f'theta_{i}_{m}') for m in range(half_order + 1)] for i in range(self.adder_count + 2 + self.avail_dsp)]
         t = [[model.addVar(vtype=GRB.BINARY, name=f't_{m}_{w}') for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
 
-        iota_sum = gp.LinExpr()
         for m in range(half_order + 1):
             theta_or = gp.LinExpr()
-            for i in range(self.adder_count + 2):
+            for i in range(self.adder_count + 2 + self.avail_dsp):
                 for word in range(self.adder_wordlength):
                     # Equivalent to clause52_1 and clause52_2
-                    model.addConstr(-theta[i][m] - iota[m] - c[i][word] + t[m][word] >= -2)
-                    model.addConstr(-theta[i][m] - iota[m] + c[i][word] - t[m][word] >= -2)
+                    model.addConstr(-theta[i][m] - c[i][word] + t[m][word] >= -1)
+                    model.addConstr(-theta[i][m] + c[i][word] - t[m][word] >= -1)
                 theta_or += theta[i][m]
             model.addConstr(theta_or >= 1)
 
-        for m in range(half_order + 1):
-            iota_sum += iota[m]
-
-        model.addConstr(iota_sum == connected_coefficient)
-
+    
         # Left Shifter in result module
         # k is the shift selector
         o = [[model.addVar(vtype=GRB.BINARY) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
@@ -869,15 +855,27 @@ class FIRFilterGurobi:
                 psi_beta_sum.append(psi_beta[i-1][0])
 
                 if self.adder_depth == 1:
+                    model.addConstr(sum(psi_alpha_sum) == 1)
+                    model.addConstr(sum(psi_beta_sum) == 1)
                     continue
 
                 for d in range(1, self.adder_depth):
-                    for a in range(i-1):
+                    print(f"i: {i}, depth: {d}")
+                    for a in range(1,i):
+                        print(f"a: {a}")
                         # Adjusted constraints for psi_alpha and psi_beta
-                        model.addConstr(-psi_alpha[i-1][d] + alpha[i-1][a] >= 0)
-                        model.addConstr(-psi_alpha[i-1][d] + psi_alpha[a][d-1] >= 0)
-                        model.addConstr(-psi_beta[i-1][d] + beta[i-1][a] >= 0)
-                        model.addConstr(-psi_beta[i-1][d] + psi_beta[a][d-1] >= 0)
+                        model.addConstr(-psi_alpha[i-1][d] - alpha[i-1][a] + psi_alpha[a][d-1]>= -1)
+                        psi_beta_or = gp.LinExpr()
+                        for j in range(d):
+                            psi_beta_or+=psi_beta[a][j]
+                        model.addConstr(-psi_alpha[i-1][d] -alpha[i-1][a] + psi_beta_or >= -1)
+
+                        model.addConstr(-psi_beta[i-1][d] - beta[i-1][a]+ psi_beta[a][d-1] >= -1)
+                        psi_alpha_or = gp.LinExpr()
+                        for j in range(d):
+                            psi_alpha_or+=psi_alpha[a][j]
+                        model.addConstr(-psi_beta[i-1][d] - beta[i-1][a] + psi_alpha_or >= -1)
+                   
 
                     psi_alpha_sum.append(psi_alpha[i-1][d])
                     psi_beta_sum.append(psi_beta[i-1][d])
@@ -1051,14 +1049,7 @@ class FIRFilterGurobi:
                     value = 1 if theta[i][m].X > 0.5 else 0  # Rounding binary variable
                     theta_row.append(value)
                 theta_values.append(theta_row)
-            self.result_model.update({"theta": theta_values})
-
-            # Store iota array
-            iota_values = []
-            for m in range(len(iota)):
-                value = 1 if iota[m].X > 0.5 else 0  # Rounding binary variable
-                iota_values.append(value)
-            self.result_model.update({"iota": iota_values})
+            self.result_model.update({"theta": theta_values})            
 
             #store rho array
             rho_values = []
@@ -1066,6 +1057,25 @@ class FIRFilterGurobi:
                 value = 1 if rho[m].X > 0.5 else 0
                 rho_values.append(value)
             self.result_model.update({"rho": rho_values})
+
+            psi_beta_values = []
+            for i in range(len(psi_beta)):
+                psi_beta_row = []
+                for d in range(len(psi_beta[i])):
+                    value = 1 if psi_beta[i][d].X > 0.5 else 0
+                    psi_beta_row.append(value)
+                psi_beta_values.append(psi_beta_row)
+            self.result_model.update({"psi_beta": psi_beta_values})
+
+            psi_alpha_values = []
+            for i in range(len(psi_alpha)):
+                psi_alpha_row = []
+                for d in range(len(psi_alpha[i])):
+                    value = 1 if psi_alpha[i][d].X > 0.5 else 0
+                    psi_alpha_row.append(value)
+                psi_alpha_values.append(psi_alpha_row)
+            self.result_model.update({"psi_alpha": psi_alpha_values})
+
 
 
         elif model.Status == GRB.TIME_LIMIT:
@@ -1096,32 +1106,33 @@ if __name__ == "__main__":
 
     # Test inputs
     filter_type = 0
-    order_current = 20
-    accuracy = 1
-    wordlength = 11
+    half_order = 15
+    accuracy = 3
+    wordlength = 10
     gain_upperbound = 1
     gain_lowerbound = 1
-    coef_accuracy = 4
-    intW = 2
+    coef_accuracy = 3
+    intW = 1
 
-    adder_count = 4
-    adder_depth = 0
+    adder_count = 20
+    adder_depth = 2
     avail_dsp = 0
-    adder_wordlength_ext = 2
+    adder_wordlength_ext = 0
+    h_zero_count = 0	
     
     
-    delta = 0.071192
+    delta = 0.4
     passband_error = delta
     stopband_error = delta
-    space = order_current * accuracy
-    # Initialize freq_upper and freq_lower with NaN values
+    space = half_order * accuracy
+    # Initialize freq_upper and freq_lower with NaN valuess
     freqx_axis = np.linspace(0, 1, space)
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3 * space)
-    upper_half_point = int(0.5 * space)
+    lower_half_point = int(0.2 * space)
+    upper_half_point = int(0.7 * space)
     end_point = space
 
     freq_upper[0:lower_half_point] = 1 + passband_error
@@ -1144,7 +1155,7 @@ if __name__ == "__main__":
     # Create FIRFilter instance
     fir_filter = FIRFilterGurobi(
                  filter_type, 
-                 order_current, 
+                 half_order, 
                  freqx_axis, 
                  upperbound_lin, 
                  lowerbound_lin, 
@@ -1161,11 +1172,10 @@ if __name__ == "__main__":
                  )
             
     gurobi_thread = 15
-    presolve = True
+    presolve = False
     presolve_result = {}
 
     if presolve:
-        half_order = (order_current // 2) if filter_type == 0 or filter_type == 2 else (order_current // 2) - 1
 
 
         target_result = fir_filter.run_barebone(gurobi_thread, 'find_max_zero')
@@ -1193,8 +1203,35 @@ if __name__ == "__main__":
         
         print(presolve_result)
     # Run solver
-    target_result = fir_filter.runsolver(0,presolve_result,'try_max_h_zero_count',2, 6)
-    print(target_result)
+    target_result,_,_ = fir_filter.runsolver(0,None,'try_max_h_zero_count',adder_count, h_zero_count)
+    psi_beta= target_result['psi_beta']
+    beta = target_result['beta']
+    psi_alpha = target_result['psi_alpha']
+    alpha = target_result['alpha']
+
+    print("psi_beta: ", psi_beta)
+    print("beta: ", beta)
+    print("psi_alpha: ", psi_alpha)
+    print("alpha: ", alpha)
+    beta_int = [0 for d in range(len(beta))]
+    for beta_index, beta_val in enumerate(beta):
+        for b_index, b_val in enumerate(beta_val):
+            if b_val == 1:
+                beta_int[beta_index] = b_index
+                break
+    for b, b_val in enumerate(beta_int):
+        print(f"beta_{b+1}: {b_val}")
+    beta_depth = [0 for d in range(len(beta[-1]))]
+    for b, b_list in enumerate(beta):
+        if b_list[0] ==1:
+            beta_depth[b] =1
+        else:
+            for b_index, b_value in enumerate(b_list):
+                if b_value == 1:
+                    beta_depth[b] = beta_depth[b_index-1] + 1
+                    break
+    print("beta_depth: ", beta_depth)
+        
     # fir_filter.run_barebone(0,None,None)
     # target_result = fir_filter.run_barebone(1,'minimize_h',None, 0)
     

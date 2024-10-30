@@ -5,23 +5,20 @@ import time
 
 class bitshift():
     def __init__(self, wordlength, verbose=False):
-        self.wordlength = 8
+        self.wordlength = 10
         self.verbose = verbose
 
         self.adder_wordlength = self.wordlength
-        self.max_adder = 3
+        self.max_adder = 13
         self.adder_depth = 0
         self.result_model = {}
-        self.coef_to_try = [75,99]
+        self.coef_to_try = [75,99,85,13,133,155,177,231,333,345,377,23,3,15,315,217]
 
 
     def runsolver(self):
         half_order = len(self.coef_to_try) - 1
 
         ctx = z3.Context()
-
-
-        
         solver = Solver(ctx=ctx)
        
         h = [[Bool(f'h_{a}_{w}', ctx=ctx) for w in range(self.wordlength)] for a in range(half_order + 1)]

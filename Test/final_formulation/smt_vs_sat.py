@@ -525,15 +525,17 @@ class FIRFilter2:
 # Initialize global variable
 it = 4
 timeout = 300000  # 10 minutes in milliseconds
+random.seed(1)
+
 
 
 def generate_random_filter_params():
     global it
     filter_type = 0
     order_upper = it
-    accuracy = random.choice([1, 2, 3, 4, 5])
-    adder_count = np.abs(it - (random.choice([1, 2, 3, 4, it - 4])))
-    wordlength = random.choice([10, 12, 14])
+    accuracy = random.choice([1, 2])
+    adder_count = it//2
+    wordlength = random.choice([10])
     upper_cutoff = random.choice([0.6, 0.7, 0.8, 0.9])
     lower_cutoff = random.choice([0.2, 0.3, 0.4, 0.5])
     lower_half_point = int(lower_cutoff * (accuracy * order_upper))
@@ -544,7 +546,7 @@ def generate_random_filter_params():
     freq_lower = np.full(accuracy * order_upper, np.nan)
     passband_upperbound = random.choice([0, 1, 2, 3, 4, 5])
     passband_lowerbound = random.choice([0, -1, -2])
-    stopband_upperbound = random.choice([-10,-20,-30, -40, -50])
+    stopband_upperbound = random.choice([-10,-15,-20])
     stopband_lowerbound = -1000
     freq_upper[0:lower_half_point] = passband_upperbound
     freq_lower[0:lower_half_point] = passband_lowerbound

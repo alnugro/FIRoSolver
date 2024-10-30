@@ -42,7 +42,7 @@ class FIRFilterPysat:
         self.h_res = []
         self.gain_res = 0
 
-        self.max_adder = adder_count
+        self.adder_count = adder_count
         self.wordlength = wordlength
         self.weight_wordlength = self.wordlength + 2 #increase this if you need higher intW for the weights
 
@@ -101,7 +101,7 @@ class FIRFilterPysat:
         # print(f"fracW: {self.fracW}")
 
         
-        var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.max_adder, self.adder_depth)
+        var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.adder_count, self.adder_depth, self.avail_dsp)
 
         def v2i(var_tuple):
             return var_mapper.tuple_to_int(var_tuple)
@@ -290,13 +290,13 @@ class FIRFilterPysat:
        
 
     def runsolver(self,solver_id,adderm,h_zero_count):
-        self.max_adder = adderm
+        self.adder_count = adderm
         self.h_res = []
         self.gain_res = 0
         half_order = self.half_order - 1 #-1 is because i am lazy to change the code
         
         print("Pysat solver called")
-        var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.max_adder, self.adder_depth)
+        var_mapper = VariableMapper(half_order, self.wordlength,self.adder_wordlength, self.adder_count, self.adder_depth, self.avail_dsp)
 
         def v2i(var_tuple):
             return var_mapper.tuple_to_int(var_tuple)
@@ -329,7 +329,7 @@ class FIRFilterPysat:
         self.gain_upperbound = r2b.frac2round([self.gain_upperbound],self.wordlength,self.fracW,True)[0]
         self.gain_lowerbound = r2b.frac2round([self.gain_lowerbound],self.wordlength,self.fracW,True)[0]
         
-        #weight is 1, because it is multiplied to nothing, lits is 2d thus the bracket
+        #weight is 1, because it is multiplied to nothing this is pure G<lb(G), lits is 2d thus the bracket
         gain_weight = [1]
         cnf1 = pb2cnf.atleast(gain_weight,[gain_literals],self.gain_lowerbound,self.fracW)
         for clause in cnf1:
@@ -449,40 +449,31 @@ class FIRFilterPysat:
             
         
 
-        # Bitshift SAT starts here
-
-
-        # # c0,w is all 0 except 1, so input is 1
-        # for w in range(self.fracW+1, self.adder_wordlength):
-        #     solver.add_clause([-v2i(('c', 0, w))])
-
-        # for w in range(self.fracW):
-        #     solver.add_clause([-v2i(('c', 0, w))])
-
-        # solver.add_clause([v2i(('c', 0, self.fracW))])
+        # dsp are odd numbers
+        for k in range(self.adder_count + 2, self.avail_dsp+1):
+            solver.add_clause([v2i(('c', k, 0))])
 
         
-
         # c0,w is always 0 except at 0 so input is 1
         for w in range(1, self.adder_wordlength):
             solver.add_clause([-v2i(('c', 0, w))])
 
         solver.add_clause([v2i(('c', 0, 0))])
     
-        for i in range(1,self.max_adder+1):
+        for i in range(1,self.adder_count+1):
             # Bound ci,0 to be odd number 
             solver.add_clause([v2i(('c', i, 0))])
 
         #last c or c[N+1] is connected to ground, so all zeroes
         for w in range(self.adder_wordlength):
-            solver.add_clause([-v2i(('c', self.max_adder+1, w))])
+            solver.add_clause([-v2i(('c', self.adder_count+1, w))])
 
             
         alpha_lits = []
         beta_lits = []
 
         # Input multiplexer
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             alpha_lits.clear()
             beta_lits.clear()
             for a in range(i):
@@ -505,7 +496,7 @@ class FIRFilterPysat:
 
         gamma_lits = []
         # Left Shifter
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             gamma_lits.clear()
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
@@ -529,7 +520,7 @@ class FIRFilterPysat:
         
             
         #delta selector
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 solver.add_clause([-v2i(('delta', i)), -v2i(('s', i, word)), v2i(('x', i, word))])
                 solver.add_clause([-v2i(('delta', i)), v2i(('s', i, word)), -v2i(('x', i, word))])
@@ -541,14 +532,14 @@ class FIRFilterPysat:
                 solver.add_clause([v2i(('delta', i)), v2i(('r', i, word)), -v2i(('x', i, word))])
 
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 solver.add_clause([v2i(('u', i, word)), v2i(('epsilon', i)), -v2i(('y', i, word))])
                 solver.add_clause([v2i(('u', i, word)), -v2i(('epsilon', i)), v2i(('y', i, word))])
                 solver.add_clause([-v2i(('u', i, word)), v2i(('epsilon', i)), v2i(('y', i, word))])
                 solver.add_clause([-v2i(('u', i, word)), -v2i(('epsilon', i)), -v2i(('y', i, word))])
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             # Clauses for sum = a ⊕ b ⊕ cin at 0
             solver.add_clause([v2i(('x', i, 0)), v2i(('y', i, 0)), v2i(('epsilon', i)), -v2i(('z', i, 0))])
             solver.add_clause([v2i(('x', i, 0)), v2i(('y', i, 0)), -v2i(('epsilon', i)), v2i(('z', i, 0))])
@@ -592,7 +583,7 @@ class FIRFilterPysat:
             solver.add_clause([-v2i(('epsilon', i)), -v2i(('x', i, self.adder_wordlength - 1)), v2i(('u', i, self.adder_wordlength - 1)), v2i(('z', i, self.adder_wordlength - 1))])
         
         zeta_lits = []
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             zeta_lits.clear()
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
@@ -617,33 +608,21 @@ class FIRFilterPysat:
 
             
 
-        # Set connected coefficient
-        connected_coefficient = half_order + 1 - self.avail_dsp
 
         # Solver connection (theta, iota, and t)
-        theta_lits = []
-        iota_lits = []
 
         for m in range(half_order + 1):
             theta_or = []
-            for i in range(self.max_adder + 2):
+            for i in range(self.adder_count + 2 + self.avail_dsp):
                 for word in range(self.adder_wordlength):
-                    solver.add_clause([-v2i(('theta', i, m)), -v2i(('iota', m)), -v2i(('c', i, word)), v2i(('t', m, word))])
-                    solver.add_clause([-v2i(('theta', i, m)), -v2i(('iota', m)), v2i(('c', i, word)), -v2i(('t', m, word))])
+                    solver.add_clause([-v2i(('theta', i, m)), -v2i(('c', i, word)), v2i(('t', m, word))])
+                    solver.add_clause([-v2i(('theta', i, m)), v2i(('c', i, word)), -v2i(('t', m, word))])
 
                 theta_or.append(v2i(('theta', i, m)))
             
             # Ensure that at least one `theta[i][m]` is true per `i`
             solver.add_clause(theta_or)
 
-        for m in range(half_order + 1):
-            iota_lits.append(v2i(('iota', m)))
-        
-        # Ensure that exactly `connected_coefficient` number of `iota[m]` are true
-        cnf_iota = pb2cnf.equal_card(iota_lits, connected_coefficient)
-        
-        for clause in cnf_iota:
-            solver.add_clause(clause)
 
         # Updated Left Shifter in the result module (including new variables and clauses)
         # Left Shifter in the result module (phi, h_ext, o, rho, o_xor, cout_res logic)
@@ -716,12 +695,12 @@ class FIRFilterPysat:
 
         # Adder depth constraint (psi_alpha, psi_beta logic)
         if self.adder_depth > 0:
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 psi_alpha_lits = []
                 psi_beta_lits = []
 
                 # Ensure psi_alpha[0] implies alpha[0] and psi_beta[0] implies beta[0]
-                solver.add_clause([-v2i(('psi_alpha', i, 0)), v2i(('alpha', i, 0))])
+                solver.add_clause([-v2i(('psi_alpha', i, 0)), -v2i(('alpha', i, 0))])
                 solver.add_clause([-v2i(('psi_beta', i, 0)), v2i(('beta', i, 0))])
 
                 psi_alpha_lits.append(v2i(('psi_alpha', i, 0)))
@@ -732,11 +711,17 @@ class FIRFilterPysat:
 
                 for d in range(1, self.adder_depth):
                     for a in range(1, i):
-                        solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('alpha', i, a))])
-                        solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('psi_alpha', a, d - 1))])
-
-                        solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('beta', i, a))])
-                        solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('psi_beta', a, d - 1))])
+                        solver.add_clause([-v2i(('psi_alpha', i, d)), -v2i(('alpha', i, a)), v2i(('psi_alpha', a, d - 1))])
+                        psi_alpha_or = []
+                        for j in range(d):
+                            psi_alpha_or.append(v2i(('psi_alpha', a, j)))
+                        solver.add_clause([-v2i(('psi_alpha', i, d)),-v2i(('alpha', i, a))] + psi_alpha_or)
+                                                  
+                        solver.add_clause([-v2i(('psi_beta', i, d)), -v2i(('beta', i, a)), v2i(('psi_beta', a, d - 1))])
+                        psi_beta_or = []
+                        for j in range(d):
+                            psi_beta_or.append(v2i(('psi_beta', a, j)))
+                        solver.add_clause([-v2i(('psi_beta', i, d)), -v2i(('psi_beta', a, d - 1))]+ psi_beta_or)
 
                     psi_alpha_lits.append(v2i(('psi_alpha', i, d)))
                     psi_beta_lits.append(v2i(('psi_beta', i, d)))
@@ -809,7 +794,7 @@ class FIRFilterPysat:
 
             # Store alpha selectors
             alpha_values = []
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 alpha_row = []
                 for a in range(i):
                     var_index = v2i(('alpha', i, a)) - 1
@@ -820,7 +805,7 @@ class FIRFilterPysat:
 
             # Store beta selectors
             beta_values = []
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 beta_row = []
                 for a in range(i):
                     var_index = v2i(('beta', i, a)) - 1
@@ -831,7 +816,7 @@ class FIRFilterPysat:
 
             # Store gamma (left shift selectors)
             gamma_values = []
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 gamma_row = []
                 for k in range(self.adder_wordlength - 1):
                     var_index = v2i(('gamma', i, k)) - 1
@@ -842,7 +827,7 @@ class FIRFilterPysat:
 
             # Store delta selectors
             delta_values = []
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 var_index = v2i(('delta', i)) - 1
                 value = 1 if self.model[var_index] > 0 else 0
                 delta_values.append(value)
@@ -850,7 +835,7 @@ class FIRFilterPysat:
 
             # Store epsilon selectors
             epsilon_values = []
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 var_index = v2i(('epsilon', i)) - 1
                 value = 1 if self.model[var_index] > 0 else 0
                 epsilon_values.append(value)
@@ -858,7 +843,7 @@ class FIRFilterPysat:
 
             # Store zeta (right shift selectors)
             zeta_values = []
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 zeta_row = []
                 for k in range(self.adder_wordlength - 1):
                     var_index = v2i(('zeta', i, k)) - 1
@@ -880,22 +865,14 @@ class FIRFilterPysat:
 
             # Store theta array
             theta_values = []
-            for i in range(self.max_adder + 2):
+            for i in range(self.adder_count + 2 + self.avail_dsp):
                 theta_row = []
                 for m in range(half_order + 1):
                     var_index = v2i(('theta', i, m)) - 1
                     value = 1 if self.model[var_index] > 0 else 0
                     theta_row.append(value)
                 theta_values.append(theta_row)
-            self.result_model.update({"theta": theta_values})
-
-            # Store iota array
-            iota_values = []
-            for m in range(half_order + 1):
-                var_index = v2i(('iota', m)) - 1
-                value = 1 if self.model[var_index] > 0 else 0
-                iota_values.append(value)
-            self.result_model.update({"iota": iota_values})
+            self.result_model.update({"theta": theta_values})          
 
         else:
             print("Unsatisfiable")
@@ -924,55 +901,57 @@ class FIRFilterPysat:
 
 
 if __name__ == "__main__":
-     # Test inputs
+    # Test inputs
     filter_type = 0
-    order_current = 12
-    accuracy = 1
-    wordlength = 14
-    gain_upperbound = 4
+    half_order = 5
+    accuracy = 2
+    wordlength = 13
+    gain_upperbound = 1
     gain_lowerbound = 1
-    coef_accuracy = 4
-    intW = 4
+    coef_accuracy = 3
+    intW = 2
 
     adder_count = 6
-    adder_depth = 2
-    avail_dsp = 0
+    adder_depth = 3
+    avail_dsp = 1
     adder_wordlength_ext = 2
+    h_zero_count = 0	
     
     
-
-    space = order_current * accuracy
-    # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    delta = 0.4
+    passband_error = delta
+    stopband_error = delta
+    space = half_order * accuracy
+    # Initialize freq_upper and freq_lower with NaN valuess
+    freqx_axis = np.linspace(0, 1, space)
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3*(space))
-    upper_half_point = int(0.6*(space))
+    lower_half_point = int(0.3 * space)
+    upper_half_point = int(0.5 * space)
     end_point = space
 
-    freq_upper[0:lower_half_point] = 20
-    freq_lower[0:lower_half_point] = 0
+    freq_upper[0:lower_half_point] = 1 + passband_error
+    freq_lower[0:lower_half_point] = 1 - passband_error
 
-    freq_upper[upper_half_point:end_point] = -10
-    freq_lower[upper_half_point:end_point] = -1000
+    freq_upper[upper_half_point:end_point] = 0 + stopband_error
+    freq_lower[upper_half_point:end_point] = 0
 
 
     #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
+    ignore_lowerbound = -60
 
     #linearize the bound
-    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    upperbound_lin = np.copy(freq_upper)
+    lowerbound_lin = np.copy(freq_lower)
     ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
-
 
 
     # Create FIRFilter instance
     fir_filter = FIRFilterPysat(
                  filter_type, 
-                 order_current, 
+                 half_order, 
                  freqx_axis, 
                  upperbound_lin, 
                  lowerbound_lin, 
@@ -988,5 +967,6 @@ if __name__ == "__main__":
                  )
 
     # Run solver and plot result
-    fir_filter.runsolver(0,5,0)
+    target_result = fir_filter.runsolver(0,adder_count,h_zero_count)
+    print(target_result)
     # fir_filter.run_barebone(0,5)

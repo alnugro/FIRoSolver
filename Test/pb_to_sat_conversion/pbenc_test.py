@@ -23,6 +23,7 @@ class PBENCTest():
         print (f"weight: {new_weight}")
         print (f"lits: {new_lits}")
         solver = Solver(name='cadical195')
+        solver.activate_atmost()  # Ensure atmost is activated
         if case == 'atleast':
             cnf = PBEnc.atleast(lits=new_lits, weights=new_weight, bound=bound,top_id=self.top_var)
         elif case == 'atmost':
@@ -33,6 +34,15 @@ class PBENCTest():
             raise ValueError("Unknown case type")
         
         return cnf.clauses
+    
+    def solve_with_native(lits, weights, bound):
+        solver = Solver(name='cadical195')
+        solver.activate_atmost()  # Ensure atmost is activated
+        solver.add_atmost(lits, bound, weights)
+        is_sat = solver.solve()
+        model = solver.get_model() if is_sat else None
+        solver.delete()
+        return is_sat, model    
 
                 
     # Function to solve using PBEnc

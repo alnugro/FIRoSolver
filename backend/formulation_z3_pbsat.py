@@ -40,7 +40,7 @@ class FIRFilterZ3:
         self.gain_res = 0
 
         self.wordlength = wordlength
-        self.max_adder = adder_count
+        self.adder_count = adder_count
         self.adder_wordlength = self.wordlength + adder_wordlength_ext
 
         self.coef_accuracy = coef_accuracy
@@ -284,7 +284,7 @@ class FIRFilterZ3:
 
     def runsolver(self, thread, adderm, h_zero_count = 0):
         self.result_model = {}
-        self.max_adder = adderm
+        self.adder_count = adderm
         self.h_res = []
         self.gain_res = 0
 
@@ -443,22 +443,19 @@ class FIRFilterZ3:
         # bitshift sat starts here
 
         # input multiplexer
-        c = [[Bool(f'c_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(self.max_adder + 2)]
-        l = [[Bool(f'l_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
-        r = [[Bool(f'r_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        c = [[Bool(f'c_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(self.adder_count + 2 + self.avail_dsp)]
+        l = [[Bool(f'l_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+        r = [[Bool(f'r_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        alpha = [[Bool(f'alpha_{i}_{a}', ctx=ctx) for a in range(i)] for i in range(1, self.max_adder + 1)]
-        beta = [[Bool(f'Beta_{i}_{a}', ctx=ctx) for a in range(i)] for i in range(1, self.max_adder + 1)]
+        alpha = [[Bool(f'alpha_{i}_{a}', ctx=ctx) for a in range(i)] for i in range(1, self.adder_count + 1)]
+        beta = [[Bool(f'Beta_{i}_{a}', ctx=ctx) for a in range(i)] for i in range(1, self.adder_count + 1)]
 
-        # c0,w is always 0 except 1
-        # for w in range(self.fracW + 1, self.adder_wordlength):
-        #     solver.add(Not(c[0][w]))
+        
 
-        # for w in range(self.fracW):
-        #     solver.add(Not(c[0][w]))
-
-        # solver.add(c[0][self.fracW])
-
+        # dsp are odd numbers
+        for k in range(self.adder_count + 2, self.avail_dsp+1):
+            solver.add(c[k][0])
+    
         # c0,w is always 0 except at 1
         for w in range(1, self.adder_wordlength):
             solver.add(Not(c[0][w]))
@@ -466,15 +463,15 @@ class FIRFilterZ3:
         solver.add(c[0][0])
 
         # bound ci,0 to be odd number
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             solver.add(c[i][0])
 
         # last c or c[N+1] is connected to ground, so all zeroes
         for w in range(self.adder_wordlength):
-            solver.add(Not(c[self.max_adder + 1][w]))
+            solver.add(Not(c[self.adder_count + 1][w]))
 
         # input multiplexer
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             alpha_sum = []
             beta_sum = []
             for a in range(i):
@@ -498,10 +495,10 @@ class FIRFilterZ3:
 
         # Left Shifter
         # k is the shift selector
-        gamma = [[Bool(f'gamma_{i}_{k}', ctx=ctx) for k in range(self.adder_wordlength - 1)] for i in range(1, self.max_adder + 1)]
-        s = [[Bool(f's_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        gamma = [[Bool(f'gamma_{i}_{k}', ctx=ctx) for k in range(self.adder_wordlength - 1)] for i in range(1, self.adder_count + 1)]
+        s = [[Bool(f's_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             gamma_sum = []
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
@@ -531,12 +528,12 @@ class FIRFilterZ3:
             solver.add(clause7_1)
             solver.add(clause7_2)
 
-        delta = [Bool(f'delta_{i}', ctx=ctx) for i in range(1, self.max_adder + 1)]
-        u = [[Bool(f'u_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
-        x = [[Bool(f'x_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        delta = [Bool(f'delta_{i}', ctx=ctx) for i in range(1, self.adder_count + 1)]
+        u = [[Bool(f'u_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+        x = [[Bool(f'x_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
         # delta selector
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 clause8_1 = Or(Not(delta[i - 1]), Not(s[i - 1][word]), x[i - 1][word])
                 clause8_2 = Or(Not(delta[i - 1]), s[i - 1][word], Not(x[i - 1][word]))
@@ -562,11 +559,11 @@ class FIRFilterZ3:
                 solver.add(clause11_1)
                 solver.add(clause11_2)
 
-        epsilon = [Bool(f'epsilon_{i}', ctx=ctx) for i in range(1, self.max_adder + 1)]
-        y = [[Bool(f'y_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        epsilon = [Bool(f'epsilon_{i}', ctx=ctx) for i in range(1, self.adder_count + 1)]
+        y = [[Bool(f'y_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
         # xor
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             for word in range(self.adder_wordlength):
                 clause12 = Or(u[i - 1][word], epsilon[i - 1], Not(y[i - 1][word]))
                 clause13 = Or(u[i - 1][word], Not(epsilon[i - 1]), y[i - 1][word])
@@ -578,10 +575,10 @@ class FIRFilterZ3:
                 solver.add(clause15)
 
         # ripple carry
-        z = [[Bool(f'z_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
-        cout = [[Bool(f'cout_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.max_adder + 1)]
+        z = [[Bool(f'z_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
+        cout = [[Bool(f'cout_{i}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             # Clauses for sum = a ⊕ b ⊕ cin at 0
             clause16 = Or(x[i - 1][0], y[i - 1][0], epsilon[i - 1], Not(z[i - 1][0]))
             clause17 = Or(x[i - 1][0], y[i - 1][0], Not(epsilon[i - 1]), z[i - 1][0])
@@ -662,9 +659,9 @@ class FIRFilterZ3:
             solver.add(clause47)
 
         # right shift
-        zeta = [[Bool(f'zeta_{i}_{k}', ctx=ctx) for k in range(self.adder_wordlength - 1)] for i in range(1, self.max_adder + 1)]
+        zeta = [[Bool(f'zeta_{i}_{k}', ctx=ctx) for k in range(self.adder_wordlength - 1)] for i in range(1, self.adder_count + 1)]
 
-        for i in range(1, self.max_adder + 1):
+        for i in range(1, self.adder_count + 1):
             zeta_sum = []
             for k in range(self.adder_wordlength - 1):
                 for j in range(self.adder_wordlength - 1 - k):
@@ -699,27 +696,20 @@ class FIRFilterZ3:
         connected_coefficient = half_order + 1 - self.avail_dsp
 
         # solver connection
-        theta = [[Bool(f'theta_{i}_{m}', ctx=ctx) for m in range(half_order + 1)] for i in range(self.max_adder + 2)]
-        iota = [Bool(f'iota_{m}', ctx=ctx) for m in range(half_order + 1)]
+        theta = [[Bool(f'theta_{i}_{m}', ctx=ctx) for m in range(half_order + 1)] for i in range(self.adder_count + 2 + self.avail_dsp)]
         t = [[Bool(f't_{m}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
-
-        iota_sum = []
         for m in range(half_order + 1):
             theta_or = []
-            for i in range(self.max_adder + 2):
+            for i in range(self.adder_count + 2 + self.avail_dsp):
                 for word in range(self.adder_wordlength):
-                    clause52_1 = Or(Not(theta[i][m]), Not(iota[m]), Not(c[i][word]), t[m][word])
-                    clause52_2 = Or(Not(theta[i][m]), Not(iota[m]), c[i][word], Not(t[m][word]))
+                    clause52_1 = Or(Not(theta[i][m]), Not(c[i][word]), t[m][word])
+                    clause52_2 = Or(Not(theta[i][m]), c[i][word], Not(t[m][word]))
                     solver.add(clause52_1)
                     solver.add(clause52_2)
                 theta_or.append(theta[i][m])
             # print(f"theta or {theta_or}")
             solver.add(Or(*theta_or))
 
-        for m in range(half_order + 1):
-            iota_sum.append(iota[m])
-        solver.add(AtMost(*iota_sum, connected_coefficient))
-        solver.add(AtLeast(*iota_sum, connected_coefficient))
 
         # Left Shifter in result module
         # k is the shift selector
@@ -830,12 +820,12 @@ class FIRFilterZ3:
 
         # adder depth constraint
         if self.adder_depth > 0:
-            psi_alpha = [[Bool(f'psi_alpha_{i}_{d}', ctx=ctx) for d in range(self.adder_depth)] for i in range(1, self.max_adder + 1)]
-            psi_beta = [[Bool(f'psi_beta_{i}_{d}', ctx=ctx) for d in range(self.adder_depth)] for i in range(1, self.max_adder + 1)]
+            psi_alpha = [[Bool(f'psi_alpha_{i}_{d}', ctx=ctx) for d in range(self.adder_depth)] for i in range(1, self.adder_count + 1)]
+            psi_beta = [[Bool(f'psi_beta_{i}_{d}', ctx=ctx) for d in range(self.adder_depth)] for i in range(1, self.adder_count + 1)]
             psi_alpha_sum = []
             psi_beta_sum = []
 
-            for i in range(1, self.max_adder + 1):
+            for i in range(1, self.adder_count + 1):
                 clause60 = Or(Not(psi_alpha[i - 1][0]), alpha[i - 1][0])
                 clause61 = Or(Not(psi_beta[i - 1][0]), beta[i - 1][0])
                 solver.add(clause60)
@@ -851,13 +841,19 @@ class FIRFilterZ3:
 
                 for d in range(1, self.adder_depth):
                     for a in range(i - 1):
-                        clause63 = Or(Not(psi_alpha[i - 1][d]), alpha[i - 1][a])
-                        clause64 = Or(Not(psi_alpha[i - 1][d]), psi_alpha[a][d - 1])
+                        clause63 = Or(Not(psi_alpha[i - 1][d]), Not(alpha[i - 1][a]), psi_alpha[a][d - 1])
+                        psi_beta_list = []
+                        for j in range(d):
+                            psi_beta_list.append(psi_beta[a][j])
+                        clause64 = Or(Not(psi_alpha[i - 1][d]), Not(alpha[i - 1][a]), psi_beta_list)
                         solver.add(clause63)
                         solver.add(clause64)
 
-                        clause65 = Or(Not(psi_beta[i - 1][d]), beta[i - 1][a])
-                        clause66 = Or(Not(psi_beta[i - 1][d]), psi_beta[a][d - 1])
+                        clause65 = Or(Not(psi_beta[i - 1][d]), Not(beta[i - 1][a]), psi_beta[a][d - 1])
+                        psi_alpha_list = []
+                        for j in range(d):
+                            psi_alpha_list.append( psi_alpha[a][j])
+                        clause66 = Or(Not(psi_beta[i - 1][d]), Not(beta[i - 1][a]), psi_alpha_list)
                         solver.add(clause65)
                         solver.add(clause66)
 
@@ -1014,13 +1010,6 @@ class FIRFilterZ3:
                 theta_values.append(theta_row)
             self.result_model.update({"theta": theta_values})
 
-            # Store iota array
-            iota_values = []
-            for m in range(len(iota)):
-                value = 1 if model.eval(iota[m], model_completion=True) else 0
-                iota_values.append(value)
-            self.result_model.update({"iota": iota_values})
-
             # Store rho array
             rho_values = []
             for m in range(len(rho)):
@@ -1052,53 +1041,56 @@ class FIRFilterZ3:
 
 
 if __name__ == "__main__":
-    # Test inputs
+    ## Test inputs
     filter_type = 0
-    order_current = 6
-    accuracy = 3
-    wordlength = 14
-    gain_upperbound = 4
+    half_order = 8
+    accuracy = 2
+    wordlength = 8
+    gain_upperbound = 1
     gain_lowerbound = 1
-    coef_accuracy = 4
-    intW = 4
+    coef_accuracy = 3
+    intW = 1
 
-    adder_count = 6
-    adder_depth = 2
+    adder_count = 1
+    adder_depth = 0
     avail_dsp = 0
     adder_wordlength_ext = 2
+    h_zero_count = 0	
     
     
-
-    space = order_current * accuracy
-    # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    delta = 0.1
+    passband_error = delta
+    stopband_error = delta
+    space = half_order * accuracy
+    # Initialize freq_upper and freq_lower with NaN valuess
+    freqx_axis = np.linspace(0, 1, space)
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.4*(space))
-    upper_half_point = int(0.6*(space))
+    lower_half_point = int(0.3 * space)
+    upper_half_point = int(0.5 * space)
     end_point = space
 
-    freq_upper[0:lower_half_point] = 6
-    freq_lower[0:lower_half_point] = 0
+    freq_upper[0:lower_half_point] = 1 + passband_error
+    freq_lower[0:lower_half_point] = 1 - passband_error
 
-    freq_upper[upper_half_point:end_point] = -5
-    freq_lower[upper_half_point:end_point] = -1000
+    freq_upper[upper_half_point:end_point] = 0 + stopband_error
+    freq_lower[upper_half_point:end_point] = 0
 
 
     #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
+    ignore_lowerbound = -60
 
     #linearize the bound
-    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    upperbound_lin = np.copy(freq_upper)
+    lowerbound_lin = np.copy(freq_lower)
     ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
-
+    
     # Create FIRFilter instance
     fir_filter = FIRFilterZ3(
                  filter_type, 
-                 order_current, 
+                 half_order, 
                  freqx_axis, 
                  upperbound_lin, 
                  lowerbound_lin, 
@@ -1117,6 +1109,10 @@ if __name__ == "__main__":
                  )
 
     # fir_filter.run_barebone(1,'try_h_zero_count',1)
-    target_result = fir_filter.runsolver(1,10)
+    start_time = time.time()
+    target_result = fir_filter.runsolver(15,adder_count, h_zero_count)
+    end_time = time.time()
+    duration = end_time - start_time
+    print(f"Duration: {duration} seconds")  
     print(target_result)
     

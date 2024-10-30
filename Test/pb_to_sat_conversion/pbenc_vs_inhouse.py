@@ -35,6 +35,8 @@ def test_pb2cnf(case, lits, weights, bound, fracW, top_var,cnf_generator_flag):
         else:
             raise ValueError("Unknown case type")
     else:
+        print(f"lits: {lits}")
+        print(f"weights: {weights}")
         cnf = pbenc.pb2cnf(weights,lits,bound,case)
 
     

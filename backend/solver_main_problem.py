@@ -54,7 +54,7 @@ class MainProblem:
         self.adder_depth = None
         self.avail_dsp = None
         self.adder_wordlength_ext = None
-
+        self.am_start = None
         self.half_order = None
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
@@ -134,7 +134,7 @@ class MainProblem:
         #iteration search to find the minimum adder count
         max_iter = presolve_result['min_adderm'] * 4 * self.order_upperbound if presolve_result['min_adderm'] != 0 else 5 * self.order_upperbound
 
-        iteration = presolve_result['min_adderm']
+        iteration = self.am_start if self.am_start != None else 0
         best_adderm = -1  # Default value if no 'sat' is found
         target_result = None
         target_result_best = None

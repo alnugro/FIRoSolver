@@ -18,7 +18,7 @@ class IterationManager(QObject):
         super().__init__()
         self.total_iterations = total_iterations
         self.current_iteration = 0
-        self.delta = 0.03
+        self.delta = 0.025
         self.order_current = 30
 
     def start(self):
@@ -62,7 +62,7 @@ class IterationManager(QObject):
             freq_upper = np.full(space, np.nan)
             freq_lower = np.full(space, np.nan)
 
-            lower_half_point = int(0.32 * space)
+            lower_half_point = int(0.30 * space)
             upper_half_point = int(0.5 * space)
             end_point = space
 

@@ -190,16 +190,11 @@ if __name__ == "__main__":
     # Example usage:
     b = 0
 
-    b_frac = [75,99]  # example input coefficients
-    nbits = 8  # number of bits
+    b_frac = [-8]  # example input coefficients
+    nbits = 10  # number of bits
     nfrac = 0 # bits for fractional
     boolean = Rat2bool()
     
-    # test = [-5]
-    # test_res = boolean.frac2bool2s(test,5,0)
-
-    # print ("Result ",test_res)
-
     
     
     
@@ -217,9 +212,8 @@ if __name__ == "__main__":
     # calculated_values = boolean.csd2frac(Y, nfrac)
     # print("Reconstructed values from CSD:\n", calculated_values)
 
-    # twos_complement = boolean.frac2bool2s(b_frac, nbits, nfrac)
-    # # twos_complement= [[0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1]]
-    # print("Boolean representation (frac2bool with two's complement):\n", twos_complement)
+    twos_complement = boolean.frac2bool2s(b_frac, nbits, nfrac)
+    print("Boolean representation (frac2bool with two's complement):\n", twos_complement)
     # calculated_values_twos_complement = boolean.bool2s2frac(twos_complement, nfrac)
     # print("Reconstructed values from boolean (frac2bool with two's complement):\n", calculated_values_twos_complement)
 

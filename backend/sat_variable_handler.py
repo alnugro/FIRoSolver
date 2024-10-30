@@ -1,12 +1,12 @@
 
 class VariableMapper:
-    def __init__(self, half_order, wordlength, adder_wordlength, max_adder, adder_depth):
-        self.variables = self._initialize_variables(half_order, wordlength, adder_wordlength, max_adder, adder_depth)
+    def __init__(self, half_order, wordlength, adder_wordlength, max_adder, adder_depth, avail_dsp):
+        self.variables = self._initialize_variables(half_order, wordlength, adder_wordlength, max_adder, adder_depth, avail_dsp)
         self.var_to_int = {var: i + 1 for i, var in enumerate(self.variables.values())}  # +1 to avoid using 0
         self.int_to_var = {i + 1: var for i, var in enumerate(self.variables.values())}
         self.max_int_value = max(self.var_to_int.values())
         
-    def _initialize_variables(self, half_order, wordlength, adder_wordlength, max_adder, adder_depth):
+    def _initialize_variables(self, half_order, wordlength, adder_wordlength, max_adder, adder_depth, avail_dsp):
         variables = {
             ('h', a, w): f'h_{a}_{w}' for a in range(half_order + 1) for w in range(wordlength)
         }
@@ -17,7 +17,7 @@ class VariableMapper:
             ('gain', g): f'gain{g}' for g in range(wordlength)
         })
         variables.update({
-            ('c', i, w): f'c_{i}_{w}' for i in range(max_adder + 2) for w in range(adder_wordlength)
+            ('c', i, w): f'c_{i}_{w}' for i in range(max_adder + 2 + avail_dsp) for w in range(adder_wordlength)
         })
         variables.update({
             ('l', i, w): f'l_{i}_{w}' for i in range(1, max_adder + 1) for w in range(adder_wordlength)
@@ -62,10 +62,7 @@ class VariableMapper:
             ('zeta', i, k): f'zeta_{i}_{k}' for i in range(1, max_adder + 1) for k in range(adder_wordlength - 1)
         })
         variables.update({
-            ('theta', i, m): f'theta_{i}_{m}' for i in range(max_adder + 2) for m in range(half_order + 1)
-        })
-        variables.update({
-            ('iota', m): f'iota_{m}' for m in range(half_order + 1)
+            ('theta', i, m): f'theta_{i}_{m}' for i in range(max_adder + 2 + avail_dsp) for m in range(half_order + 1)
         })
         variables.update({
             ('t', m, w): f't_{m}_{w}' for m in range(half_order + 1) for w in range(adder_wordlength)
@@ -115,9 +112,10 @@ if __name__ == "__main__":
     adder_wordlength = wordlength + 2
     max_adder = 5
     adder_depth = 2
+    avail_dsp = 0
     
     # Create a global instance of VariableMapper
-    var_mapper = VariableMapper(half_order, wordlength, adder_wordlength, max_adder, adder_depth)
+    var_mapper = VariableMapper(half_order, wordlength, adder_wordlength, max_adder, adder_depth, avail_dsp)
 
     # Simplified functions to convert between variable names and integers
     def v2i(var_tuple):
