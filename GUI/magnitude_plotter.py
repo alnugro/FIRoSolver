@@ -35,6 +35,14 @@ class MagnitudePlotter:
 
         for spine in self.ax.spines.values():
             spine.set_linewidth(1)
+
+        # Set DPI
+        plt.rcParams['figure.dpi'] = 20
+
+        # Disable antialiasing globally
+        plt.rcParams['lines.antialiased'] = False   # For lines in plots
+        plt.rcParams['patch.antialiased'] = False   # For patches, like rectangles and polygons
+        plt.rcParams['text.antialiased'] = False    # For text
         
 
     

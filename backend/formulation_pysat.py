@@ -707,6 +707,13 @@ class FIRFilterPysat:
                 psi_beta_lits.append(v2i(('psi_beta', i, 0)))
 
                 if self.adder_depth == 1:
+                    cnf_psi_alpha = pb2cnf.equal_card_one(psi_alpha_lits)
+                    cnf_psi_beta = pb2cnf.equal_card_one(psi_beta_lits)
+
+                    for clause in cnf_psi_alpha:
+                        solver.add_clause(clause)
+                    for clause in cnf_psi_beta:
+                        solver.add_clause(clause)
                     continue
 
                 for d in range(1, self.adder_depth):

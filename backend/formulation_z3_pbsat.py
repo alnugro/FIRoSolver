@@ -841,18 +841,18 @@ class FIRFilterZ3:
 
                 for d in range(1, self.adder_depth):
                     for a in range(i - 1):
-                        clause63 = Or(Not(psi_alpha[i - 1][d]), Not(alpha[i - 1][a]), psi_alpha[a][d - 1])
+                        clause63 = Or(Not(psi_alpha[i - 1][d]), Not(alpha[i - 1][a]), psi_alpha[a-1][d - 1])
                         psi_beta_list = []
                         for j in range(d):
-                            psi_beta_list.append(psi_beta[a][j])
+                            psi_beta_list.append(psi_beta[a-1][j])
                         clause64 = Or(Not(psi_alpha[i - 1][d]), Not(alpha[i - 1][a]), psi_beta_list)
                         solver.add(clause63)
                         solver.add(clause64)
 
-                        clause65 = Or(Not(psi_beta[i - 1][d]), Not(beta[i - 1][a]), psi_beta[a][d - 1])
+                        clause65 = Or(Not(psi_beta[i - 1][d]), Not(beta[i - 1][a]), psi_beta[a-1][d - 1])
                         psi_alpha_list = []
                         for j in range(d):
-                            psi_alpha_list.append( psi_alpha[a][j])
+                            psi_alpha_list.append( psi_alpha[a-1][j])
                         clause66 = Or(Not(psi_beta[i - 1][d]), Not(beta[i - 1][a]), psi_alpha_list)
                         solver.add(clause65)
                         solver.add(clause66)

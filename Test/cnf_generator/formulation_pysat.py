@@ -1148,18 +1148,26 @@ class FIRFilterPysat:
 
                 # Ensure psi_alpha[0] implies alpha[0] and psi_beta[0] implies beta[0]
                 solver.add_clause([-v2i(('psi_alpha', i, 0)), v2i(('alpha', i, 0))])
+                solver.add_clause([v2i(('psi_alpha', i, 0)), -v2i(('alpha', i, 0))])
                 solver.add_clause([-v2i(('psi_beta', i, 0)), v2i(('beta', i, 0))])
+                solver.add_clause([v2i(('psi_beta', i, 0)), -v2i(('beta', i, 0))])
 
                 psi_alpha_lits.append(v2i(('psi_alpha', i, 0)))
                 psi_beta_lits.append(v2i(('psi_beta', i, 0)))
 
                 if self.adder_depth == 1:
+                    cnf_psi_alpha = pb2cnf.equal_card_one(psi_alpha_lits)
+                    cnf_psi_beta = pb2cnf.equal_card_one(psi_beta_lits)
+
+                    for clause in cnf_psi_alpha:
+                        solver.add_clause(clause)
+                    for clause in cnf_psi_beta:
+                        solver.add_clause(clause)
                     continue
 
                 for d in range(1, self.adder_depth):
                     for a in range(1, i):
-                        solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('alpha', i, a))])
-                        solver.add_clause([-v2i(('psi_alpha', i, d)), v2i(('psi_alpha', a, d - 1))])
+                        solver.add_clause([-v2i(('psi_alpha', i, d)), -v2i(('alpha', i, a)), v2i(('psi_alpha', a, d - 1))])
 
                         solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('beta', i, a))])
                         solver.add_clause([-v2i(('psi_beta', i, d)), v2i(('psi_beta', a, d - 1))])
@@ -1413,7 +1421,12 @@ if __name__ == "__main__":
                  intW,
                  )
 
+    
     # Run solver and plot result
-    # fir_filter.runsolver(0,5,0)
+    start_time = time.time()
+    #fir_filter.runsolver(0,5,0)
+    end_time = time.time()
+    duration = end_time - start_time
+    print(duration)
     # fir_filter.run_barebone(0,0)
-    fir_filter.generate_cnf(3,0,'test.cnf')
+    fir_filter.generate_cnf(5,0,'test.cnf')

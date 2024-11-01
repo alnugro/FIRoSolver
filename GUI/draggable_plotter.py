@@ -1,12 +1,17 @@
+
+
+
 import sys
+import matplotlib
+matplotlib.use('QtAgg')  # Set the backend before importing pyplot
+
 import copy
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from scipy.signal import medfilt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
+from matplotlib.figure import Figure
+from scipy.signal import medfilt
 from matplotlib.patches import Rectangle
-
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 

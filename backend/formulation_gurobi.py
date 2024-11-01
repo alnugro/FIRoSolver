@@ -849,7 +849,9 @@ class FIRFilterGurobi:
                 psi_beta_sum = []
                 # Adjusted constraints for psi_alpha and psi_beta
                 model.addConstr(-psi_alpha[i-1][0] + alpha[i-1][0] >= 0)
+                model.addConstr(psi_alpha[i-1][0] - alpha[i-1][0] >= 0)
                 model.addConstr(-psi_beta[i-1][0] + beta[i-1][0] >= 0)
+                model.addConstr(psi_beta[i-1][0] - beta[i-1][0] >= 0)
 
                 psi_alpha_sum.append(psi_alpha[i-1][0])
                 psi_beta_sum.append(psi_beta[i-1][0])
@@ -864,16 +866,16 @@ class FIRFilterGurobi:
                     for a in range(1,i):
                         print(f"a: {a}")
                         # Adjusted constraints for psi_alpha and psi_beta
-                        model.addConstr(-psi_alpha[i-1][d] - alpha[i-1][a] + psi_alpha[a][d-1]>= -1)
+                        model.addConstr(-psi_alpha[i-1][d] - alpha[i-1][a] + psi_alpha[a-1][d-1]>= -1)
                         psi_beta_or = gp.LinExpr()
                         for j in range(d):
-                            psi_beta_or+=psi_beta[a][j]
+                            psi_beta_or+=psi_beta[a-1][j]
                         model.addConstr(-psi_alpha[i-1][d] -alpha[i-1][a] + psi_beta_or >= -1)
 
-                        model.addConstr(-psi_beta[i-1][d] - beta[i-1][a]+ psi_beta[a][d-1] >= -1)
+                        model.addConstr(-psi_beta[i-1][d] - beta[i-1][a]+ psi_beta[a-1][d-1] >= -1)
                         psi_alpha_or = gp.LinExpr()
                         for j in range(d):
-                            psi_alpha_or+=psi_alpha[a][j]
+                            psi_alpha_or+=psi_alpha[a-1][j]
                         model.addConstr(-psi_beta[i-1][d] - beta[i-1][a] + psi_alpha_or >= -1)
                    
 
@@ -928,8 +930,11 @@ class FIRFilterGurobi:
                 for d in range(self.adder_depth):
                     psi_alpha_val = psi_alpha[i-1][d].X
                     psi_beta_val = psi_beta[i-1][d].X
-                    print(f"psi_alpha_{i}_{d}: {psi_alpha_val}")
+                    #print(f"psi_alpha_{i}_{d}: {psi_alpha_val}")
                     print(f"psi_beta_{i}_{d}: {psi_beta_val}")
+                for a in range(i):
+                    beta_val = beta[i-1][a].X
+                    print(f"beta_{i}_{a}: {beta_val}")
 
             end_time = time.time()
 
@@ -1106,7 +1111,7 @@ if __name__ == "__main__":
 
     # Test inputs
     filter_type = 0
-    half_order = 15
+    half_order = 6
     accuracy = 3
     wordlength = 10
     gain_upperbound = 1
@@ -1114,9 +1119,9 @@ if __name__ == "__main__":
     coef_accuracy = 3
     intW = 1
 
-    adder_count = 20
-    adder_depth = 2
-    avail_dsp = 0
+    adder_count = 50
+    adder_depth = 5
+    avail_dsp = 6
     adder_wordlength_ext = 0
     h_zero_count = 0	
     
@@ -1231,7 +1236,44 @@ if __name__ == "__main__":
                     beta_depth[b] = beta_depth[b_index-1] + 1
                     break
     print("beta_depth: ", beta_depth)
-        
+    alpha_depth = [0 for d in range(len(alpha[-1]))]
+    for a, a_list in enumerate(alpha):
+        if a_list[0] ==1:
+            alpha_depth[a] =1
+        else:
+            for a_index, a_value in enumerate(a_list):
+                if a_value == 1:
+                    alpha_depth[a] = alpha_depth[a_index-1] + 1
+                    break
+    print("alpha_depth: ", alpha_depth)
+    max_combined_depth = [0 for d in range(len(alpha[-1]))]
+    for i in range(adder_count):
+        alpha_depth = 0
+        beta_depth = 0
+        if alpha[i][0] == 1:
+            print(f"alpha {i} 0")
+            alpha_depth = 0
+        else:
+            print(i)
+            for j in range(1,i+1):
+                if i == 3:
+                    print(f"alphaada {i} {j} is {alpha[i][j]}")
+
+                if alpha[i][j] == 1:
+                    print(f"alpha {i} {j}")
+                    alpha_depth = max_combined_depth[j-1]
+                    # print("alpha_depth: ", alpha_depth)
+        if beta[i][0] == 1:
+            beta_depth = 0
+        else:
+            for j in range(1,i+1):
+                if beta[i][j] == 1:
+                    beta_depth = max_combined_depth[j-1]
+                    # print("beta_depth: ", beta_depth)
+        max_combined_depth[i] = max(alpha_depth, beta_depth) + 1
+        # print("max_combined_depth: ", max_combined_depth[i])
+    print("max_combined_depth: ", max_combined_depth)
+
     # fir_filter.run_barebone(0,None,None)
     # target_result = fir_filter.run_barebone(1,'minimize_h',None, 0)
     
