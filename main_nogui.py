@@ -4,6 +4,7 @@ from PyQt6.QtCore import QObject
 import sys
 import os
 import copy
+import time
 
 ''''this is the main file to run the solver without GUI, the result is saved in the result_valid.json file'''
 
@@ -18,7 +19,7 @@ class IterationManager(QObject):
         super().__init__()
         self.total_iterations = total_iterations
         self.current_iteration = 0
-        self.delta = 0.025
+        self.delta = 0.1
         self.order_current = 30
 
     def start(self):
@@ -28,17 +29,17 @@ class IterationManager(QObject):
         if self.current_iteration < self.total_iterations:
             # Prepare data for this iteration
             i = self.current_iteration
-            delta = self.delta
-            order_current = self.order_current
+            delta = 0.030034
+            order_current = 24
 
             # Test inputs (use your actual data preparation logic)
             filter_type = 0
-            accuracy = 2
-            wordlength = 12
+            accuracy = 3
+            wordlength = 11
             gain_upperbound = 1
             gain_lowerbound = 1
             coef_accuracy = 3
-            intW = 1
+            intW = 2
 
             adder_count = None
             adder_depth = 0
@@ -48,11 +49,20 @@ class IterationManager(QObject):
             gain_intW = 4       
             gain_wordlength = wordlength + gain_intW - intW
 
-            gurobi_thread = 5
+            gurobi_thread = 20
             pysat_thread = 0
             z3_thread = 0
 
             timeout = 0
+            deepsearch = True
+            patch_multiplier = 1
+            gurobi_auto_thread = False
+            worker = 4
+            search_step = 1
+            continue_solver = True
+            problem_id = 0
+
+        
 
             passband_error = delta
             stopband_error = delta
@@ -62,7 +72,7 @@ class IterationManager(QObject):
             freq_upper = np.full(space, np.nan)
             freq_lower = np.full(space, np.nan)
 
-            lower_half_point = int(0.30 * space)
+            lower_half_point = int(0.3 * space)
             upper_half_point = int(0.5 * space)
             end_point = space
 
@@ -127,11 +137,16 @@ class IterationManager(QObject):
                 'timeout': 0,
                 'start_with_error_prediction': False,
                 'solver_accuracy_multiplier': accuracy,
-                'deepsearch': True,
-                'patch_multiplier': 1,
-                'gurobi_auto_thread': False,
-            }
+                'deepsearch': deepsearch,
+                'patch_multiplier': patch_multiplier,
+                'gurobi_auto_thread': gurobi_auto_thread,
+                'worker': worker,
+                'search_step':search_step,
+                'continue_solver': continue_solver,
+                'problem_id': problem_id,
 
+            }
+            
             # Instantiate the BackendMediator
             self.mediator = BackendMediator(input_data)
 
@@ -139,10 +154,8 @@ class IterationManager(QObject):
             self.mediator.log_message.connect(lambda msg: print("Log:", msg))
             self.mediator.exception_message.connect(lambda msg: print("Error:", msg))
             self.mediator.finished.connect(self.on_mediator_finished)
-
             # Start the mediator
             self.mediator.run()
-
             self.current_iteration += 1
             self.delta *= 0.75
             self.order_current += 2

@@ -33,13 +33,14 @@ class BackendMediator(QObject):
         self.temp_input_files = {}  # Dictionary to store temp file paths
         self.stdout_buffers = {}  # Buffers for each process's stdout
         self.solver_count = 0  # Total number of solvers running
-        self.problem_id = 0
+        self.problem_id = initial_solver_input['problem_id'] if 'problem_id' in initial_solver_input else None
         
-        self.generate_bound_description()
 
-        self.initial_solver_input.update({
-            'problem_id' : self.problem_id
-        })
+        if self.problem_id is None:
+            self.generate_bound_description()
+            self.initial_solver_input.update({
+                'problem_id' : self.problem_id
+            })
 
         self.verbose = False
 
@@ -48,9 +49,10 @@ class BackendMediator(QObject):
         problem_dict = copy.deepcopy(self.initial_solver_input)
         backend = SolverBackend(self.initial_solver_input)
         problem_dict.update ({
-                'xdata' :  np.array(backend.xdata).tolist(),
-                'upperbound_lin':  np.array(backend.upperbound_lin).tolist(),
-                'lowerbound_lin': np.array(backend.lowerbound_lin).tolist(),
+                # 'xdata' :  np.array(backend.xdata).tolist(),
+                # 'upperbound_lin':  np.array(backend.upperbound_lin).tolist(),
+                # 'lowerbound_lin': np.array(backend.lowerbound_lin).tolist(),
+                'done': 'False',
                 'original_xdata': np.array(self.initial_solver_input['original_xdata']).tolist(), #convert them to list, ndarray is not supported with json
                 'original_upperbound_lin': np.array(self.initial_solver_input['original_upperbound_lin']).tolist(),
                 'original_lowerbound_lin': np.array(self.initial_solver_input['original_lowerbound_lin']).tolist(),

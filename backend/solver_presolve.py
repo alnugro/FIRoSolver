@@ -4,6 +4,7 @@ import traceback
 import time
 import copy
 import numpy as np
+import math
 
 
 try:
@@ -50,15 +51,24 @@ class Presolver:
         self.upperbound_lin = None
         self.lowerbound_lin = None
 
+        self.xdata_presolve = None
+        self.upperbound_lin_presolve = None
+        self.lowerbound_lin_presolve = None
+
         self.cutoffs_upper_ydata_lin = None
         self.cutoffs_lower_ydata_lin = None
 
         self.half_order = None
 
+
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
             if hasattr(self, key):  # Only set attributes that exist in the class
                 setattr(self, key, value)
+
+        self.xdata = self.xdata_presolve
+        self.upperbound_lin = self.upperbound_lin_presolve
+        self.lowerbound_lin = self.lowerbound_lin_presolve
 
         self.order_current = None
 
@@ -491,117 +501,196 @@ class Presolver:
         
         return pysat_instance
     
-    def min_adderm_finder(self,h_res_max ,h_res_min = None, no_gurobi = False):
-        min_adderm = 0
-        csd_min = 100000
+    def min_adderm_finder(self, h_res_max ,h_res_min = None):
+        wordlength = self.wordlength
+        fracW = wordlength - self.intW
         r2b = Rat2bool()
-        h_res_csd = r2b.frac2csd(h_res_max, self.wordlength, self.wordlength-self.intW)
-        for csd in h_res_csd:
-            csd_count = 0
-            for bin in csd:
-                if bin!=0:
-                    csd_count +=1
-            if csd_count != 0:
-                if csd_count < csd_min:
-                    csd_min = csd_count
-        
-        
-        if no_gurobi:
-            min_adderm = csd_min
-            min_adderm = int(min_adderm) #just to be safe half it
-            if csd_min == 100000: #if somehow all values are zeroes
-                csd_min = 0
-            return min_adderm
-        
-        h_res_csd_min= r2b.frac2csd(h_res_min, self.wordlength, self.wordlength-self.intW)
-        for csd in h_res_csd_min:
-            csd_count = 0
-            for bin in csd:
-                if bin!=0:
-                    csd_count +=1
+        h_res_max_array = np.array(h_res_max)
+        h_res_min_array = np.array(h_res_min)
+        h_res_max_array *= 2**fracW
+        h_res_min_array *= 2**fracW
+        print(f"h_res_max: {h_res_max_array}")
+        print(f"h_res_min: {h_res_min_array}")
+        h_res_max_round = []
+        h_res_min_round = []
+        for i in range(len(h_res_max_array)):
+            h_res_max_round.append(math.floor(h_res_max_array[i]))
+            h_res_min_round.append(math.ceil(h_res_min_array[i]))
 
-            if csd_count != 0:
-                if csd_count < csd_min:
-                    csd_min = csd_count
         
-        min_adderm = csd_min
-        min_adderm = int(min_adderm)
-        if csd_min == 100000: #if somehow all values are zeroes
+        for i in range(len(h_res_max_round)):
+            if h_res_max_round[i] < 0 and h_res_min_round[i] < 0:
+                min = h_res_max_round[i]
+                max = h_res_min_round[i]
+                h_res_max_round[i] = abs(max)
+                h_res_min_round[i] = abs(min)
+            elif h_res_max_round[i] >= 0 and h_res_min_round[i] < 0:
+                if abs(h_res_max_round[i]) > abs(h_res_min_round[i]):
+                    h_res_max_round[i] = abs(h_res_max_round[i])
+                    h_res_min_round[i] = 0
+                else:
+                    h_res_max_round[i] = 0
+                    h_res_min_round[i] = abs(h_res_min_round[i])
+            else:
+                pass
+        print(f"max h_res_round: {h_res_max_round}")
+        print(f"min h_res_round: {h_res_min_round}")     
+
+        
+        o_list = [[] for i in range(len(h_res_max))]
+        a_cost = [None for i in range(len(h_res_max))]
+        one_included = False
+        for i in range(len(h_res_max)):
+            for j in range(h_res_min_round[i], h_res_max_round[i]+1):
+                if j == 0:
+                    a_cost[i] = 0
+                    o_list[i].append(0)
+                    continue
+                odd = 0
+                while True:
+                    if j % 2 == 0:
+                        j = j // 2
+                    else:
+                        odd = j
+                        break
+                if odd == 1:
+                    a_cost[i] = 0
+                    o_list[i].append(1)
+                    one_included = True
+                    continue
+                
+                o_list[i].append(odd)
+
+        print(f"o_list: {o_list}")
+
+
+        for i in range(len(o_list)):
+            if a_cost[i] == 0:
+                continue
+            if o_list[i] == []:
+                a_cost[i] = 0
+                continue
+            a_cost[i] = 1
+            for j in range(len(o_list)):
+                if i == j:
+                    continue
+                common = [item for item in o_list[i] if item in o_list[j]]
+                if common:
+                    # print(f"Common elements between o_list[{i}] and o_list[{j}]: {common}")
+                    a_cost[i] = 0
+                    break
+
+        print(f"a_cost: {a_cost}")
+        muq_sum = sum(a_cost)
+        print(f"muq_sum: {muq_sum}")
+
+        if one_included:
+            print(f"am: {muq_sum}")
+            return muq_sum
+            
+        csd_min = 100000000
+
+        for i in range(len(o_list)):
+            for j in range(len(o_list[i])):
+                csd = r2b.frac2csd([o_list[i][j]], self.wordlength, 0)[0]
+                # print(f"csd of {o_list[i][j]}: {csd}")
+                csd_sum = 0
+                for csd_bin in csd:
+                    if csd_bin != 0:
+                        csd_sum += 1
+                if csd_sum < csd_min:
+                    csd_min = csd_sum
+
+        if csd_min-1 < 0 or csd_min == 100000000:
             csd_min = 0
-        print(f"min_adderm_ {min_adderm}")
-        return min_adderm
+        else:
+            csd_min -= 1
+
+        am = csd_min + muq_sum
+        return am
+
 
 
 
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_current = 10
-    accuracy = 1
-    adder_count = 3
-    wordlength = 14
-    
-    adder_depth = 2
-    avail_dsp = 0
-    adder_wordlength_ext = 2
-    gain_upperbound = 4
+    order_current = 7
+    accuracy = 4
+    wordlength = 17
+    gain_upperbound = 1
     gain_lowerbound = 1
-    coef_accuracy = 4
-    intW = 4
+    coef_accuracy = 5
+    intW = 6
 
+    adder_count = 4
+    adder_depth = 0
+    avail_dsp = 0
+    adder_wordlength_ext = 4
+
+    gain_wordlength = 13
+    gain_intW = 4
+
+    gurobi_thread = 5
+    pysat_thread = 0
+    z3_thread = 0
+
+    timeout = 0
+
+
+    passband_error = 0.1
+    stopband_error = 0.1
     space = order_current * accuracy
     # Initialize freq_upper and freq_lower with NaN values
-    freqx_axis = np.linspace(0, 1, space) #according to Mr. Kumms paper
+    freqx_axis = np.linspace(0, 1, space)
     freq_upper = np.full(space, np.nan)
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3*(space))
-    upper_half_point = int(0.6*(space))
+    lower_half_point = int(0.3 * space)
+    upper_half_point = int(0.5 * space)
     end_point = space
 
-    freq_upper[0:lower_half_point] = 5
-    freq_lower[0:lower_half_point] = 0
+    freq_upper[0:lower_half_point] = 1 + passband_error
+    freq_lower[0:lower_half_point] = 1 - passband_error
 
-    freq_upper[upper_half_point:end_point] = -10
-    freq_lower[upper_half_point:end_point] = -1000
-
+    freq_upper[upper_half_point:end_point] = 0 + stopband_error
+    freq_lower[upper_half_point:end_point] = 0
 
     cutoffs_x = []
     cutoffs_upper_ydata = []
     cutoffs_lower_ydata = []
 
     cutoffs_x.append(freqx_axis[0])
-    cutoffs_x.append(freqx_axis[lower_half_point-1])
+    cutoffs_x.append(freqx_axis[lower_half_point - 1])
     cutoffs_x.append(freqx_axis[upper_half_point])
-    cutoffs_x.append(freqx_axis[end_point-1])
+    cutoffs_x.append(freqx_axis[end_point - 1])
 
     cutoffs_upper_ydata.append(freq_upper[0])
-    cutoffs_upper_ydata.append(freq_upper[lower_half_point-1])
+    cutoffs_upper_ydata.append(freq_upper[lower_half_point - 1])
     cutoffs_upper_ydata.append(freq_upper[upper_half_point])
-    cutoffs_upper_ydata.append(freq_upper[end_point-1])
+    cutoffs_upper_ydata.append(freq_upper[end_point - 1])
 
     cutoffs_lower_ydata.append(freq_lower[0])
-    cutoffs_lower_ydata.append(freq_lower[lower_half_point-1])
+    cutoffs_lower_ydata.append(freq_lower[lower_half_point - 1])
     cutoffs_lower_ydata.append(freq_lower[upper_half_point])
-    cutoffs_lower_ydata.append(freq_lower[end_point-1])
+    cutoffs_lower_ydata.append(freq_lower[end_point - 1])
 
+    # Beyond this bound, lowerbound will be ignored
+    ignore_lowerbound = -60
 
-    #beyond this bound lowerbound will be ignored
-    ignore_lowerbound = -40
-
-    #linearize the bound
-    upperbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_upper]
-    lowerbound_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in freq_lower]
+    # Linearize the bounds
+    upperbound_lin = np.copy(freq_upper)
+    lowerbound_lin = np.copy(freq_lower)
     ignore_lowerbound_lin = 10 ** (ignore_lowerbound / 20)
 
-    cutoffs_upper_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_upper_ydata]
-    cutoffs_lower_ydata_lin = [10 ** (f / 20) if not np.isnan(f) else np.nan for f in cutoffs_lower_ydata]
+    cutoffs_upper_ydata_lin = np.copy(cutoffs_upper_ydata)
+    cutoffs_lower_ydata_lin = np.copy(cutoffs_lower_ydata)
 
 
     input_data = {
         'filter_type': filter_type,
-        'order_upperbound': order_current,
+        'half_order': order_current,
         'xdata': freqx_axis,
         'upperbound_lin': upperbound_lin,
         'lowerbound_lin': lowerbound_lin,
@@ -609,19 +698,19 @@ if __name__ == "__main__":
         'cutoffs_x': cutoffs_x,
         'cutoffs_upper_ydata_lin': cutoffs_upper_ydata_lin,
         'cutoffs_lower_ydata_lin': cutoffs_lower_ydata_lin,
-        'wordlength': 15,
-        'adder_depth': 0,
-        'avail_dsp': 0,
-        'adder_wordlength_ext': 2, #this is extension not the adder wordlength
-        'gain_wordlength' : 6,
-        'gain_intW' : 2,
-        'gain_upperbound': 3,
-        'gain_lowerbound': 1,
-        'coef_accuracy': 6,
-        'intW': 6,
-        'gurobi_thread': 0,
-        'pysat_thread': 5,
-        'z3_thread': 0,
+        'wordlength': wordlength,
+        'adder_depth': adder_depth,
+        'avail_dsp': avail_dsp,
+        'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
+        'gain_wordlength' : gain_wordlength,
+        'gain_intW' : gain_intW,
+        'gain_upperbound': gain_upperbound,
+        'gain_lowerbound': gain_lowerbound,
+        'coef_accuracy': coef_accuracy,
+        'intW': intW,
+        'gurobi_thread': gurobi_thread,
+        'pysat_thread': pysat_thread,
+        'z3_thread': z3_thread,
         'timeout': 0,
         'start_with_error_prediction': False,
         'solver_accuracy_multiplier': 6,
@@ -630,4 +719,5 @@ if __name__ == "__main__":
     # Create an instance of SolverBackend
     presolver = Presolver(input_data)
     # presolver.run_presolve_gurobi()
-    presolver.run_presolve_z3_pysat()
+    presolve_result= presolver.run_presolve_gurobi()
+    min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'])

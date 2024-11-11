@@ -7,6 +7,9 @@ from concurrent.futures import TimeoutError  # Correct import for TimeoutError
 import multiprocessing
 import math
 import sys
+from filelock import FileLock
+import os
+
 try:
     from .solver_func import SolverFunc
     from .bound_error_handler import BoundErrorHandler
@@ -39,7 +42,7 @@ class SolverBackend():
         self.gain_lowerbound = None
         self.coef_accuracy = None
         self.intW = None
-
+        self.worker = None
 
         self.gain_wordlength = None
         self.gain_intW = None
@@ -73,14 +76,21 @@ class SolverBackend():
         self.sf = SolverFunc(self.input_data)
         self.bound_too_small_flag = False
 
+        #increase accuracy
+        self.presolver_accuracy_multiplier = 1.5
+
         self.xdata, self.upperbound_lin, self.lowerbound_lin = self.sf.interpolate_bounds_to_order(self.order_upperbound)
+        self.xdata_presolve, self.upperbound_lin_presolve, self.lowerbound_lin_presolve = self.sf.interpolate_bounds_to_order(int(self.order_upperbound*self.presolver_accuracy_multiplier))
 
         
         #update input data with interpolated data
         self.input_data.update({
             'xdata' : self.xdata,
             'upperbound_lin': self.upperbound_lin,
-            'lowerbound_lin': self.lowerbound_lin
+            'lowerbound_lin': self.lowerbound_lin,
+            'xdata_presolve': self.xdata_presolve,
+            'upperbound_lin_presolve': self.upperbound_lin_presolve,
+            'lowerbound_lin_presolve': self.lowerbound_lin_presolve
         })
 
         self.end_result = None
@@ -189,6 +199,10 @@ class SolverBackend():
             adder_s =( 2 * half_adder_s) + 1
 
         total_adder = adder_s + best_adderm
+
+        if target_result is None:
+            return None, best_adderm ,total_adder,adder_s_h_zero_best
+        
         print(f"self.half_order {self.half_order}")
         print(f"max_zero {presolve_result['max_zero']}")
         print(f"total_adder {total_adder}")
@@ -210,6 +224,39 @@ class SolverBackend():
 
 
         return target_result, best_adderm ,total_adder,adder_s_h_zero_best
+    
+    def deep_search_adder_total(self,presolve_result, input_data_dict):
+        main = MainProblem(self.input_data)
+        target_result, best_adderm, h_zero_best = main.deep_search(presolve_result ,input_data_dict)
+        total_adder = None
+        adder_s = None
+        if h_zero_best:
+            half_adder_s = self.half_order - h_zero_best - 1
+            if self.filter_type == 0:
+                adder_s = 2 * half_adder_s
+            else:
+                adder_s =( 2 * half_adder_s) + 1
+            total_adder = adder_s + best_adderm
+
+        # print(f"self.half_order {self.half_order}")
+        # print(f"h_zero_best {h_zero_best}")
+        # print(f"h {target_result['h']}")
+        # print(f"h_res {target_result['h_res']}")
+
+        # print(f"total_adder {total_adder}")
+        # print(f"best_adderm {best_adderm}")
+            target_result.update({
+                'total_adder': int(total_adder),
+                'adder_m': int(best_adderm),
+                'adder_s': int(adder_s),
+                'half_adder_s': int(half_adder_s),
+                'wordlength': self.wordlength,
+                'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
+                'adder_depth': self.adder_depth,
+                'fracw':self.wordlength-self.intW
+            })
+
+        return target_result, best_adderm, total_adder, h_zero_best
 
 
     def find_best_adder_m(self,presolve_result):
@@ -246,7 +293,7 @@ class SolverBackend():
         return target_result, best_adderm, total_adder, adderm_h_zero_best
     
 
-    def deep_search_adder_total(self,presolve_result, input_data_dict):
+    def deep_search_adder_total_old(self,presolve_result, input_data_dict):
         main = MainProblem(self.input_data)
         target_result, best_adderm, h_zero_best = main.deep_search(presolve_result ,input_data_dict)
         total_adder = None
@@ -314,6 +361,12 @@ class SolverBackend():
         if self.gurobi_thread > 0:
             #if gurobi is available then use gurobi, because it is way faster to find the minimum solver order and can be used to find minmax variables
             presolve_result = presolver.run_presolve_gurobi()
+            min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'])
+            print(f"min_adderm {min_adderm}")
+            presolve_result.update({
+                'min_adderm' : min_adderm,
+                'min_adderm_without_zero' : 0,
+            })
         else:
             presolve_result = presolver.run_presolve_z3_pysat()
         
@@ -439,31 +492,31 @@ class SolverBackend():
 if __name__ == "__main__":
     # Test inputs
     filter_type = 0
-    order_current = 7
+    order_current = 16 #this is literally the order
     accuracy = 4
-    wordlength = 17
-    gain_upperbound = 1
+    wordlength = 9
+    gain_upperbound = 2.7
     gain_lowerbound = 1
-    coef_accuracy = 5
-    intW = 6
+    coef_accuracy = 3
+    intW = 1
 
     adder_count = 4
     adder_depth = 0
     avail_dsp = 0
-    adder_wordlength_ext = 4
+    adder_wordlength_ext = 2
 
     gain_wordlength = 13
     gain_intW = 4
 
-    gurobi_thread = 5
+    gurobi_thread = 10
     pysat_thread = 0
     z3_thread = 0
 
     timeout = 0
 
 
-    passband_error = 0.4
-    stopband_error = 0.4
+    passband_error = 0.1
+    stopband_error = 0.1
     space = order_current * accuracy * 50
     # Initialize freq_upper and freq_lower with NaN values
     freqx_axis = np.linspace(0, 1, space)
@@ -471,7 +524,7 @@ if __name__ == "__main__":
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.3 * space)
+    lower_half_point = int(0.2 * space)
     upper_half_point = int(0.5 * space)
     end_point = space
 
@@ -541,7 +594,12 @@ if __name__ == "__main__":
         'deepsearch': True,
         'patch_multiplier': 1,
         'gurobi_auto_thread': False,
-        'seed': 0
+        'seed': 0,
+        'worker': 2,
+        'search_step': 4,
+        'problem_id': 0,
+        'am_start': 0,
+
     }
 
     # Create an instance of SolverBackend
@@ -554,56 +612,48 @@ if __name__ == "__main__":
     # start presolve
     presolve_result = backend.solver_presolve()
     print(presolve_result)
-    # target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
+    target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
     target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
     
-    # while True:
-    #     leaks, leaks_mag = backend.result_validator(target_result['h_res'],target_result['gain'])
+    while True:
+        leaks, leaks_mag = backend.result_validator(target_result['h_res'],target_result['gain'])
         
-    #     if leaks:
-    #         print("leak_flag")
+        if leaks:
+            print("leak_flag")
 
-    #         target_result, satisfiability = backend.solving_result_barebone(presolve_result,best_adderm,adder_s_h_zero_best)
-    #         if satisfiability == 'unsat':
-    #             print("problem is unsat from asserting the leak to the problem")
-    #             break
-    #     else:
-    #         break
+            target_result, satisfiability = backend.solving_result_barebone(presolve_result,best_adderm,adder_s_h_zero_best)
+            if satisfiability == 'unsat':
+                print("problem is unsat from asserting the leak to the problem")
+                break
+        else:
+            break
     
-    # print(target_result)
+    print(target_result)
 
         
-    # #test main problem
-    # presolve_result = backend.solver_presolve()
-    # target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
-    # # target_result2, best_adderm2, total_adder2, adderm_h_zero_best = backend.find_best_adder_m(presolve_result)
+    #test main problem
+    presolve_result = backend.solver_presolve()
+    target_result, best_adderm ,total_adder, adder_s_h_zero_best = backend.find_best_adder_s(presolve_result)
 
-    # backend.result_validator(target_result['h_res'],target_result['gain'])
+    backend.result_validator(target_result['h_res'],target_result['gain'])
 
-    # # Packing variables into a dictionary
-    # data_dict = {
-    # 'best_adderm_from_s': best_adderm,
-    # 'best_adderm_from_m': best_adderm2,
-    # 'total_adder_s': total_adder,
-    # 'total_adder_m': total_adder2,
-    # 'adder_s_h_zero_best': adder_s_h_zero_best,
-    # 'adder_m_h_zero_best': adderm_h_zero_best,
-    # }
+    # Packing variables into a dictionary
+    data_dict = {
+    'best_adderm_from_s': int(best_adderm),
+    'total_adder_s': int(total_adder),
+    'adder_s_h_zero_best': int(adder_s_h_zero_best),
+    }
 
-    # if adderm_h_zero_best + 1 >= presolve_result['max_zero']:
-    #     print("Deep Search canceled, no search space for h_zero: Taking either A_S(h_zero_max) or A_S(A_M_Min(h_zero_max)) as the best solution")
-    #     best_adderm3 = best_adderm if total_adder >= total_adder2 else best_adderm2
-    #     total_adder3 = total_adder if total_adder >= total_adder2 else total_adder2
-    # else:
-    #     target_result3, best_adderm3, total_adder3, h_zero_best3 = backend.deep_search_adder_total(presolve_result, data_dict)
+    if presolve_result['max_zero'] == 0:
+        print("Deep Search canceled, no search space for h_zero: ")
+    else:
+        target_result3, best_adderm3, total_adder3, h_zero_best3 = backend.deep_search_adder_total2(presolve_result, data_dict)
     
-    # print(f"best_adderm {best_adderm}")
-    # print(f"best_adderm2 {best_adderm2}")
-    # print(f"total_adder_global_minimum {best_adderm3}")
+    print(f"best_adderm {best_adderm}")
+    print(f"total_adder_global_minimum {best_adderm3}")
     
-    # print(f"total_adder_s {total_adder}")
-    # print(f"total_adder_m {total_adder2}")
-    # print(f"total_adder_global_minimum {total_adder3}")
+    print(f"total_adder_s {total_adder}")
+    print(f"total_adder_global_minimum {total_adder3}")
 
     # # .........test interpolation data..........
     # interp_xdata = backend.xdata
