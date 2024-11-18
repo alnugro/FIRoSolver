@@ -16,6 +16,7 @@ try:
     from .solver_presolve import Presolver
     from .solver_error_predictor import ErrorPredictor
     from .solver_main_problem import MainProblem
+    from .automatic_search import AutomaticSearch
 except:
 
     from solver_func import SolverFunc
@@ -23,6 +24,7 @@ except:
     from solver_presolve import Presolver
     from solver_error_predictor import ErrorPredictor
     from solver_main_problem import MainProblem
+    from automatic_search import AutomaticSearch
 
 
 
@@ -114,6 +116,11 @@ class SolverBackend():
     def db_to_linear(self,value):
         linear_value = 10 ** (value / 20)
         return linear_value
+    
+    def automatic_param_search(self):
+        automatic_search = AutomaticSearch(self.input_data)
+        best_target_result, best_filter_type, wordlength = automatic_search.automatic_search()
+        return best_target_result, best_filter_type, wordlength
     
     def error_prediction(self):
         err_handler = ErrorPredictor(self.input_data)
@@ -293,38 +300,7 @@ class SolverBackend():
         return target_result, best_adderm, total_adder, adderm_h_zero_best
     
 
-    def deep_search_adder_total_old(self,presolve_result, input_data_dict):
-        main = MainProblem(self.input_data)
-        target_result, best_adderm, h_zero_best = main.deep_search(presolve_result ,input_data_dict)
-        total_adder = None
-        adder_s = None
-        if h_zero_best:
-            half_adder_s = self.half_order - h_zero_best - 1
-            if self.filter_type == 0:
-                adder_s = 2 * half_adder_s
-            else:
-                adder_s =( 2 * half_adder_s) + 1
-            total_adder = adder_s + best_adderm
-
-        # print(f"self.half_order {self.half_order}")
-        # print(f"h_zero_best {h_zero_best}")
-        # print(f"h {target_result['h']}")
-        # print(f"h_res {target_result['h_res']}")
-
-        # print(f"total_adder {total_adder}")
-        # print(f"best_adderm {best_adderm}")
-            target_result.update({
-                'total_adder': int(total_adder),
-                'adder_m': int(best_adderm),
-                'adder_s': int(adder_s),
-                'half_adder_s': int(half_adder_s),
-                'wordlength': self.wordlength,
-                'adder_wordlength': self.wordlength+ self.adder_wordlength_ext,
-                'adder_depth': self.adder_depth,
-                'fracw':self.wordlength-self.intW
-            })
-
-        return target_result, best_adderm, total_adder, h_zero_best
+    
 
     def solving_result_barebone(self,presolve_result,adderm,h_zero_count):
         main = MainProblem(self.input_data)
@@ -334,8 +310,15 @@ class SolverBackend():
         else:
             target_result_best, satisfiability = main.try_asserted_z3_pysat(adderm,h_zero_count)
 
-        adder_s = self.half_order - h_zero_count - 1
-        total_adder = (2*adder_s) - 1 + adderm if self.filter_type == 0 or self.filter_type == 2 else (2*adder_s) + adderm
+        adder_s = 0
+
+        half_adder_s = self.half_order - h_zero_count - 1
+        if self.filter_type == 0:
+            adder_s = 2 * half_adder_s
+        else:
+            adder_s =( 2 * half_adder_s) + 1
+        total_adder = adder_s + adderm
+
         target_result_best.update({
             'total_adder': total_adder,
             'adder_m':adderm,
@@ -361,28 +344,8 @@ class SolverBackend():
         if self.gurobi_thread > 0:
             #if gurobi is available then use gurobi, because it is way faster to find the minimum solver order and can be used to find minmax variables
             presolve_result = presolver.run_presolve_gurobi()
-            min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'])
-            print(f"min_adderm {min_adderm}")
-            presolve_result.update({
-                'min_adderm' : min_adderm,
-                'min_adderm_without_zero' : 0,
-            })
         else:
             presolve_result = presolver.run_presolve_z3_pysat()
-        
-        if presolve_result['hmax'] != None:
-            # min_adderm = presolver.min_adderm_finder(presolve_result['hmax'],presolve_result['hmin'], False)
-            # min_adderm_without_zero = presolver.min_adderm_finder(presolve_result['hmax_without_zero'],presolve_result['hmin_without_zero'],False)
-            presolve_result.update({
-                'min_adderm' : 0,
-                'min_adderm_without_zero' : 0,
-            })
-        else:
-            # min_adderm_without_zero = presolver.min_adderm_finder(presolve_result['h_res'], None ,True)
-            presolve_result.update({
-                'min_adderm' : None,
-                'min_adderm_without_zero' : 0,
-            })
         
         
         

@@ -33,8 +33,12 @@ class BackendMediator(QObject):
         self.temp_input_files = {}  # Dictionary to store temp file paths
         self.stdout_buffers = {}  # Buffers for each process's stdout
         self.solver_count = 0  # Total number of solvers running
-        self.problem_id = initial_solver_input['problem_id'] if 'problem_id' in initial_solver_input else None
-        
+        self.problem_id = None
+
+        if initial_solver_input['problem_id'] is not None:
+            if initial_solver_input['continue_solver'] == True:
+                self.problem_id = initial_solver_input['problem_id'] 
+            
 
         if self.problem_id is None:
             self.generate_bound_description()
@@ -42,7 +46,8 @@ class BackendMediator(QObject):
                 'problem_id' : self.problem_id
             })
 
-        self.verbose = False
+        #use to debug, print all outputs it will be very clutered
+        self.verbose = True
 
 
     def generate_bound_description(self):
@@ -170,7 +175,7 @@ class BackendMediator(QObject):
 
     def process_finished(self, solver_name):
         print(f"{solver_name} Runner Script Finished.")
-        self.log_message.emit(f"#### {solver_name} is done! ####\n Check result data.")
+        self.log_message.emit(f"#### {solver_name} is done! ####\n")
 
         # Clean up temporary input file
         if solver_name in self.temp_input_files:

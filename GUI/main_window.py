@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout
                              QDoubleSpinBox, QLineEdit, QLabel, QCheckBox, QProgressBar)
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.uic import loadUi
+from PyQt6.QtGui import QIcon, QPixmap
 import time
 import json
 import copy
@@ -31,8 +32,10 @@ try:
     from .backend_mediator import BackendMediator
     from .ui_func import UIFunc
     from backend.backend_main import SolverBackend
-    from .result_handler import JsonUnloader, PydspHandler, DynamicTableWidget
+    from .result_handler import JsonUnloader, PydspHandler, DynamicTableWidgetResult, DynamicTableWidgetProblems
     from .save_load_handler import SaveLoadHandler
+    from .auto_param_mediator import AutoParamMediator
+    from .result_subwindow import AutomaticParameterResultSubWindow
 
 except:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -42,8 +45,10 @@ except:
     from GUI.backend_mediator import BackendMediator
     from ui_func import UIFunc
     from backend.backend_main import SolverBackend
-    from result_handler import JsonUnloader, PydspHandler, DynamicTableWidget
+    from result_handler import JsonUnloader, PydspHandler, DynamicTableWidgetResult, DynamicTableWidgetProblems
     from save_load_handler import SaveLoadHandler
+    from auto_param_mediator import AutoParamMediator
+    from result_subwindow import AutomaticParameterResultSubWindow
 
 
 
@@ -55,7 +60,7 @@ class PlotWindow(QWidget):
         
         self.setWindowTitle("Plot Window")
         self.setGeometry(100, 100, 600, 400)
-        
+        self.setWindowIcon(QIcon("GUI/icon/icon.png"))
         # Create a layout
         layout = QVBoxLayout()
         
@@ -86,6 +91,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         loadUi("GUI/ui_files/FIR.ui", self)
+        self.setWindowIcon(QIcon("GUI/icon/icon.png"))
 
         self.setWindowTitle("FIRoSolver")
         #connect widget to program
@@ -93,6 +99,12 @@ class MainWindow(QMainWindow):
 
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.destroyed.connect(self.on_closing)
+
+
+        self.image_label.setFixedSize(300, 300)  # Set QLabel dimensions
+        pixmap = QPixmap("GUI/icon/icon.png")
+        scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        self.image_label.setPixmap(scaled_pixmap)
 
         # Plotter data
         self.magnitude_plotter_data = np.array([])
@@ -115,13 +127,20 @@ class MainWindow(QMainWindow):
         self.mag_toolbar = QHBoxLayout(self.toolbar_wid)
         self.mag_toolbar.addWidget(self.toolbar)
 
-        # Instantiate DynamicTableWidget for result_valid_table and result_invalid_table
-        self.valid_table_widget = DynamicTableWidget(self.result_valid_table, True, self)
-        self.invalid_table_widget = DynamicTableWidget(self.result_invalid_table, False, self)
+        # Instantiate DynamicTableWidgetResult for result_valid_table and result_invalid_table
+        self.valid_table_widget = DynamicTableWidgetResult(self.result_valid_table, True, self)
+        self.invalid_table_widget = DynamicTableWidgetResult(self.result_invalid_table, False, self)
+        
+        self.table_settings_init(5, self.result_valid_table)
+        self.table_settings_init(5, self.result_invalid_table)
+
+        self.solver_runs_table_widget = DynamicTableWidgetProblems(self.solver_runs_table, self)
+        self.table_settings_init(3, self.solver_runs_table)
 
         # Start timers to update tables
         self.valid_table_widget.startTimer()
         self.invalid_table_widget.startTimer()
+        self.solver_runs_table_widget.startTimer()
 
         self.input = {}
 
@@ -147,9 +166,15 @@ class MainWindow(QMainWindow):
 
         self.widget_connect_after()
 
+        self.auto_search_dict = None
+
+
         
-
-
+    def table_settings_init(self, len, table_widget):
+        for i in range(len):
+            table_widget.setColumnWidth(i, 90)
+        
+            
 
 
     def widget_connect(self):
@@ -164,8 +189,6 @@ class MainWindow(QMainWindow):
         self.adder_depth_box = self.findChild(QSpinBox, 'adder_depth_box')
         self.adder_wordlength_ext_box = self.findChild(QSpinBox, 'adder_wordlength_ext_box')
         self.available_dsp_box = self.findChild(QSpinBox, 'available_dsp_box')
-        self.gain_wordlength_box = self.findChild(QSpinBox, 'gain_wordlength_box')
-        self.gain_integer_width_box = self.findChild(QSpinBox, 'gain_integer_width_box')
         self.gain_upper_box = self.findChild(QSpinBox, 'gain_upper_box')
         self.gain_lower_box = self.findChild(QSpinBox, 'gain_lower_box')
         self.coef_accuracy_box = self.findChild(QSpinBox, 'coef_accuracy_box')
@@ -175,6 +198,8 @@ class MainWindow(QMainWindow):
         self.z3_thread_box = self.findChild(QSpinBox, 'z3_thread_box')
         self.solver_timeout_box = self.findChild(QSpinBox, 'solver_timeout_box')
         self.patch_multiplier_box = self.findChild(QSpinBox, 'patch_multiplier_box')
+        self.worker_box = self.findChild(QSpinBox, 'worker_box')
+        self.search_step_box = self.findChild(QSpinBox, 'search_step_box')
 
         self.vhdl_input_word_box = self.findChild(QSpinBox, 'vhdl_input_word_box')
 
@@ -189,6 +214,7 @@ class MainWindow(QMainWindow):
 
         
         self.position_label = self.findChild(QLabel, 'position_label')
+        self.image_label = self.findChild(QLabel, 'image_label')
 
 
         # Connect the widgets
@@ -212,8 +238,31 @@ class MainWindow(QMainWindow):
         self.redo_but = self.findChild(QPushButton, 'redo_but')
         self.smoothen_but = self.findChild(QPushButton, 'smoothen_but')
         self.run_solver_but = self.findChild(QPushButton, 'run_solver_but')
+        self.cancel_solver_but = self.findChild(QPushButton, 'cancel_solver_but')
         self.day_night_but = self.findChild(QPushButton, 'day_night_but')
         self.reset_dot_but = self.findChild(QPushButton, 'reset_dot_but')
+
+        self.asserted_search_check = self.findChild(QCheckBox, 'asserted_search_check')
+        self.auto_search_check = self.findChild(QCheckBox, 'auto_search_check')
+        self.asserted_search_check.stateChanged.connect(lambda: self.auto_search_check.setChecked(False) if self.asserted_search_check.isChecked() else self.auto_search_check.setChecked(True))
+        self.auto_search_check.stateChanged.connect(lambda: self.asserted_search_check.setChecked(False) if self.auto_search_check.isChecked() else self.asserted_search_check.setChecked(True))
+
+        self.real_word_check = self.findChild(QCheckBox, 'real_word_check')
+        self.assert_wordlength_check = self.findChild(QCheckBox, 'assert_wordlength_check')
+        self.real_word_check.stateChanged.connect(lambda: self.assert_wordlength_check.setChecked(False) if self.real_word_check.isChecked() else self.assert_wordlength_check.setChecked(True))
+        self.assert_wordlength_check.stateChanged.connect(lambda: self.real_word_check.setChecked(False) if self.assert_wordlength_check.isChecked() else self.real_word_check.setChecked(True))
+        
+        self.wordlength_assertion_box = self.findChild(QSpinBox, 'wordlength_assertion_box')
+        self.integer_width_box_2 = self.findChild(QSpinBox, 'integer_width_box_2')
+        self.gain_upper_box_2 = self.findChild(QSpinBox, 'gain_upper_box_2')
+        self.gain_lower_box_2 = self.findChild(QSpinBox, 'gain_lower_box_2')
+        self.available_dsp_box_2 = self.findChild(QSpinBox, 'available_dsp_box_2')
+        self.adder_wordlength_ext_box_2 = self.findChild(QSpinBox, 'adder_wordlength_ext_box_2')
+        self.adder_depth_box_2 = self.findChild(QSpinBox, 'adder_depth_box_2')
+        self.solver_accuracy_multiplier_box_2 = self.findChild(QSpinBox, 'solver_accuracy_multiplier_box_2')
+
+        self.coef_accuracy_box_2 = self.findChild(QSpinBox, 'coef_accuracy_box_2')
+
 
         self.filter_type_drop = self.findChild(QComboBox, 'filter_type_drop')
 
@@ -248,12 +297,21 @@ class MainWindow(QMainWindow):
         self.run_solver_but.setToolTip('Run the solvers, with your given parameters')
         self.day_night_but.clicked.connect(self.on_day_night_but_click)
         self.reset_dot_but.clicked.connect(self.on_reset_dot_but_click)
+        self.cancel_solver_but.clicked.connect(self.kill_solver_instance)
 
 
         #connect tables
         self.magnitude_plotter_table = self.findChild(QTableWidget, 'magnitude_plotter_table')
+        self.set_column_read_only_and_center_align(self.magnitude_plotter_table, 0)
+        self.magnitude_plotter_table.setColumnWidth(0, 90)
+        self.magnitude_plotter_table.setColumnWidth(1, 90)
+        self.magnitude_plotter_table.setColumnWidth(2, 200)
+        self.magnitude_plotter_table.setColumnWidth(3, 200)
+        self.magnitude_plotter_table.cellChanged.connect(self.on_cell_changed)
+
         self.result_valid_table = self.findChild(QTableWidget, 'result_valid_tab')
         self.result_invalid_table = self.findChild(QTableWidget, 'result_invalid_tab')
+        self.solver_runs_table = self.findChild(QTableWidget, 'solver_runs_tab')
 
         #plotted data
         self.remove_sel_but = self.findChild(QPushButton, 'remove_sel_but')
@@ -274,8 +332,22 @@ class MainWindow(QMainWindow):
         self.res_load_but.clicked.connect(self.on_res_load_but_click)
 
 
-
+    
+    def on_cell_changed(self, row, column):
+        # self.magnitude_plotter_table.blockSignals(True)
+        print(f"Cell [{row}, {column}] changed")
+        if self.magnitude_plotter_table.item(row, 0).text() == 'stopband':
+            item = self.magnitude_plotter_table.item(row, column)
+            item_text = item.text()
+            if column == 2:
+                item2 = self.magnitude_plotter_table.item(row, 3)
+                item2.setText(item_text)
+            elif column == 3:
+                item2 = self.magnitude_plotter_table.item(row, 2)
+                item2.setText(item_text)
         
+
+
     def add_row(self, table: QTableWidget, passband_flag: bool):
         if passband_flag:
             band_type = 'passband'
@@ -298,6 +370,8 @@ class MainWindow(QMainWindow):
 
         table.setItem(rowCount, 4, QTableWidgetItem(""))
         table.setItem(rowCount, 5, QTableWidgetItem(""))
+
+        self.set_column_read_only_and_center_align(table, 0)
 
 
 
@@ -348,6 +422,9 @@ class MainWindow(QMainWindow):
 
     def on_plot_save_but_click(self):
         xdata , middle_y , lower_y, upper_y  = self.magnitude_plotter.get_frequency_bounds(True)
+        if xdata is None or middle_y is None or lower_y is None or upper_y is None:
+            self.logger.plog("No data to save!")
+            return
         xdata = np.array(xdata).tolist()
         middle_y = np.array(middle_y).tolist()
         lower_y = np.array(lower_y).tolist()
@@ -365,10 +442,27 @@ class MainWindow(QMainWindow):
 
     def on_plot_load_but_click(self):
         loaded_data_dict = self.load_saver.load_data(True)
+        if loaded_data_dict is None:
+            return
         self.magnitude_plotter.load_plot(self.get_ui_data_dict(), loaded_data_dict)
         self.logger.plog("Data loaded")
         self.logger.plog("Plot Generated")
 
+    def set_column_read_only_and_center_align(self, table, column_index):
+        """
+        Set a specific column in a QTableWidget to be read-only and center-align all its values.
+        """
+        for row in range(table.rowCount()):
+            item = table.item(row, column_index)
+            # Set the flags to disable editing
+            item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            # Align the text to the center
+
+        for row in range(table.rowCount()):
+            for column in range(table.columnCount()):
+                item = table.item(row, column)
+                # Align the text to the center
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
     def on_mag_plotter_but_click(self):
         self.logger.plog(f"Generating...")
@@ -478,9 +572,9 @@ class MainWindow(QMainWindow):
 
         # Add the toolbar back to the toolbar layout
         self.mag_toolbar.addWidget(self.toolbar)
-
-        if self.magnitude_plotter.draggable_lines is not None:
-            self.magnitude_plotter.load_plot(self.get_ui_data_dict(), {'xdata': x, 'middle_y': middle_y, 'upper_y': upper_y, 'lower_y': lower_y}, history)
+        print("Day night button clicked")
+        print("Updating plot")
+        self.magnitude_plotter.load_plot(self.get_ui_data_dict(), {'xdata': x, 'middle_y': middle_y, 'upper_y': upper_y, 'lower_y': lower_y}, history)
 
     def on_nyquist_freq_but_click(self):
         self.magnitude_plotter.update_plotter(self.get_ui_data_dict())
@@ -523,8 +617,127 @@ class MainWindow(QMainWindow):
         self.magnitude_plotter.update_plotter(self.get_ui_data_dict(), False)
         self.magnitude_plotter.smoothen_plot()
 
+    def continue_solver(self, data):
+        if self.solver_is_running:
+            self.logger.plog("Solver is currently running")
+            return
+        
+        self.solver_is_running = True
+        self.logger.plog("Continue Solving FIR problem...")
+
+
+        initial_input_dictionary = data
+
+        print(initial_input_dictionary)
+        self.mediator = BackendMediator(initial_input_dictionary)
+
+        # Connect signals to print output and errors
+        self.mediator.log_message.connect(self.logger.plog)
+        self.mediator.exception_message.connect(self.show_error_dialog)
+        self.mediator.finished.connect(self.solver_run_done)
+
+        # Start the mediator
+        self.mediator.run()
+    
+
+
+    def auto_search(self):
+        
+        #update input data
+        xdata, upper_ydata, lower_ydata ,cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata = self.magnitude_plotter.get_frequency_bounds()
+        print(f"cutoffs_x {cutoffs_x}, cutoffs_upper_ydata {cutoffs_upper_ydata}, cutoffs_lower_ydata {cutoffs_lower_ydata}")
+        #validate data
+        for i in range(len(xdata)):
+            if np.isnan(upper_ydata[i]) and np.isnan(lower_ydata[i]):
+                continue
+            if not(np.isnan(upper_ydata[i])) and not(np.isnan(lower_ydata[i])):
+                continue
+            raise ValueError(f"Bounds is not the same at {i}, upper: {upper_ydata[i]} and lower: {lower_ydata[i]}. Contact Developer")
+        
+        ui_functionality = UIFunc(self)
+        
+        #do this if transition band interpolation is chosen
+        if self.interpolate_transition_band_check.isChecked():
+            upper_ydata, lower_ydata = ui_functionality.interpolate_transition_band()
+
+        
+        self.auto_search_dict = ui_functionality.solver_input_dict_generator_auto(xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
+    
+        self.auto_param_mediator = AutoParamMediator(self.auto_search_dict)
+
+        self.auto_param_mediator.exception_message.connect(self.show_error_dialog)
+        self.auto_param_mediator.result_signal.connect(self.auto_param_done)
+
+        
+        self.auto_param_mediator.start()
+
+    def auto_param_done(self, best_target_result, best_filter_type, wordlength):
+        best_target_result.update({
+            'best_filter_type': best_filter_type+1,
+            'wordlength': wordlength,
+        })
+        self.auto_search_dict.update(
+            {
+                'filter_type': best_filter_type,
+            }
+        )
+        # Create and show the subwindow
+        self.subwindow = AutomaticParameterResultSubWindow(best_target_result)
+        self.subwindow.continue_signal.connect(self.handle_subwindow_continue)
+        self.subwindow.cancel_signal.connect(self.handle_subwindow_cancel)
+        self.subwindow.show()
+
+    def handle_subwindow_continue(self, filter_order, word_length):
+        # Proceed with the solver using the given parameters
+        print(f"Continuing with Filter Order: {filter_order}, Word Length: {word_length}")
+        self.auto_search_dict.update(
+            {
+                'wordlength': word_length,
+                'order_upperbound': filter_order
+            }
+        )
+        print({f"self.auto_search_dict {self.auto_search_dict}"})
+        self.mediator = BackendMediator(self.auto_search_dict)
+
+        # Connect signals to print output and errors
+        self.mediator.log_message.connect(self.logger.plog)
+        self.mediator.exception_message.connect(self.show_error_dialog)
+        self.mediator.finished.connect(self.solver_run_done)
+
+        # Start the mediator
+        self.mediator.run()
+
+    def handle_subwindow_cancel(self):
+        # Handle cancellation
+        self.logger.plog("Auto parameter search canceled")
+        self.solver_is_running = False
+        self.auto_search_dict = None
    
     def on_run_solver_but_click(self):
+        if self.auto_search_check.isChecked():
+            self.logger.plog("Auto search is enabled, Searching for the best parameters")
+            if self.solver_is_running:
+                self.logger.plog("Solver is currently running")
+                return
+        
+
+            if self.gurobi_thread_box.value() == 0 and not self.gurobi_auto_thread_check.isChecked() and self.z3_thread_box.value() == 0 and self.pysat_thread_box.value() == 0:
+                self.logger.plog("Solver threads can't be 0")
+                return
+                
+
+            if not(self.plot_generated_flag):
+                self.logger.plog("No bounds found, Please generate the bounds first in magnitude plotter!")
+                return
+            
+            # Check if all necessary inputs are valid
+            if self.input_validation_before_run() == 1:
+                return
+            
+            self.solver_is_running = True
+            self.auto_search()
+            return
+        
         #solver running flag
         if self.solver_is_running:
             self.logger.plog("Solver is currently running")
@@ -540,12 +753,14 @@ class MainWindow(QMainWindow):
             self.logger.plog("No bounds found, Please generate the bounds first in magnitude plotter!")
             return
         
-        self.solver_is_running = True
+        
         self.logger.plog("Solving FIR problem...")
         
         # Check if all necessary inputs are valid
         if self.input_validation_before_run() == 1:
             return
+        
+        self.solver_is_running = True
         
         #update input data
         xdata, upper_ydata, lower_ydata ,cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata = self.magnitude_plotter.get_frequency_bounds()
@@ -567,7 +782,6 @@ class MainWindow(QMainWindow):
         
         initial_input_dictionary = ui_functionality.solver_input_dict_generator(xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
 
-        print(initial_input_dictionary)
         self.mediator = BackendMediator(initial_input_dictionary)
 
         # Connect signals to print output and errors

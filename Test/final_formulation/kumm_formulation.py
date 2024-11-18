@@ -394,7 +394,7 @@ freq_upper = np.full(accuracy * order_upper, np.nan)
 freq_lower = np.full(accuracy * order_upper, np.nan)
 
 # Manually set specific values for the elements of freq_upper and freq_lower in dB
-lower_half_point = int(0.5*(accuracy*order_upper))
+lower_half_point = int(0.3*(accuracy*order_upper))
 upper_half_point = int(0.5*(accuracy*order_upper))
 end_point = accuracy*order_upper
 

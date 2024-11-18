@@ -124,17 +124,43 @@ class VHDLWriter:
             raise Exception(f"file path must end with '.vhd' or '.vhdl'")
 
         with open(file_path, "w") as f:
-            f.write("library IEEE;\n")
-            f.write("use IEEE.STD_LOGIC_1164.ALL;\n")
-            f.write("use IEEE.NUMERIC_STD.ALL;\n\n")
-
+            # Collect unique module types
             module_types = VHDLWriter.collect_unique_module_types(circuit)
 
+            # Write VHDL code for each unique module type
             for module_type in module_types:
                 VHDLWriter.write_module_definition(f, module_type)
 
             # Write the top module that connects all module instances
             VHDLWriter.write_top_module(f, circuit)
+
+    @staticmethod
+    def entity_name_changer(entity_name: str):
+        if entity_name == "Register":
+            entity_name = "Regist"
+        elif entity_name == "ShiftLeft":
+            entity_name = "ShiftL"
+        elif entity_name == "ShiftRight":
+            entity_name = "ShiftR"
+        elif entity_name == "TruncateMSBs":
+            entity_name = "Trunc"
+        elif entity_name == "Comparator":
+            entity_name = "Comp"
+        elif entity_name == "Mux":
+            entity_name = "Multiplex"
+        elif entity_name == "Mult":
+            entity_name = "Multip"
+        elif entity_name == "Add":
+            entity_name = "Adder"
+        elif entity_name == "Sub":
+            entity_name = "Subtr"
+        elif entity_name == "Constant":
+            entity_name = "Consta"
+        elif entity_name == "Input":
+            entity_name = "Inp"
+        elif entity_name == "Output":
+            entity_name = "Outp"
+        return entity_name
 
     @staticmethod
     def collect_unique_module_types(circuit: Circuit):
@@ -146,39 +172,75 @@ class VHDLWriter:
         return unique_types.values()
 
     @staticmethod
-    def write_module_definition(f, module: modules):
+    def write_module_definition(f, module: modules.Module):
+        # Generate the entity and architecture for the module type
         module_entity = VHDLWriter.generate_module_entity(module)
         module_architecture = VHDLWriter.generate_module_architecture(module)
 
+        # Write the entity and architecture to the file
         f.write(module_entity)
         f.write(module_architecture)
 
     @staticmethod
-    def generate_module_entity(module: modules):
+    def generate_module_entity(module: modules.Module):
         entity_name = type(module).__name__
+        entity_name = VHDLWriter.entity_name_changer(entity_name)
         inputs = []
         outputs = []
 
+        # Parameters (Generics)
         generics = []
 
-        for idx, input_name in enumerate(module.inputs):
-            # Inputs will be of generic width
-            inputs.append((input_name, "DATA_WIDTH"))
+        # Determine the inputs and outputs, and collect generics
+        if isinstance(module, modules.Add) or isinstance(module, modules.Sub) or isinstance(module, modules.Mult):
+            # Differentiate between input and output widths
+            generics.append(f"    IN0_WIDTH : integer := 8")
+            generics.append(f"    IN1_WIDTH : integer := 8")
+            generics.append(f"    OUT_WIDTH : integer := 8")
+            inputs.append((module.inputs[0], "IN0_WIDTH"))
+            inputs.append((module.inputs[1], "IN1_WIDTH"))
+            outputs.append((module.output, "OUT_WIDTH"))
+        elif isinstance(module, modules.ShiftLeft) or isinstance(module, modules.ShiftRight):
+            generics.append(f"    IN_WIDTH : integer := 8")
+            generics.append(f"    OUT_WIDTH : integer := 8")
+            generics.append(f"    SHIFT_AMOUNT : integer := {module.shift_length}")
+            inputs.append((module.inputs[0], "IN_WIDTH"))
+            outputs.append((module.output, "OUT_WIDTH"))
+        elif isinstance(module, modules.Register):
+            generics.append(f"    DATA_WIDTH : integer := 8")
+            inputs.append((module.inputs[0], "DATA_WIDTH"))
+            outputs.append((module.output, "DATA_WIDTH"))
+            # Include clk in the port list
+            inputs.append(("clk", ""))
+        elif isinstance(module, modules.Constant):
+            generics.append(f"    DATA_WIDTH : integer := {module.output_word_size()}")
+            generics.append(f"    VALUE : integer := {module.value}")
+            outputs.append((module.output, "DATA_WIDTH"))
+        else:
+            # For other modules, use DATA_WIDTH generic
+            generics.append(f"    DATA_WIDTH : integer := 8")
+            for idx, input_name in enumerate(module.inputs):
+                inputs.append((input_name, "DATA_WIDTH"))
+            outputs.append((module.output, "DATA_WIDTH"))
+        
+        entity_str = "library IEEE;\n"
+        entity_str += "use IEEE.STD_LOGIC_1164.ALL;\n"
+        entity_str += "use IEEE.NUMERIC_STD.ALL;\n\n"
 
-        outputs.append((module.output, "DATA_WIDTH"))
-
-        generics.append("DATA_WIDTH : integer := 8")  # Default width
-
-        entity_str = f"entity {entity_name} is\n"
+        # Build the entity string
+        entity_str += f"entity {entity_name} is\n"
         if generics:
             entity_str += "    generic (\n"
-            entity_str += ";\n".join(f"        {g}" for g in generics)
+            entity_str += ";\n".join(generics)
             entity_str += "\n    );\n"
         entity_str += "    Port (\n"
 
         port_lines = []
         for name, width in inputs:
-            port_lines.append(f"        {name} : in std_logic_vector({width}-1 downto 0)")
+            if name == "clk":
+                port_lines.append(f"        {name} : in std_logic")
+            else:
+                port_lines.append(f"        {name} : in std_logic_vector({width}-1 downto 0)")
         for name, width in outputs:
             port_lines.append(f"        {name} : out std_logic_vector({width}-1 downto 0)")
 
@@ -189,109 +251,57 @@ class VHDLWriter:
         return entity_str
 
     @staticmethod
-    def generate_module_architecture(module: modules):
+    def generate_module_architecture(module: modules.Module):
         entity_name = type(module).__name__
+        entity_name = VHDLWriter.entity_name_changer(entity_name)
         architecture_str = f"architecture Behavioral of {entity_name} is\n"
-
         architecture_str += "begin\n"
 
         # Generate the behavior based on module type
         if isinstance(module, modules.Input):
-            # Input module logic is not needed
+            # Input module logic is handled externally
             architecture_str += "    -- Input module logic is handled externally\n"
         elif isinstance(module, modules.Output):
-            # Output module logic is not needed
+            # Output module logic is handled externally
             architecture_str += "    -- Output module logic is handled externally\n"
         elif isinstance(module, modules.Constant):
-            # Assign constant value to output
-            width = "DATA_WIDTH"
-            architecture_str += f"    {module.output} <= std_logic_vector(to_unsigned(VALUE, {width}));\n"
+            architecture_str += f"    {module.output} <= std_logic_vector(to_signed(VALUE, DATA_WIDTH));\n"
         elif isinstance(module, modules.Add):
-            # Addition operation
             op_str = VHDLWriter.generate_arithmetic_operation_generic(module, '+')
             architecture_str += f"    {module.output} <= {op_str};\n"
         elif isinstance(module, modules.Sub):
-            # Subtraction operation
             op_str = VHDLWriter.generate_arithmetic_operation_generic(module, '-')
             architecture_str += f"    {module.output} <= {op_str};\n"
-        elif isinstance(module, modules.Mult):
-            # Multiplication operation
-            op_str = VHDLWriter.generate_arithmetic_operation_generic(module, '*')
-            architecture_str += f"    {module.output} <= {op_str};\n"
-        elif isinstance(module, modules.Comparator):
-            raise NotImplementedError("Not implemented")
-            # Comparator operation
-            op_str = VHDLWriter.generate_comparator_operation_generic(module)
-            architecture_str += f"    {module.output} <= {op_str};\n"
-        elif isinstance(module, modules.Mux):
-            raise NotImplementedError("Not implemented")
-
-            # Multiplexer operation
-            op_str = VHDLWriter.generate_mux_operation_generic(module)
-            architecture_str += f"    {module.output} <= {op_str};\n"
-        elif isinstance(module, modules.ShiftLeft):
-            # Shift left operation
-            op_str = VHDLWriter.generate_shift_operation_generic(module, 'sll')
-            architecture_str += f"    {module.output} <= {op_str};\n"
-        elif isinstance(module, modules.ShiftRight):
-            # Shift right operation
-            op_str = VHDLWriter.generate_shift_operation_generic(module, 'srl')
-            architecture_str += f"    {module.output} <= {op_str};\n"
-        elif isinstance(module, modules.TruncateMSBs):
-            raise NotImplementedError("Not implemented")
-            # Truncate MSBs operation
-            op_str = VHDLWriter.generate_truncate_operation_generic(module)
+        elif isinstance(module, modules.ShiftLeft) or isinstance(module, modules.ShiftRight):
+            op_str = VHDLWriter.generate_shift_operation_generic(module)
             architecture_str += f"    {module.output} <= {op_str};\n"
         elif isinstance(module, modules.Register):
-            # Register operation
-            op_str = VHDLWriter.generate_register_operation_generic(module)
-            architecture_str += op_str
+            process_str = VHDLWriter.generate_register_operation_generic(module)
+            architecture_str += process_str
         else:
-            raise NotImplementedError("Not implemented")
             architecture_str += "    -- Unsupported module type\n"
 
-        # End architecture body
         architecture_str += f"end Behavioral;\n\n"
-
         return architecture_str
 
     @staticmethod
-    def generate_arithmetic_operation_generic(module: modules, operator: str):
-        # Handle arithmetic operations with generics
-        input_names = [name for name in module.inputs]
-        if module.data_type == modules.DataType.UNSIGNED:
-            op_str = f'std_logic_vector(unsigned({input_names[0]}) {operator} unsigned({input_names[1]}))'
-        else:
-            op_str = f'std_logic_vector(signed({input_names[0]}) {operator} signed({input_names[1]}))'
-        return op_str
-
-    
-
-    @staticmethod
-    def generate_mux_operation_generic(module: modules.Mux):
-        data_inputs = module.inputs[:-1]
-        select_input = module.inputs[-1]
-        op_str = f"{data_inputs[0]}"
-        for i in range(1, len(data_inputs)):
-            op_str = f"{op_str} when {select_input} = {i} else {data_inputs[i]}"
+    def generate_arithmetic_operation_generic(module: modules.Module, operator: str):
+        x0 = module.inputs[0]
+        x1 = module.inputs[1]
+        op_str = f"std_logic_vector(resize(signed({x0}), OUT_WIDTH) {operator} resize(signed({x1}), OUT_WIDTH))"
         return op_str
 
     @staticmethod
-    def generate_shift_operation_generic(module: modules.Module, shift_op: str):
+    def generate_shift_operation_generic(module: modules.Module):
         input_name = module.inputs[0]
-        shift_length = module.shift_length
-        if module.data_type == modules.DataType.UNSIGNED:
-            op_str = f'std_logic_vector(unsigned({input_name}) {shift_op} {shift_length})'
-        else:
-            op_str = f'std_logic_vector(signed({input_name}) {shift_op} {shift_length})'
+        shift_op = 'sll' if isinstance(module, modules.ShiftLeft) else 'srl'
+        op_str = f"std_logic_vector(resize(signed({input_name}), OUT_WIDTH) {shift_op} SHIFT_AMOUNT)"
         return op_str
-
 
     @staticmethod
     def generate_register_operation_generic(module: modules.Register):
         input_name = module.inputs[0]
         output_name = module.output
-        width = "DATA_WIDTH"
         process_str = f"""
     process(clk)
     begin
@@ -305,7 +315,10 @@ class VHDLWriter:
     @staticmethod
     def write_top_module(f, circuit: Circuit):
         # Write the top module entity
-        entity_str = "entity TopModule is\n"
+        entity_str = "library IEEE;\n"
+        entity_str += "use IEEE.STD_LOGIC_1164.ALL;\n"
+        entity_str += "use IEEE.NUMERIC_STD.ALL;\n\n"
+        entity_str += "entity TopModule is\n"
         entity_str += "    Port (\n"
 
         port_lines = []
@@ -318,10 +331,10 @@ class VHDLWriter:
                 width = module.output_word_size()
                 port_lines.append(f"        {module.name} : out std_logic_vector({width - 1} downto 0)")
 
+        # Add clock signal if necessary (e.g., for registers)
         has_register = any(isinstance(m, modules.Register) for m in circuit.modules)
         if has_register:
             port_lines.append("        clk : in std_logic")
-            port_lines.append("        rst : in std_logic")
 
         entity_str += ";\n".join(port_lines)
         entity_str += "\n    );\n"
@@ -329,65 +342,106 @@ class VHDLWriter:
 
         f.write(entity_str)
 
+        # Write the architecture of the top module
         architecture_str = "architecture Structural of TopModule is\n"
 
+        # Signal declarations
         for module in circuit.modules:
-            if not isinstance(module, (modules.Input, modules.Output)):
+            if not isinstance(module, modules.Output):
                 width = module.output_word_size()
                 architecture_str += f"    signal {module.name}_sig : std_logic_vector({width - 1} downto 0);\n"
 
         architecture_str += "\nbegin\n"
 
+        # Map inputs to internal signals
         for module in circuit.modules:
             if isinstance(module, modules.Input):
-                # Input signals are top-level ports
                 architecture_str += f"    {module.name}_sig <= {module.name};\n"
-            elif isinstance(module, modules.Output):
-                # Output signals are top-level ports
-                src_module = module.input_modules[0]
-                src_signal = VHDLWriter.get_signal_name(src_module)
-                architecture_str += f"    {module.name} <= {src_signal};\n"
+
+        # Instantiate modules and map ports
+        for module in circuit.modules:
+            if isinstance(module, modules.Input) or isinstance(module, modules.Output):
+                continue  # Inputs and outputs are handled separately
             else:
-                # Instantiate the module
                 instance_name = module.name + "_inst"
                 module_type_name = type(module).__name__
-                width = module.output_word_size()
+                module_type_name = VHDLWriter.entity_name_changer(module_type_name)
+                architecture_str += f"\n    -- {module_type_name} instance\n"
+                architecture_str += f"    {instance_name} : entity work.{module_type_name}\n"
 
                 # Map generics
-                architecture_str += f"    {instance_name} : entity work.{module_type_name}\n"
-                architecture_str += f"        generic map (\n"
-                architecture_str += f"            DATA_WIDTH => {width}\n"
-                architecture_str += "        )\n"
+                generics = VHDLWriter.get_generics_map(module)
+                if generics:
+                    architecture_str += "        generic map (\n"
+                    architecture_str += ",\n".join(f"            {k} => {v}" for k, v in generics.items())
+                    architecture_str += "\n        )\n"
 
                 architecture_str += "        port map (\n"
+                if isinstance(module, modules.Register):
+                    architecture_str += "            clk => clk,\n"
 
                 # Map inputs
                 port_mappings = []
                 for idx, input_name in enumerate(module.inputs):
-                    connected_module = module.input_modules[idx]
-                    src_signal = VHDLWriter.get_signal_name(connected_module)
-                    port_mappings.append(f"            {input_name} => {src_signal}")
+                    if input_name == "clk":
+                        port_mappings.append(f"            {input_name} => clk")
+                    else:
+                        connected_module = module.input_modules[idx]
+                        src_signal = VHDLWriter.get_signal_name(connected_module)
+                        port_mappings.append(f"            {input_name} => {src_signal}")
 
                 # Map outputs
                 port_mappings.append(f"            {module.output} => {module.name}_sig")
 
-                # Map clock and reset if needed
-                if isinstance(module, modules.Register):
-                    port_mappings.append("            clk => clk")
-                    port_mappings.append("            rst => rst")
-
                 architecture_str += ",\n".join(port_mappings)
                 architecture_str += "\n        );\n"
 
-        architecture_str += "end Structural;\n\n"
+        # Connect outputs to top-level ports
+        for module in circuit.modules:
+            if isinstance(module, modules.Output):
+                src_module = module.input_modules[0]
+                src_signal = VHDLWriter.get_signal_name(src_module)
+                architecture_str += f"    {module.name} <= {src_signal};\n"
+
+        architecture_str += "\nend Structural;\n\n"
 
         f.write(architecture_str)
+
+    @staticmethod
+    def get_generics_map(module: modules.Module):
+        generics = {}
+        if isinstance(module, (modules.Add, modules.Sub, modules.Mult)):
+            in0_width = module.input_modules[0].output_word_size()
+            in1_width = module.input_modules[1].output_word_size()
+            out_width = module.output_word_size()
+            generics['IN0_WIDTH'] = in0_width
+            generics['IN1_WIDTH'] = in1_width
+            generics['OUT_WIDTH'] = out_width
+        elif isinstance(module, (modules.ShiftLeft, modules.ShiftRight)):
+            in_width = module.input_modules[0].output_word_size()
+            out_width = module.output_word_size()
+            shift_amount = module.shift_length
+            generics['IN_WIDTH'] = in_width
+            generics['OUT_WIDTH'] = out_width
+            generics['SHIFT_AMOUNT'] = shift_amount
+        elif isinstance(module, modules.Register):
+            data_width = module.output_word_size()
+            generics['DATA_WIDTH'] = data_width
+        elif isinstance(module, modules.Constant):
+            data_width = module.output_word_size()
+            value = module.value
+            generics['DATA_WIDTH'] = data_width
+            generics['VALUE'] = value
+        else:
+            data_width = module.output_word_size()
+            generics['DATA_WIDTH'] = data_width
+        return generics
 
     @staticmethod
     def get_signal_name(module):
         if isinstance(module, modules.Input):
             return f"{module.name}_sig"
         elif isinstance(module, modules.Output):
-            return f"{module.name}"
+            return module.name
         else:
             return f"{module.name}_sig"

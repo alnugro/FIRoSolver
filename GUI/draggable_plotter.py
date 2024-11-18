@@ -28,7 +28,6 @@ class DraggablePlotter:
         self.gaussian_width = app.gausian_slid.value()
         self.smoothing_kernel = app.smoothing_kernel_slid.value()
         self.flat_level = app.flatten_box.value()
-        self.ignore_lowerbound_point = 10 ** (float(app.ignore_lowerbound_box.value())/20)
 
         self.dragging_point = None
         self.dragging = False
@@ -51,6 +50,7 @@ class DraggablePlotter:
         self.day_night = day_night
 
         self.position_label = position_label
+        self.current_idx = None
 
     def initialize_plot(self, xdata, middle_y, upper_y, lower_y):
 
@@ -66,7 +66,6 @@ class DraggablePlotter:
         self.upper_line, = self.ax.plot(self.x, self.upper_y, 'g', label='Upperbound')
         self.lower_line, = self.ax.plot(self.x, self.lower_y, 'r', label='Lowerbound')
         
-        self.ignore_line, = self.ax.plot([0,1], [self.ignore_lowerbound_point,self.ignore_lowerbound_point], 'y',linestyle='--', label='Ignore Lowerb.')
 
         not_nan_index = np.where(~np.isnan(self.middle_y))[0][0]
 
@@ -81,6 +80,9 @@ class DraggablePlotter:
 
 
     def update_position_label(self):
+        if self.current_idx is None:
+            self.position_label.setText("Point Pos.: x = N/A, y = N/A")
+            return
         x_val = self.x[self.current_idx]
         if self.dragging_point == 'middle':
             y_val = self.middle_y[self.current_idx]
@@ -213,7 +215,11 @@ class DraggablePlotter:
         
 
         idx = np.argmin(np.abs(self.x - x))
-        if np.isnan(self.upper_y[idx]) or np.isnan(self.lower_y[idx]) or np.isnan(self.middle_y[idx]):
+        # if np.isnan(self.upper_y[idx]) or np.isnan(self.lower_y[idx]) or np.isnan(self.middle_y[idx]):
+        if np.isnan(self.upper_y[idx]) or np.isnan(self.middle_y[idx]):
+            return
+        
+        if self.dragging_point == 'lower' and np.isnan(self.lower_y[idx]):
             return
         self.current_idx = idx  # Update the current index of the draggable point
 
@@ -496,7 +502,6 @@ class DraggablePlotter:
         self.ax.plot(self.x, self.upper_y, 'g', label='Upperbound')
         self.ax.plot(self.x, self.lower_y, 'r', label='Lowerbound')
 
-        self.ax.plot([0,self.x[-1]], [self.ignore_lowerbound_point,self.ignore_lowerbound_point], 'y',linestyle='dotted', label='Ignore Lowerb.')
         
         self.ax.set_xlim([lower_current_xlim, upper_current_xlim])
         self.ax.set_ylim([lower_current_ylim, upper_current_ylim])
@@ -510,17 +515,26 @@ class DraggablePlotter:
         # For middle line
         middle_x, _ = self.middle_draggable_point.get_data()
         middle_idx = np.argmin(np.abs(self.x - middle_x))
-        self.middle_draggable_point.set_data([self.x[middle_idx]], [self.middle_y[middle_idx]])
+        if np.isnan(self.middle_y[middle_idx]):
+            middle_idx=self.reset_draggable_points('middle')
+        else:
+            self.middle_draggable_point.set_data([self.x[middle_idx]], [self.middle_y[middle_idx]])
         self.ax.plot([self.x[middle_idx]], [self.middle_y[middle_idx]], 'bo', picker=5)
         # For upper line
         upper_x, _ = self.upper_draggable_point.get_data()
         upper_idx = np.argmin(np.abs(self.x - upper_x))
-        self.upper_draggable_point.set_data([self.x[upper_idx]], [self.upper_y[upper_idx]])
+        if np.isnan(self.upper_y[upper_idx]):
+            upper_idx=self.reset_draggable_points('upper')
+        else:
+            self.upper_draggable_point.set_data([self.x[upper_idx]], [self.upper_y[upper_idx]])
         self.ax.plot([self.x[upper_idx]], [self.upper_y[upper_idx]], 'go', picker=5)
         # For lower line
         lower_x, _ = self.lower_draggable_point.get_data()
         lower_idx = np.argmin(np.abs(self.x - lower_x))
-        self.lower_draggable_point.set_data([self.x[lower_idx]], [self.lower_y[lower_idx]])
+        if np.isnan(self.lower_y[lower_idx]):
+            lower_idx=self.reset_draggable_points('lower')
+        else:
+            self.lower_draggable_point.set_data([self.x[lower_idx]], [self.lower_y[lower_idx]])
         self.ax.plot([self.x[lower_idx]], [self.lower_y[lower_idx]], 'ro', picker=5)
 
         # Update the draggable point position label
@@ -566,9 +580,22 @@ class DraggablePlotter:
 
         return 0
     
-    def reset_draggable_points(self):
+    def reset_draggable_points(self, drag_point = None):
         # Find indices where middle_y is not NaN
-        valid_indices = np.where(~np.isnan(self.middle_y))[0]
+        if drag_point is not None:
+            if drag_point == 'middle':
+                valid_indices = np.where(~np.isnan(self.middle_y))[0]
+            elif drag_point == 'upper':
+                valid_indices = np.where(~np.isnan(self.upper_y))[0]
+            elif drag_point == 'lower':
+                valid_indices = np.where(~np.isnan(self.lower_y))[0]
+        else:
+            valid_indices = np.where(~np.isnan(self.lower_y))[0]
+            if len(valid_indices) == 0:
+                valid_indices = np.where(~np.isnan(self.middle_y))[0]
+                if len(valid_indices) == 0:
+                    valid_indices = np.where(~np.isnan(self.upper_y))[0]
+                
         if len(valid_indices) == 0:
             print("No valid data points to reset draggable points.")
             return 1
@@ -577,12 +604,22 @@ class DraggablePlotter:
         idx = valid_indices[len(valid_indices) // 2]
 
         # Update the positions of the draggable points
-        self.middle_draggable_point.set_data([self.x[idx]], [self.middle_y[idx]])
-        self.upper_draggable_point.set_data([self.x[idx]], [self.upper_y[idx]])
-        self.lower_draggable_point.set_data([self.x[idx]], [self.lower_y[idx]])
+        if drag_point is None or drag_point == 'middle':
+            self.middle_draggable_point.set_data([self.x[idx]], [self.middle_y[idx]])
+            if drag_point is not None:
+                return idx
+        if drag_point is None or drag_point == 'upper':
+            self.upper_draggable_point.set_data([self.x[idx]], [self.upper_y[idx]])
+            if drag_point is not None:
+                return idx
+        if drag_point is None or drag_point == 'lower':
+            self.lower_draggable_point.set_data([self.x[idx]], [self.lower_y[idx]])
+            if drag_point is not None:
+                return idx
 
         # Redraw the plot to reflect the changes
-        self.redraw_plot()
+        if drag_point is None:
+            self.redraw_plot()
         print(f"Draggable points reset to index {idx}.")
 
         return 0

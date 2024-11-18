@@ -64,8 +64,8 @@ class FIRFilterGurobi:
         self.freq_upper_lin=0
         self.freq_lower_lin=0
 
-        self.coef_accuracy = 10
-        self.intW = 4
+        self.coef_accuracy = 4
+        self.intW = 1
         self.fracW = self.wordlength - self.intW
 
         

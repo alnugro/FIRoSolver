@@ -30,16 +30,16 @@ class IterationManager(QObject):
             # Prepare data for this iteration
             i = self.current_iteration
             delta = 0.030034
-            order_current = 24
+            order_current = 20
 
             # Test inputs (use your actual data preparation logic)
             filter_type = 0
             accuracy = 3
-            wordlength = 11
+            wordlength = 10
             gain_upperbound = 1
             gain_lowerbound = 1
             coef_accuracy = 3
-            intW = 2
+            intW = 1
 
             adder_count = None
             adder_depth = 0
@@ -57,9 +57,9 @@ class IterationManager(QObject):
             deepsearch = True
             patch_multiplier = 1
             gurobi_auto_thread = False
-            worker = 4
-            search_step = 1
-            continue_solver = True
+            worker = 2
+            search_step = 2
+            continue_solver = False
             problem_id = 0
 
         

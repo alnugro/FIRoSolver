@@ -46,7 +46,8 @@ class SaveLoadHandler(QWidget):
         load_dir = os.path.join(os.getcwd(),  "saved_data")
 
         # Open a file dialog to select the .plotdata file
-        file_path, _ = QFileDialog.getOpenFileName(self, "Load Data", load_dir, f"Plot Data Files (*{file_type})")
+        file_path, test = QFileDialog.getOpenFileName(self, "Load Data", load_dir, f"Plot Data Files (*{file_type})")
+        print(test)
 
         data_dict = None
 

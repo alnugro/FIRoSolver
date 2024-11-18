@@ -21,7 +21,7 @@ class MagnitudePlotter:
         self.fig, self.ax = plt.subplots(figsize=(30, 4))
         self.fig.subplots_adjust(left=0.05, bottom=0.1, right=0.98, top=0.98)
         
-
+        plt.rcParams['lines.linewidth'] = 0.7
         self.day_night = day_night
         plt.rcParams['font.size'] = 11
         if self.day_night:
@@ -34,19 +34,16 @@ class MagnitudePlotter:
             self.ax.grid(True, linewidth=1)
 
         for spine in self.ax.spines.values():
-            spine.set_linewidth(1)
+            spine.set_linewidth(0.5)
 
         # Set DPI
-        plt.rcParams['figure.dpi'] = 20
+        # plt.rcParams['figure.dpi'] = 20
 
         # Disable antialiasing globally
         plt.rcParams['lines.antialiased'] = False   # For lines in plots
         plt.rcParams['patch.antialiased'] = False   # For patches, like rectangles and polygons
         plt.rcParams['text.antialiased'] = False    # For text
         
-
-    
-
 
         self.xdata_edges = []
         # var to put the object of Draggable plotter
@@ -78,7 +75,7 @@ class MagnitudePlotter:
         # table_data = table_data[table_data[:, 3].argsort()]  # Sort table_data by the fourth column (start frequency)
         table_data = sorted(table_data, key=lambda x: x[4])
         
-
+        print (f"table_data {table_data}")
         xdata = np.linspace(0, 1, 500)
         middle_y = np.full(xdata.shape, np.nan)
         upper_y = np.full(xdata.shape, np.nan)
@@ -123,7 +120,10 @@ class MagnitudePlotter:
             end_index =  np.where(xdata == end_freq)[0][0]
             middle_y[start_index:end_index+1] = magnitude
             upper_y[start_index:end_index+1] = magnitude + upper_bound
-            lower_y[start_index:end_index+1] = magnitude - lower_bound
+            if type == 'passband':
+                lower_y[start_index:end_index+1] = magnitude - lower_bound
+            else:
+                pass
 
 
                     
@@ -216,7 +216,7 @@ class MagnitudePlotter:
  
     def get_frequency_bounds(self, only_plot = False):
         if not(self.draggable_lines):
-            raise ValueError("Dragable line cannot be empty")
+            return None, None, None, None
         
         #array to save the transition band
         cutoffs_upper_ydata = []
@@ -227,15 +227,21 @@ class MagnitudePlotter:
         xdata , middle_y , lower_y, upper_y = self.draggable_lines.get_plot_data()
 
         if only_plot:
-            return xdata , middle_y , lower_y, upper_y 
-        
-        for xcut in cutoffs_x:
-            index = np.where(xdata == xcut)[0][0]
-            cutoffs_upper_ydata.append(upper_y[index])
-            cutoffs_lower_ydata.append(lower_y[index])
+            return xdata , middle_y , lower_y, upper_y
         
         upper_ydata = copy.deepcopy(upper_y)
         lower_ydata = copy.deepcopy(lower_y)
+        
+        for xdata_index, xdata_value in enumerate(xdata):
+            if np.isnan(lower_ydata[xdata_index]) and ~np.isnan(upper_ydata[xdata_index]):
+                lower_ydata[xdata_index] = 0
+        
+        for xcut in cutoffs_x:
+            index = np.where(xdata == xcut)[0][0]
+            cutoffs_upper_ydata.append(upper_ydata[index])
+            cutoffs_lower_ydata.append(lower_ydata[index])
+        
+               
 
         return xdata, upper_ydata, lower_ydata ,cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata
 

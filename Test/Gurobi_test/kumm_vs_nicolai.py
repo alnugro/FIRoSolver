@@ -2,14 +2,14 @@ import random
 import time
 import numpy as np
 from gurobi_baseline import FIRFilterGurobi
-from gurobi_kumm import FIRFilterKumm
+from gurobi_kumm_true import FIRFilterKumm
 from pebble import ProcessPool
 from concurrent.futures import TimeoutError  # Correct import for TimeoutError
 import multiprocessing
 
 # Initialize global variable
 it = 6
-timeout = 7200  # Timeout in seconds (5 minutes)
+timeout = 60  # Timeout in seconds (5 minutes)
 random_seed = 1
 random.seed(random_seed)
 

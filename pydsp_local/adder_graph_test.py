@@ -93,23 +93,28 @@ def Mux_test():
 
     c.connect(src_module=o1, dst_module=out, dst_port=0)
 
+    for connect in c.connections:
+        print(connect)
+        print("src_module",connect.src_module.name)
+        print("dst_module",connect.dst_module.name)
+        print("dst_port",connect.dst_port)
 
     # validate circuit (e.g., open input ports, invalid connections, etc.)
-    c.validate()
-    # print info
-    c.print_info()
-    # run simulation
-    i1.define_input_data(get_random_values(0, 1, 5))
-    i0_val_bef = None
-    for time_step in range(10):
-        i0_val = i0.get_output(time_step)
-        out_val = out.get_output(time_step)
-        print(f"t={time_step} => out={out_val} , i0 ={i0_val}")
+    # c.validate()
+    # # print info
+    # c.print_info()
+    # # run simulation
+    # i1.define_input_data(get_random_values(0, 1, 5))
+    # i0_val_bef = None
+    # for time_step in range(10):
+    #     i0_val = i0.get_output(time_step)
+    #     out_val = out.get_output(time_step)
+    #     print(f"t={time_step} => out={out_val} , i0 ={i0_val}")
 
-        if i0_val_bef:
-            print(f"out = {i0_val * 4 - i0_val +  i0_val_bef * 4 - i0_val_bef}")
+    #     if i0_val_bef:
+    #         print(f"out = {i0_val * 4 - i0_val +  i0_val_bef * 4 - i0_val_bef}")
         
-        i0_val_bef = i0_val
+    #     i0_val_bef = i0_val
         
         # print(f"a0 = (i0 << 2) + i0 + a0(-1) = (i0 << 2) + i0 +")
         # print(f"out = i0 * 4 + i0 +  i0(-1) * 4 + i0(-1)")

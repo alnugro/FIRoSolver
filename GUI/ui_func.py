@@ -40,7 +40,7 @@ class UIFunc:
         'cutoffs_x': cutoffs_x,
         'cutoffs_upper_ydata_lin': cutoffs_upper_ydata,
         'cutoffs_lower_ydata_lin': cutoffs_lower_ydata,
-        'ignore_lowerbound': self.db_to_linear(self.main_window.ignore_lowerbound_box.value()),
+        'ignore_lowerbound': 0,
         'wordlength': self.main_window.wordlength_box.value(),
         'adder_depth': self.main_window.adder_depth_box.value(),
         'avail_dsp': self.main_window.available_dsp_box.value(),
@@ -58,7 +58,50 @@ class UIFunc:
         'start_with_error_prediction': self.main_window.start_with_error_prediction_check.isChecked(),
         'deepsearch': self.main_window.deepsearch_check.isChecked(),
         'patch_multiplier' : self.main_window.patch_multiplier_box.value(),
-        'gurobi_auto_thread': self.main_window.gurobi_auto_thread_check.isChecked()
+        'gurobi_auto_thread': self.main_window.gurobi_auto_thread_check.isChecked(),
+        'worker': self.main_window.worker_box.value(),
+        'search_step':self.main_window.search_step_box.value(),
+        'continue_solver': False,
+        'problem_id': None,
+
+        }
+        return input_data
+    
+    def solver_input_dict_generator_auto(self, xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata):
+        input_data = {
+        'filter_type': self.main_window.filter_type_drop.currentIndex(),
+        'order_upperbound': self.main_window.order_upper_box.value(),
+        'original_xdata': np.array(xdata).tolist(),
+        'original_upperbound_lin': np.array(upper_ydata).tolist(),
+        'original_lowerbound_lin': np.array(lower_ydata).tolist(),
+        'cutoffs_x': np.array(cutoffs_x).tolist(),
+        'cutoffs_upper_ydata_lin': np.array(cutoffs_upper_ydata).tolist(),
+        'cutoffs_lower_ydata_lin': np.array(cutoffs_lower_ydata).tolist(),
+        'ignore_lowerbound': 0,
+        'wordlength': self.main_window.wordlength_assertion_box.value(),
+        'adder_depth': self.main_window.adder_depth_box_2.value(),
+        'avail_dsp': self.main_window.available_dsp_box_2.value(),
+        'adder_wordlength_ext': self.main_window.adder_wordlength_ext_box_2.value(),
+        'gain_upperbound': self.main_window.gain_upper_box_2.value(),
+        'gain_lowerbound': self.main_window.gain_lower_box_2.value(),
+        'coef_accuracy': self.main_window.coef_accuracy_box_2.value(),
+        'intW': self.main_window.integer_width_box_2.value(),
+        'gurobi_thread': self.main_window.gurobi_thread_box.value(),
+        'pysat_thread': self.main_window.pysat_thread_box.value(),
+        'z3_thread': self.main_window.z3_thread_box.value(),
+        'timeout': self.main_window.solver_timeout_box.value(),
+        'start_with_error_prediction': self.main_window.start_with_error_prediction_check.isChecked(),
+        'solver_accuracy_multiplier': self.main_window.solver_accuracy_multiplier_box_2.value(),
+        'start_with_error_prediction': self.main_window.start_with_error_prediction_check.isChecked(),
+        'deepsearch': self.main_window.deepsearch_check.isChecked(),
+        'patch_multiplier' : self.main_window.patch_multiplier_box.value(),
+        'gurobi_auto_thread': self.main_window.gurobi_auto_thread_check.isChecked(),
+        'worker': self.main_window.worker_box.value(),
+        'search_step':self.main_window.search_step_box.value(),
+        'continue_solver': False,
+        'problem_id': None,
+        'asserted_wordlength': self.main_window.assert_wordlength_check.isChecked(),
+        'real_wordlength': self.main_window.real_word_check.isChecked(),
         }
         return input_data
     

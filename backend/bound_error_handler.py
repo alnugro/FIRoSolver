@@ -196,7 +196,7 @@ class BoundErrorHandler:
                 print(f"leak is inside bound: {leak_x_value} coef accuracy was bad, reducing bounds")
                 # print(f"this is inside {x_indices}")
                 if upperbound_cor[x_indices] - np.abs(leaks_mag[i]) < lowerbound_cor[x_indices] or lowerbound_cor[x_indices] + np.abs(leaks_mag[i]) > upperbound_cor[x_indices]:
-                    #if the bounds become flipped make them to the middle
+                    #if the bounds is flipped, interpolate them to the middle
                     upperbound_cor[x_indices] = (upperbound_cor[x_indices] + lowerbound_cor[x_indices])/2
                     lowerbound_cor[x_indices] = (upperbound_cor[x_indices] + lowerbound_cor[x_indices])/2
                     self.bound_too_small_flag = True

@@ -94,7 +94,7 @@ class FIRFilterGurobi:
         internal_ignore_lowerbound = round(self.ignore_lowerbound*(2**self.fracW), self.coef_accuracy)
 
 
-        # print("Running Gurobi with the following parameters:")
+        # print("\nRunning Gurobi with the following parameters:")
         # print(f"thread: {thread}")
         # print(f"minmax_option: {minmax_option}")
         # print(f"h_zero_count: {h_zero_count}")
@@ -107,6 +107,16 @@ class FIRFilterGurobi:
         # print(f"gain_lowerbound: {self.gain_lowerbound}")
         # print(f"wordlength: {self.wordlength}")
         # print(f"fracW: {self.fracW}")
+        # print(f"intW: {self.intW}")
+        # print(f"coef_accuracy: {self.coef_accuracy}")
+        # print(f"half_order: {self.half_order}")
+        # print(f"adder_count: {self.adder_count}")
+        # print(f"adder_depth: {self.adder_depth}")
+        # print(f"avail_dsp: {self.avail_dsp}")
+        # print(f"adder_wordlength: {self.adder_wordlength}")
+        # print(f"gain_upperbound: {self.gain_upperbound}")
+        # print(f"gain_lowerbound: {self.gain_lowerbound}\n")
+        
 
         with gp.Env() as env:
             with gp.Model(env=env) as model:
@@ -227,8 +237,6 @@ class FIRFilterGurobi:
                                 'gain_res' : self.gain_res,
                             })
                         
-                    
-
                             
                 else:
                     print("Gurobi: Unsatisfiable")
@@ -488,7 +496,7 @@ class FIRFilterGurobi:
                         norelax = (adderm**2) *  (half_order - h_zero_count) * 10
 
                     model.setParam('NoRelHeurWork', norelax)
-                # model.setParam('OutputFlag', 0)
+                model.setParam('OutputFlag', 0)
                 # model.setParam('TimeLimit', 1)     #timeout
 
                 if presolve_result != None:
@@ -576,16 +584,17 @@ class FIRFilterGurobi:
                 
 
                 
-                # c0,w is always 0 except at 0 so input
+                # c0,w is always 0 except at w = 0
                 for w in range(1, self.adder_wordlength):
                     model.addConstr(c[0][w] == 0)
 
                 model.addConstr(c[0][0] == 1)
 
                 # dsp are odd numbers
-                for k in range(self.adder_count + 2, self.avail_dsp+1):
+                for k in range(self.adder_count + 1, self.adder_count + 1 + self.avail_dsp):
                     model.addConstr(c[k][0] == 1)
 
+                #c0 c1 c2 dsp czero
 
                 # Bound ci,0 to be an odd number
                 for i in range(1, self.adder_count + 1):
@@ -593,7 +602,7 @@ class FIRFilterGurobi:
 
                 # Last c or c[N+1] is connected to ground, so all zeroes
                 for w in range(self.adder_wordlength):
-                    model.addConstr(c[self.adder_count + 1][w] == 0)
+                    model.addConstr(c[self.adder_count + 1 + self.avail_dsp][w] == 0)
 
                 # Input multiplexer constraints
                 for i in range(1, self.adder_count + 1):
@@ -1053,10 +1062,25 @@ class FIRFilterGurobi:
                         rho_values.append(value)
                     self.result_model.update({"rho": rho_values})
 
-                    if h_zero_count:
-                        self.result_model.update({"h_zero_count": h_zero_count})
-                    if self.adder_count:
-                        self.result_model.update({"am_count": self.adder_count})
+                    self.result_model.update({"h_zero_count": h_zero_count})
+                    self.result_model.update({"am_count": self.adder_count})
+
+                    
+                    dsp_values = []
+                    for i in range(len(c)):
+                        if i > self.adder_count and i != len(c) - 1:
+                            int_value = 0
+                            for j, c_val in enumerate(c[i]):
+                                bool_value = 1 if c_val.X > 0.5 else 0
+                                if j == self.adder_wordlength - 1:
+                                    int_value += -2 ** (j - self.fracW) * bool_value
+                                elif j < self.fracW:
+                                    int_value += 2 ** (-1 * (self.fracW - j)) * bool_value
+                                else:
+                                    int_value += 2 ** (j - self.fracW) * bool_value
+                            dsp_values.append(int_value)
+                    self.result_model.update({"dsp_values": dsp_values})
+                                
 
 
                 elif model.Status == GRB.TIME_LIMIT:
@@ -1084,7 +1108,7 @@ if __name__ == "__main__":
 
     # Test inputs
     filter_type = 0
-    half_order = 6
+    half_order = 13
     accuracy = 3
     wordlength = 10
     gain_upperbound = 1
@@ -1092,14 +1116,17 @@ if __name__ == "__main__":
     coef_accuracy = 3
     intW = 1
 
-    adder_count = 50
-    adder_depth = 5
-    avail_dsp = 6
+    adder_count = 2
+    adder_depth = 0
+    avail_dsp = 1
     adder_wordlength_ext = 0
     h_zero_count = 0	
+
+    gurobi_thread = 20
+    presolve = True
     
     
-    delta = 0.4
+    delta = 0.030034
     passband_error = delta
     stopband_error = delta
     space = half_order * accuracy
@@ -1109,8 +1136,8 @@ if __name__ == "__main__":
     freq_lower = np.full(space, np.nan)
 
     # Manually set specific values for the elements of freq_upper and freq_lower in dB
-    lower_half_point = int(0.2 * space)
-    upper_half_point = int(0.7 * space)
+    lower_half_point = int(0.3 * space)
+    upper_half_point = int(0.5 * space)
     end_point = space
 
     freq_upper[0:lower_half_point] = 1 + passband_error
@@ -1149,13 +1176,10 @@ if __name__ == "__main__":
                  intW,
                  )
             
-    gurobi_thread = 15
-    presolve = False
+    
     presolve_result = {}
 
     if presolve:
-
-
         target_result = fir_filter.run_barebone(gurobi_thread, 'find_max_zero')
         max_h_zero = target_result['max_h_zero']
 
@@ -1165,7 +1189,7 @@ if __name__ == "__main__":
     
         h_max = []
         h_min = []
-        for m in range(half_order + 1):
+        for m in range(half_order):
             target_result_max = fir_filter.run_barebone_real(gurobi_thread, 'maximize_h',max_h_zero, m)
             target_result_min = fir_filter.run_barebone_real(gurobi_thread, 'minimize_h',max_h_zero, m)
             h_max.append(target_result_max['target_h_res'])
@@ -1182,70 +1206,85 @@ if __name__ == "__main__":
         print(presolve_result)
     # Run solver
     target_result,_,_ = fir_filter.runsolver(0,None,'try_max_h_zero_count',adder_count, h_zero_count)
-    psi_beta= target_result['psi_beta']
-    beta = target_result['beta']
-    psi_alpha = target_result['psi_alpha']
-    alpha = target_result['alpha']
+    print(target_result)
+    # psi_beta= target_result['psi_beta']
+    # beta = target_result['beta']
+    # psi_alpha = target_result['psi_alpha']
+    # alpha = target_result['alpha']
 
-    print("psi_beta: ", psi_beta)
-    print("beta: ", beta)
-    print("psi_alpha: ", psi_alpha)
-    print("alpha: ", alpha)
-    beta_int = [0 for d in range(len(beta))]
-    for beta_index, beta_val in enumerate(beta):
-        for b_index, b_val in enumerate(beta_val):
-            if b_val == 1:
-                beta_int[beta_index] = b_index
-                break
-    for b, b_val in enumerate(beta_int):
-        print(f"beta_{b+1}: {b_val}")
-    beta_depth = [0 for d in range(len(beta[-1]))]
-    for b, b_list in enumerate(beta):
-        if b_list[0] ==1:
-            beta_depth[b] =1
-        else:
-            for b_index, b_value in enumerate(b_list):
-                if b_value == 1:
-                    beta_depth[b] = beta_depth[b_index-1] + 1
-                    break
-    print("beta_depth: ", beta_depth)
-    alpha_depth = [0 for d in range(len(alpha[-1]))]
-    for a, a_list in enumerate(alpha):
-        if a_list[0] ==1:
-            alpha_depth[a] =1
-        else:
-            for a_index, a_value in enumerate(a_list):
-                if a_value == 1:
-                    alpha_depth[a] = alpha_depth[a_index-1] + 1
-                    break
-    print("alpha_depth: ", alpha_depth)
-    max_combined_depth = [0 for d in range(len(alpha[-1]))]
-    for i in range(adder_count):
-        alpha_depth = 0
-        beta_depth = 0
-        if alpha[i][0] == 1:
-            print(f"alpha {i} 0")
-            alpha_depth = 0
-        else:
-            print(i)
-            for j in range(1,i+1):
-                if i == 3:
-                    print(f"alphaada {i} {j} is {alpha[i][j]}")
+    # print("psi_beta: ", psi_beta)
+    # print("beta: ", beta)
+    # print("psi_alpha: ", psi_alpha)
+    # print("alpha: ", alpha)
+    # beta_int = [0 for d in range(len(beta))]
+    # for beta_index, beta_val in enumerate(beta):
+    #     for b_index, b_val in enumerate(beta_val):
+    #         if b_val == 1:
+    #             beta_int[beta_index] = b_index
+    #             break
+    # for b, b_val in enumerate(beta_int):
+    #     print(f"beta_{b+1}: {b_val}")
+    # beta_depth = [0 for d in range(len(beta[-1]))]
+    # for b, b_list in enumerate(beta):
+    #     if b_list[0] ==1:
+    #         beta_depth[b] =1
+    #     else:
+    #         for b_index, b_value in enumerate(b_list):
+    #             if b_value == 1:
+    #                 beta_depth[b] = beta_depth[b_index-1] + 1
+    #                 break
+    # print("beta_depth: ", beta_depth)
+    # alpha_depth = [0 for d in range(len(alpha[-1]))]
+    # for a, a_list in enumerate(alpha):
+    #     if a_list[0] ==1:
+    #         alpha_depth[a] =1
+    #     else:
+    #         for a_index, a_value in enumerate(a_list):
+    #             if a_value == 1:
+    #                 alpha_depth[a] = alpha_depth[a_index-1] + 1
+    #                 break
+    # print("alpha_depth: ", alpha_depth)
+    # max_combined_depth = [0 for d in range(len(alpha[-1]))]
+    # for i in range(adder_count):
+    #     alpha_depth = 0
+    #     beta_depth = 0
+    #     if alpha[i][0] == 1:
+    #         print(f"alpha {i} 0")
+    #         alpha_depth = 0
+    #     else:
+    #         print(i)
+    #         for j in range(1,i+1):
+    #             if i == 3:
+    #                 print(f"alphaada {i} {j} is {alpha[i][j]}")
 
-                if alpha[i][j] == 1:
-                    print(f"alpha {i} {j}")
-                    alpha_depth = max_combined_depth[j-1]
-                    # print("alpha_depth: ", alpha_depth)
-        if beta[i][0] == 1:
-            beta_depth = 0
-        else:
-            for j in range(1,i+1):
-                if beta[i][j] == 1:
-                    beta_depth = max_combined_depth[j-1]
-                    # print("beta_depth: ", beta_depth)
-        max_combined_depth[i] = max(alpha_depth, beta_depth) + 1
-        # print("max_combined_depth: ", max_combined_depth[i])
-    print("max_combined_depth: ", max_combined_depth)
+    #             if alpha[i][j] == 1:
+    #                 print(f"alpha {i} {j}")
+    #                 alpha_depth = max_combined_depth[j-1]
+    #                 # print("alpha_depth: ", alpha_depth)
+    #     if beta[i][0] == 1:
+    #         beta_depth = 0
+    #     else:
+    #         for j in range(1,i+1):
+    #             if beta[i][j] == 1:
+    #                 beta_depth = max_combined_depth[j-1]
+    #                 # print("beta_depth: ", beta_depth)
+    #     max_combined_depth[i] = max(alpha_depth, beta_depth) + 1
+    #     # print("max_combined_depth: ", max_combined_depth[i])
+    # print("max_combined_depth: ", max_combined_depth)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # fir_filter.run_barebone(0,None,None)
     # target_result = fir_filter.run_barebone(1,'minimize_h',None, 0)

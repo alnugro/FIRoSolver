@@ -5,7 +5,9 @@ import time
 import copy
 import numpy as np
 import math
-
+import json
+from filelock import FileLock
+import ast
 
 try:
     from .formulation_pysat import FIRFilterPysat
@@ -24,10 +26,11 @@ except:
 
 class Presolver:
     def __init__(self, input_data):
-        
         # Explicit declaration of instance variables with default values (if applicable)
         self.filter_type = None
         self.order_upperbound = None
+
+        self.continue_solver = None
 
         self.wordlength = None
         
@@ -59,6 +62,7 @@ class Presolver:
         self.cutoffs_lower_ydata_lin = None
 
         self.half_order = None
+        self.problem_id = None
 
 
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
@@ -82,6 +86,74 @@ class Presolver:
         self.satisfiability = 'unsat'
 
         self.max_zero_reduced = 0
+
+    def presolve_update(self, presolve_result):
+        JSON_FILE = 'problem_description.json'
+        LOCK_FILE = JSON_FILE + '.lock'
+        lock = FileLock(LOCK_FILE)
+
+        target_pre = copy.deepcopy(presolve_result)
+
+
+        with lock:
+            with open(JSON_FILE, 'r') as f:
+                data = json.load(f)
+
+                problem_id = str(self.problem_id)
+                data[problem_id].update(
+                    {'presolve_result': target_pre}
+                )
+                with open(JSON_FILE, 'w') as f:
+                    json.dump(data, f, indent=4, sort_keys=True)
+
+    def load_presolve(self):
+        JSON_FILE = 'problem_description.json'
+        LOCK_FILE = JSON_FILE + '.lock'
+        lock = FileLock(LOCK_FILE)
+
+        with lock:
+            with open(JSON_FILE, 'r') as f:
+                data = json.load(f)
+        try:
+            problem_id = str(self.problem_id)
+            presolve_result = {}
+            for key, value in data[problem_id]['presolve_result'].items():
+                presolve_result[key] = self.convert_nested_list(value)
+        except KeyError:
+            print(f"@MSG@ : Presolve result not found in JSON file for problem ID {self.problem_id}, running presolve again.")
+            presolve_result = None
+
+        return presolve_result
+    
+    def convert_nested_list(self, lst):
+        """Recursively convert elements in nested lists to int or float where possible."""
+        if isinstance(lst, str):
+            try:
+                lst = ast.literal_eval(lst)
+            except Exception as e:
+                print(f"Error parsing string to list: {e}")
+                return lst  # Return the string if it can't be parsed
+
+        if isinstance(lst, list):
+            if not lst:  # Return immediately if the list is empty
+                return lst
+
+
+            for i in range(len(lst)):
+                lst[i] = self.convert_nested_list(lst[i])  # Recursively process each element
+            return lst
+        else:
+            # lst is not a list; try to convert it to int or float
+            if isinstance(lst, str):
+                try:
+                    if '.' in lst:
+                        return float(lst)
+                    else:
+                        return int(lst)
+                except ValueError:
+                    return lst  # Return the string if it can't be converted
+            else:
+                return lst  # Return the element as is if it's not a string or list
 
     def minmax_h_zero_worker_func(self,input_m):
         """Function to be executed in parallel."""
@@ -170,6 +242,18 @@ class Presolver:
     def run_presolve_gurobi(self, h_zero_input = None):
         presolve_result = {}
 
+        if self.continue_solver:
+            presolve_result = self.load_presolve()
+            if presolve_result:
+                print(f"@MSG@ : Presolve result loaded from JSON file for problem ID {self.problem_id}.")
+                max_zero = presolve_result['max_zero']
+                min_adderm = presolve_result['min_adderm']
+                print(f"@MSG@ : Loaded max zero: {max_zero}, min adder count: {min_adderm}")
+                return presolve_result
+            else:
+                presolve_result = {}
+
+
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
             self.half_order, #you pass upperbound directly to gurobi
@@ -225,13 +309,6 @@ class Presolver:
         min_gain = target_result['min_gain']
         target_result = []
 
-        print("\nFinding Minimum Gain without max zero assertion......\n")
-        target_result = gurobi_instance.run_barebone_real(self.gurobi_thread, 'find_min_gain',None, None)
-        if target_result['satisfiability'] == 'unsat':
-            raise RuntimeError("Gurobi_Presolve: problem is somehow unsat, but this should be sat, Formulation Error: contact developer")
-
-        min_gain_without_zero = target_result['min_gain']
-        self.h_res_without_zero = target_result['h_res']
 
 
         print("\nFinding Minimum and Maximum For each Filter Coefficients......\n")
@@ -245,17 +322,9 @@ class Presolver:
         self.h_min = [None for m in range(self.half_order)]
         #run h_zero minmax finder using threadpool
         self.run_minmax_h_zero_threadpool( half_order_list)
+        min_adderm = self.min_adderm_finder(self.h_max,self.h_min)
 
-        self.h_max_without_zero = []
-        self.h_min_without_zero = []
-
-        self.max_h_zero_for_minmax = max_h_zero
-
-        self.h_max_without_zero = [None for m in range(self.half_order)] 
-        self.h_min_without_zero = [None for m in range(self.half_order)]
-
-        self.run_minmax_h_threadpool( half_order_list)
-
+        print(f"@MSG@ : Found max zero: {max_h_zero}, min adder count: {min_adderm}")
         presolve_result.update({
             'max_zero' : max_h_zero,
             'min_gain' : min_gain,
@@ -264,17 +333,13 @@ class Presolver:
             'max_zero_reduced' : self.max_zero_reduced,
             'h_res':self.h_res,
             'gain_res': self.gain_res,
-
-            'min_gain_without_zero' : min_gain_without_zero,
-            'hmax_without_zero' : self.h_max_without_zero,
-            'hmin_without_zero' : self.h_min_without_zero,
-            'h_res_without_zero':self.h_res_without_zero,
+            'min_adderm': min_adderm,
 
         })
         # print(presolve_result)
 
         self.max_h_zero_for_minmax = None
-
+        self.presolve_update(presolve_result)
 
         return presolve_result
     

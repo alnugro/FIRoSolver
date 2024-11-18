@@ -10,6 +10,9 @@ import json
 from collections import OrderedDict
 import math
 import threading
+import os
+from functools import partial
+import ast
 
 
 
@@ -26,7 +29,45 @@ except ImportError:
     from solver_func import SolverFunc
 
 
+def try_asserted(config, presolve_result, adderm, h_zero, thread, done_flag=None):
+    """
+    Tries to solve for the given adderm and h_zero values using a Gurobi instance.
+    """
+    
+    
+    
+    # Create an instance of FIRFilterGurobi using the configuration dictionary
+    gurobi_instance = FIRFilterGurobi(
+        config["filter_type"],
+        config["half_order"],  # Upper bound is passed directly to Gurobi
+        config["xdata"],
+        config["upperbound_lin"],
+        config["lowerbound_lin"],
+        config["ignore_lowerbound"],
+        config["adder_count"],
+        config["wordlength"],
+        config["adder_depth"],
+        config["avail_dsp"],
+        config["adder_wordlength_ext"],
+        config["gain_upperbound"],
+        config["gain_lowerbound"],
+        config["coef_accuracy"],
+        config["intW"]
+    )
 
+    if done_flag is not None:
+        if done_flag.value:
+            time.sleep(5)
+            return None, None
+
+    print(f"@MSG@ : Trying to solve for adderm: {adderm} and h_zero: {h_zero} with thread: {thread}")
+
+    # Run the solver
+    target_result, satisfiability_loc, h_zero_count = gurobi_instance.runsolver(
+        thread, presolve_result, 'try_max_h_zero_count', adderm, h_zero
+    )
+
+    return target_result, satisfiability_loc
 
 class MainProblem:
     def __init__(self, input_data):
@@ -74,7 +115,7 @@ class MainProblem:
             if hasattr(self, key):  # Only set attributes that exist in the class
                 setattr(self, key, value)
 
-
+        self.am_start = 0 if self.am_start is None else self.am_start
         self.order_current = None
 
         self.min_order = None
@@ -99,6 +140,10 @@ class MainProblem:
         self.skip_as_search = False
         self.skip_deepsearch = False
         self.min_am = 0
+        self.futures = []
+        self.increased_thread = None
+        self.increased_thread_idx = None
+        self.all_done = []
 
 
     def initialize_json_file(self, deepsearch = False):
@@ -113,7 +158,7 @@ class MainProblem:
 
             problem_id = str(self.problem_id)
             if deepsearch:
-                if ('deepsearch_h_zero' not in data or 'deepsearch_am_cost' not in data) and self.continue_solver is False:
+                if ('deepsearch_h_zero' not in data or 'deepsearch_am_cost' not in data) or self.continue_solver is False:
                     data[problem_id].update({'deepsearch_h_zero': []})
                     data[problem_id].update({'deepsearch_am_cost': []})
                     data[problem_id].update({'deepsearch_target_result': {}})
@@ -124,7 +169,7 @@ class MainProblem:
                     h_zero, am_cost = self.continue_search(data[problem_id], deepsearch=True)
                     return h_zero, am_cost
             else:
-                if 'as_results' not in data[problem_id] and self.continue_solver is False:
+                if 'as_results' not in data[problem_id] or self.continue_solver is False:
                     data[problem_id].update({'as_results': {}})
                     data[problem_id].update({'as_target_result': {}})
                     with open(JSON_FILE, 'w') as f:
@@ -141,13 +186,15 @@ class MainProblem:
         lock = FileLock(LOCK_FILE)
 
         target_r = copy.deepcopy(target_result)
+        target_r.update({
+            'problem_id': self.problem_id,
+            'avail_dsp' : self.avail_dsp,
+            'filter_type' : self.filter_type,
+            'adder_wordlength_ext' : self.adder_wordlength_ext,
+            'half_order': self.half_order,
+        })
+       
 
-        try:
-            for key, value in target_r.items():
-                target_r[key] = str(value)
-        except Exception as e:
-            print(f"Failed to convert target_result to string: {e}")
-            pass
 
         with lock:
             with open(JSON_FILE, 'r') as f:
@@ -160,7 +207,10 @@ class MainProblem:
                     data[problem_id].update({'as_target_result': target_r})
                 
                 with open(JSON_FILE, 'w') as f:
-                    json.dump(data, f, indent=4, sort_keys=True)
+                    json.dump(data, f, indent=4)
+
+                # Save the updated dictionary back to the file
+
                 
 
 
@@ -177,15 +227,13 @@ class MainProblem:
             problem_id = str(self.problem_id)
 
             if deepsearch:
-                if 'deepsearch_h_zero' not in data[problem_id] or 'deepsearch_am_cost' not in data[problem_id]:
-                    raise ValueError("deepsearch_h_zero or deepsearch_am_cost not found in JSON file")
                 if h_zero is not None and am_cost is not None:
                     data[problem_id]['deepsearch_h_zero'] = h_zero
                     data[problem_id]['deepsearch_am_cost'] = am_cost
                 else:
                     raise ValueError("h_zero or am_cost is None")
                 with open(JSON_FILE, 'w') as f:
-                    json.dump(data, f, indent=4, sort_keys=True)
+                    json.dump(data, f, indent=4)
                 return
             
             # Ensure `as_results` are initialized
@@ -203,7 +251,7 @@ class MainProblem:
 
             # Write the updated data back to the JSON file
             with open(JSON_FILE, 'w') as f:
-                json.dump(data, f, indent=4, sort_keys=True)
+                json.dump(data, f, indent=4)
 
     def continue_search(self, data, deepsearch = False):
         """Continue the search from where it left off."""
@@ -213,11 +261,11 @@ class MainProblem:
                 h_zero = data['deepsearch_h_zero']
                 am_cost = data['deepsearch_am_cost']
             except KeyError:
-                print(f"@MSG@ :deepsearch_h_zero or deepsearch_am_cost not found in JSON file starting from the beginning...")
+                print(f"@MSG@ : deepsearch_h_zero or deepsearch_am_cost not found in JSON file starting from the beginning...")
                 return None, None
             
 
-            print(f"@MSG@ :Results found in the JSON file. Continuing from am: {am_cost} to h_zero: {h_zero}")
+            print(f"@MSG@ : Results found in the JSON file. Continuing from am: {am_cost} with h_zero search space: {h_zero}")
 
             return h_zero, am_cost
 
@@ -244,21 +292,21 @@ class MainProblem:
         
         
         if min_sat is None and max_unsat is None:
-            print(f"@MSG@ :No results found in the JSON file. Starting from the beginning...")
+            print(f"@MSG@ : No results found in the JSON file. Starting from the beginning...")
             return None, None
         elif min_sat is None and max_unsat is not None:
-            print(f"@MSG@ :No sat results found in the JSON file. Starting search step from max unsat...")
+            print(f"@MSG@ : No sat results found in the JSON file. Starting search step from max unsat...")
             self.am_start = max_unsat+1 if max_unsat+1 > self.am_start else self.am_start
             return None, None
         elif min_sat is not None and max_unsat is None:
-            print(f"@MSG@ :No unsat results found in the JSON file. Starting refine search up to min sat...")
+            print(f"@MSG@ : No unsat results found in the JSON file. Starting refine search up to min sat...")
             self.direct_refine_search = True
             return 0, min_sat-1
         elif min_sat is not None and max_unsat is not None:
             if min_sat - 1 <= max_unsat:
                 self.skip_as_search = True
                 return max_unsat, min_sat
-            print(f"@MSG@ :Results found in the JSON file. Continuing from am: {max_unsat} to {min_sat} with refine search")
+            print(f"@MSG@ : Results found in the JSON file. Continuing from am: {max_unsat} to {min_sat} with refine search")
             self.direct_refine_search = True
             return max_unsat+1, min_sat-1
         else:
@@ -297,18 +345,15 @@ class MainProblem:
         JSON_FILE = 'problem_description.json'
         LOCK_FILE = JSON_FILE + '.lock'
         lock = FileLock(LOCK_FILE)
+        target_result = {}
         with lock:
             with open(JSON_FILE, 'r') as f:
                 data = json.load(f)
         key = None
         if deepsearch:
             if 'deepsearch_target_result' in data[str(self.problem_id)] and self.skip_deepsearch is False:
-                target_result = data[str(self.problem_id)]['deepsearch_target_result']
-                for key, value in target_result.items():
-                    try:
-                        target_result[key] = int(value)
-                    except Exception as e:
-                        pass
+                for key, value in data[str(self.problem_id)]['deepsearch_target_result'].items():
+                    target_result[key] = self.convert_nested_list(value)                
                 return target_result
             
             if 'optimal_leak' in data[str(self.problem_id)]:
@@ -320,12 +365,8 @@ class MainProblem:
                 raise ValueError("No key found in JSON file")
         else:    
             if 'as_target_result' in data[str(self.problem_id)] and self.skip_as_search is False:
-                target_result = data[str(self.problem_id)]['as_target_result']
-                for key, value in target_result.items():
-                    try:
-                        target_result[key] = int(value)
-                    except Exception as e:
-                        pass
+                for key, value in data[str(self.problem_id)]['as_target_result'].items():
+                    target_result[key] = self.convert_nested_list(value)
                 return target_result
                
             if 'min(AS)_leak' in data[str(self.problem_id)]:
@@ -340,22 +381,48 @@ class MainProblem:
         
         LOCK_FILE = JSON_FILE + '.lock'
         lock = FileLock(LOCK_FILE)
-        target_result = None
+
         with lock:
             with open(JSON_FILE, 'r') as f:
                 data = json.load(f)
-                target_result = data[key]
-        for key, value in target_result.items():
-            try:
-                target_result[key] = int(value)
-            except Exception as e:
-                pass
+
+        for key, value in data[key].items():
+            target_result[key] = self.convert_nested_list(value)
 
         return target_result
-
-
     
+    def convert_nested_list(self, lst):
+        """Recursively convert elements in nested lists to int or float where possible."""
+        if isinstance(lst, str):
+            try:
+                lst = ast.literal_eval(lst)
+            except Exception as e:
+                print(f"Error parsing string to list: {e}")
+                return lst  # Return the string if it can't be parsed
+
+        if isinstance(lst, list):
+            if not lst:  # Return immediately if the list is empty
+                return lst
+
+
+            for i in range(len(lst)):
+                lst[i] = self.convert_nested_list(lst[i])  # Recursively process each element
+            return lst
+        else:
+            # lst is not a list; try to convert it to int or float
+            if isinstance(lst, str):
+                try:
+                    if '.' in lst:
+                        return float(lst)
+                    else:
+                        return int(lst)
+                except ValueError:
+                    return lst  # Return the string if it can't be converted
+            else:
+                return lst  # Return the element as is if it's not a string or list
+
     def try_asserted(self, presolve_result , adderm,h_zero, thread = None):
+        print(f"@MSG@ :Trying to solve for adderm: {adderm} and h_zero: {h_zero}")
         gurobi_instance = FIRFilterGurobi(
             self.filter_type, 
             self.half_order, #you pass upperbound directly to gurobi
@@ -372,9 +439,10 @@ class MainProblem:
             self.gain_lowerbound,
             self.coef_accuracy,
             self.intW)
+        
         thread = thread if thread is not None else self.gurobi_thread
         target_result, satisfiability_loc, h_zero_count = gurobi_instance.runsolver(thread, presolve_result, 'try_max_h_zero_count' ,adderm, h_zero)
-
+        print(f"@MSG@ :Result for adderm: {adderm} and h_zero: {h_zero} is {satisfiability_loc}")
         return target_result, satisfiability_loc
     
     def try_asserted_z3_pysat(self,adderm,h_zero):
@@ -738,7 +806,7 @@ class MainProblem:
         task_lock = threading.RLock()  # Use RLock to prevent deadlocks
         failed_cancel = threading.Event()
         
-        self.min_am = presolve_result['min_adderm_without_zero']
+        self.min_am = 0
         # Unpacking variables from the dictionary
         total_adder_s = input_data_dict['total_adder_s']
         adder_s_h_zero_best = input_data_dict['adder_s_h_zero_best']
@@ -821,7 +889,7 @@ class MainProblem:
                 # Dictionary to keep track of running tasks
                 futures_dict = {}
                 futures = [None for _ in range(min(self.worker, len(indices_to_process)))]
-                
+                config = self.config_gurobi()
                 # Function to submit new tasks
                 def submit_task(idx):
                     with task_lock:
@@ -845,8 +913,8 @@ class MainProblem:
 
                         print(f"pool_index: {future_index}, idx: {idx}, h_zero: {h_zero_val}, adder_m_cost: {target_adderm}")
                         future = pools[future_index].schedule(
-                            self.try_asserted,
-                            args=(presolve_result, target_adderm, h_zero_val, threads_per_worker,),
+                            try_asserted,
+                            args=(config, presolve_result, target_adderm, h_zero_val, threads_per_worker,),
                             timeout=self.timeout
                         )
                         futures_dict[idx] = future
@@ -987,7 +1055,7 @@ class MainProblem:
             target_result = None
             print(f"@MSG@ : Starting AM search for min(AS) with step size {self.search_step}")
             lower_bound, upper_bound, found_sat, target_result_best_as = self.min_as_finder_gurobi(presolve_result)
-
+            print(f"@MSG@ : upper {upper_bound} and lower at {lower_bound} for min(AS)")
             #this is just to print 
             low = lower_bound-1 if lower_bound != 0 else 0
             print(f"@MSG@ : Found SAT at {found_sat} and unsat at {low} for min(AS)")
@@ -1000,7 +1068,6 @@ class MainProblem:
             print(f"@MSG@ : Refining search for min(AS) from am: {lower_bound} to {upper_bound}")
             am_count_best, target_result_best_ref = self.refine_search(lower_bound, upper_bound, presolve_result)
             if am_count_best is not None:
-                
                 target_result = target_result_best_ref
                 best_adderm = am_count_best
 
@@ -1008,184 +1075,301 @@ class MainProblem:
         return target_result, best_adderm, adder_s_h_zero_best
         
     
+    
+    def task_done_gurobi_step(self, future, idx, am_count_list, sat_found, manager_sat_found):
+        try:
+            target_result, satisfiability_loc = future.result()
+            am_count = am_count_list[idx]
+            print(f"@MSG@: Task done for adderm {am_count} with result {satisfiability_loc}")
+            self.update_json_file(number=am_count, result=satisfiability_loc)
+            if self.increased_thread_idx == idx:
+                self.increased_thread.clear()
+            if satisfiability_loc == "sat":
+                manager_sat_found.value = True
+                if sat_found is not None:
+                    sat_found.set()
+                self.sat_list[idx] = "sat"
+                sat = [i for i, x in enumerate(self.sat_list) if x == "sat"]
+                min_sat = min(sat, default=None)
+                self.target_result_update(target_result)
+                if min_sat == idx:
+                    if sat_found is not None:
+                        sat_found.set()
+                print(f"@MSG@: Adderm {am_count} is SAT")
+                # If the previous adderm was UNSAT, we can stop further processing
+                # Cancel all futures beyond the completed one
+                for i in range(idx + 1, len(self.futures)):
+                    future_to_cancel = self.futures[i]
+                    if future_to_cancel is not None and not future_to_cancel.done():
+                        if not future_to_cancel.cancel():
+                            print(f"@MSG@: Could not cancel future for adderm {am_count_list[i]}, This is weird, you might have to wait.")
+
+                if idx > 0: 
+                    if self.sat_list[idx - 1] == "unsat":
+                        print(f"@MSG@: Transition from UNSAT to SAT found, stopping remaining tasks.")
+                        # Cancel remaining futures
+                        for i in range(0, len(self.futures)):
+                            future_to_cancel = self.futures[i]
+                            if future_to_cancel is not None and not future_to_cancel.done():
+                                if not future_to_cancel.cancel():
+                                    print(f"@MSG@: Could not cancel future for adderm {am_count_list[i]}, This is weird, you might have to wait.")
+            else:
+                self.sat_list[idx] = "unsat"
+                print(f"@MSG@: Adderm {am_count} is UNSAT")
+
+                for i in range(0, idx-1):
+                   future_to_cancel = self.futures[i]
+                   if future_to_cancel is not None and not future_to_cancel.done():
+                       if not future_to_cancel.cancel():
+                           print(f"@MSG@: Could not cancel future for adderm {am_count_list[i]}, This is weird, you might have to wait.")
+
+                if idx < len(self.sat_list) - 1: 
+                    if self.sat_list[idx + 1] == "sat":
+                        print(f"@MSG@: Transition from UNSAT to SAT found, stopping step search.")
+                        # Cancel remaining futures
+                        for i in range(0, len(self.futures)):
+                            future_to_cancel = self.futures[i]
+                            if future_to_cancel is not None and not future_to_cancel.done():
+                                if not future_to_cancel.cancel():
+                                    print(f"@MSG@: Could not cancel future for adderm {am_count_list[i]}, This is weird, you might have to wait.")
+
+            self.all_done[idx].set()  
+            print(f"@MSG@: Done for adderm {am_count}")
+                
+        except CancelledError:
+            self.update_json_file(number=am_count_list[idx], result='Cancelled')
+            # print(f"Task at AM {am_count_list[idx]} was cancelled.")
+            self.all_done[idx].set()
+        except TimeoutError:
+            print(f"Task at AM {am_count_list[idx]} timed out.")
+            self.all_done[idx].set()
+
+        except ProcessExpired as error:
+            print(f"Task at AM {am_count_list[idx]} raised a ProcessExpired error: {error}")
+            self.all_done[idx].set()
+        except Exception as e:
+            print(f"@MSG@: Exception in callback for AM {am_count_list[idx]}: {e}")
+            self.all_done[idx].set()
+            traceback.print_exc()
+        
+    def config_gurobi(self):
+        """Configure the Gurobi solver."""
+        config = {
+            "filter_type": self.filter_type,
+            "half_order": self.half_order,
+            "xdata": self.xdata,
+            "upperbound_lin": self.upperbound_lin,
+            "lowerbound_lin": self.lowerbound_lin,
+            "ignore_lowerbound": self.ignore_lowerbound,
+            "adder_count": self.adder_count,
+            "wordlength": self.wordlength,
+            "adder_depth": self.adder_depth,
+            "avail_dsp": self.avail_dsp,
+            "adder_wordlength_ext": self.adder_wordlength_ext,
+            "gain_upperbound": self.gain_upperbound,
+            "gain_lowerbound": self.gain_lowerbound,
+            "coef_accuracy": self.coef_accuracy,
+            "intW": self.intW,
+            "gurobi_thread": self.gurobi_thread,
+            "worker": self.worker
+        }
+        return config
+    
     def min_as_finder_gurobi(self, presolve_result):
         """Main function to search for the smallest SAT number."""
+        # Determine the starting point for the adder count
         if self.am_start is not None:
-            current_step = self.am_start if self.am_start >= presolve_result['min_adderm'] else presolve_result['min_adderm']
+            am_start = max(self.am_start, presolve_result['min_adderm'])
         else:
-            current_step = presolve_result['min_adderm']
-        found_sat = None
-        prev_unsat = -1
-        max_am_count = 1000  # Define an upper limit for the search
+            am_start = presolve_result['min_adderm']
+
         lower_bound = None
         upper_bound = None
 
         h_zero_count = presolve_result['max_zero']
-        target_result = None
-        target_result_best = None
-
         target_result_best = self.unload_target_result(deepsearch=False)
-        
-        # Create a list of pools, one for each worker
-        pools = [ProcessPool(max_workers=1) for _ in range(self.worker)]
-        print(f"workers: {self.worker}, step_size: {self.search_step}")
-        try:
-            while current_step <= max_am_count and not found_sat:
-                self.sat_list = [None for _ in range(self.worker)]
-                am_to_check = [current_step + self.search_step * i for i in range(self.worker)]
-                print(f"Checking am_counts: {am_to_check}")
 
-                # Ensure we don't exceed the max_am_count
-                am_to_check = [n for n in am_to_check if n <= max_am_count]
+        # Configuration for the solver
+        config = self.config_gurobi()
 
-                self.sat_list = self.unload_json_file(am_to_check, self.sat_list)
+        sat_found = multiprocessing.Event()
+        self.increased_thread = multiprocessing.Event()
+        max_am_count_mult = 20  # Adjust as needed
+        am_to_check = list(range(am_start, max_am_count_mult * self.search_step, self.search_step))
+        self.sat_list = [None] * len(am_to_check)
+        self.sat_list = self.unload_json_file(am_to_check, self.sat_list)
+        self.increased_thread_idx = 0
+        self.all_done = [multiprocessing.Event() for _ in range(len(am_to_check))]
+        manager = multiprocessing.Manager()
+        sat_found_flag = manager.Value('b', False)
 
-                # Print the am_counts that need to be checked
-                am_to_print = [am for i, am in enumerate(am_to_check) if self.sat_list[i] is None]
-                print(f"@MSG@ : Checking am_counts: {am_to_print}")
+        with ProcessPool(max_workers=self.worker) as pool:
+            self.futures = [None] * len(am_to_check)
+            for idx, number in enumerate(am_to_check):
+                thread = self.gurobi_thread // self.worker
+                if not self.increased_thread.is_set():
+                    self.increased_thread.set()
+                    self.increased_thread_idx = idx
+                    thread += self.gurobi_thread % self.worker
+                if self.sat_list[idx] is None:
+                    # Schedule the task
+                    future = pool.schedule(
+                        try_asserted,
+                        args=(config, presolve_result, number, h_zero_count, thread, sat_found_flag),
+                        timeout=self.timeout
+                    )
+                    self.futures[idx] = future
 
-                futures = []
-                for idx, am_count in enumerate(am_to_check):
-                    if self.sat_list[idx] is not None:
-                        continue
-                    thread = self.gurobi_thread // self.worker
-                    # If the last id is reached, use the remaining threads
-                    if idx == len(am_to_check):
-                        thread += self.gurobi_thread % self.worker
-                    future = pools[idx].schedule(self.try_asserted, args=(presolve_result, am_count,h_zero_count, thread,), timeout=self.timeout)
-                    futures.append(future)
+                    # Add the callback using functools.partial to pass extra arguments
+                    callback_func = partial(
+                        self.task_done_gurobi_step,
+                        idx=idx,
+                        am_count_list=am_to_check,
+                        sat_found=sat_found,
+                        manager_sat_found=sat_found_flag
+                    )
+                    future.add_done_callback(callback_func)
+                else:
+                    self.futures[idx] = None
 
-                # Wait for any future to complete
-                for future in futures:
-                    future.add_done_callback(self.task_done_gurobi_as(futures, pools, am_to_check))
+            # Wait for all scheduled futures to complete
+            done_futures = [f for f in self.futures if f is not None]
+            wait(done_futures, return_when=ALL_COMPLETED)
 
-                print(f"futures: {futures}")
+            for i, done in enumerate(self.all_done):
+                done.wait()
 
-                done, not_done = wait(futures, return_when=ALL_COMPLETED)
-                time.sleep(0.5)
+            sat_list = []
+            unsat_list = []
+            for i, sat_val in enumerate(self.sat_list):
+                if sat_val == "sat":
+                    sat_list.append(am_to_check[i])
+                elif sat_val == "unsat":
+                    unsat_list.append(am_to_check[i])
 
-                min_sat = min([i for i, x in enumerate(self.sat_list) if x == "sat"], default=None)
-                #sleep to avoid race condition with task_done
-                time.sleep(0.5)
-                for future in futures:
-                    try:
-                        target_result, satisfiability_loc = future.result()
-                        completed_index = futures.index(future)
-                        am_count_index = completed_index + am_to_check.index(current_step)
-                        am_count = am_to_check[am_count_index]
-                        print(f"am_count: {am_count}, result: {satisfiability_loc}")
-                        self.update_json_file(number=am_count, result=satisfiability_loc)
-   
-                        if satisfiability_loc == "sat":
-                                if completed_index == min_sat:
-                                    target_result_best = target_result
-                                    self.target_result_update(target_result_best)
-                                    found_sat = am_count
-                                    print(f"Found SAT at {found_sat}")
-                        
-                        
-                    except CancelledError:
-                        completed_index = futures.index(future)
-                        am_count_index = completed_index + am_to_check.index(current_step)
-                        am_count = am_to_check[am_count_index]
-                        print(f"am_count: {am_count}, result: cancelled")
 
-                        self.update_json_file(number=am_count, result="Cancelled")
-                    except TimeoutError:
-                        pass
-                    except Exception as e:
-                        # Handle other exceptions if necessary
-                        print(f"Task raised an exception: {e}")
-                        traceback.print_exc()
-
-                if not found_sat:
-                    current_step += self.search_step * self.worker
-
-            # Stop all pools
-            for idx, pool in enumerate(pools):
-                pool.stop()
-                print(f"Stopped pool {idx}")
-
-            if found_sat is not None:
-                print(f"Found SAT at {found_sat}, refining search...")
-                lower_bound = self.unload_json_file(find_max_unsat=True)+1
-                upper_bound = self.unload_json_file(find_min_sat=True)-1
+        # Refinement step if SAT was found
+        smallest_sat = None
+        target_result_best = None
+        lower_bound = None
+        upper_bound = None
+        if sat_found.is_set():
+            if unsat_list:
+                lower_bound = (max(unsat_list) + 1)
+            else:
+                lower_bound = 0
             
+            upper_bound = min(sat_list)-1
+            smallest_sat = min(sat_list)
+            target_result_best = self.unload_target_result()
+        else:
+            raise RuntimeError("No SAT found in the AS step Search.")
 
-        finally:
-            # Ensure all pools are properly closed
-            for pool in pools:
-                pool.close()
-                pool.join()
+        print(f"@MSG@: The smallest SAT adderm is: {smallest_sat}")
 
-        print(f"The smallest SAT am_count is: {found_sat}")
+        return lower_bound, upper_bound, smallest_sat, target_result_best
 
-        return lower_bound, upper_bound, found_sat, target_result_best
 
-    def task_done_gurobi_as(self, futures, pools, number_list):
+    def task_done_refine(self, futures, pools, am_count_list, sat_found= None):
         def callback(future):
             try:
                 target_result, satisfiability_loc = future.result()  # blocks until results are ready
                 # Find the index of the current future
                 completed_index = futures.index(future)
-                number = number_list[completed_index]
+                am_count = am_count_list[completed_index]
+                print(f"@MSG@ : Task done for number {am_count} with result {satisfiability_loc}")
 
+                self.update_json_file(number=am_count, result=satisfiability_loc)
                 if satisfiability_loc == "sat":
+                    if sat_found is not None:
+                        sat_found.set()
                     self.sat_list[completed_index] = "sat"
+                    
                     print(f"sat_list: {self.sat_list}")
-                    print(f"@MSG@ : {number} is SAT") 
-
+                    print(f"@MSG@ : {am_count} is SAT") 
                     # If the task is satisfiable, check if the previous task was unsatisfiable
                     if completed_index != 0:
                         # If the previous task was unsatisfiable, stop all pools
                         if self.sat_list[completed_index - 1] == "unsat":
                             print(f"Stopping all pools")
                             for idx, f in enumerate(futures):
-                                if not f.done():
-                                    if not f.cancel():
-                                        # Stop the pool associated with this future
-                                        print(f"Stopping pool for future at index {idx}.")
-                                        pools[idx].stop()
+                                if f is not None:
+                                    if not f.done():
+                                        if not f.cancel():
+                                            # Stop the pool associated with this future
+                                            print(f"Stopping pool for future at index {idx}.")
+                                            if pools is not None:
+                                                pools[idx].stop()
 
                     # Cancel all futures beyond the completed one
                     for idx, f in enumerate(futures[completed_index + 1:], start=completed_index + 1):
-                        if not f.done():
-                            if not f.cancel():
-                                # Stop the pool associated with this future
-                                print(f"Stopping pool for future at index {idx}.")
-                                pools[idx].stop()
+                        if f is not None:
+                            if not f.done():
+                                if not f.cancel():
+                                    # Stop the pool associated with this future
+                                    print(f"Stopping pool for future at index {idx}.")
+                                    if pools is not None:
+                                        pools[idx].stop()
                 else:
                     # If the task is unsatisfiable, update the previous unsat am_count
+                    print(f"@MSG@ : sat_list: {self.sat_list}, completed_index: {completed_index}")
                     self.sat_list[completed_index] = "unsat"
-                    print(f"@MSG@ : {number} is UNSAT") 
-                    if completed_index != self.worker - 1:
+                    print(f"@MSG@ : {am_count} is UNSAT") 
+                    if completed_index != len(self.sat_list) - 1:
                         if self.sat_list[completed_index + 1] == "sat":
                             print(f"Stopping all pools")
                             for idx, f in enumerate(futures):
-                                if not f.done():
-                                    if not f.cancel():
-                                        # Stop the pool associated with this future
-                                        print(f"Stopping pool for future at index {idx}.")
-                                        pools[idx].stop()
+                                if f is not None:
+                                    if not f.done():
+                                        if not f.cancel():
+                                            # Stop the pool associated with this future
+                                            print(f"Stopping pool for future at index {idx}.")
+                                            if pools is not None:
+                                                pools[idx].stop()
+                        
+                    # Cancel all futures before the completed one
+                    for idx, f in enumerate(futures[:completed_index - 1], start=0):
+                        if f is not None:
+                            if not f.done():
+                                if not f.cancel():
+                                    # Stop the pool associated with this future
+                                    print(f"Stopping pool for future at index {idx}.")
+                                    if pools is not None:
+                                                pools[idx].stop()
+
+                self.all_done[completed_index].set()
 
             except CancelledError:
                 completed_index = futures.index(future)
+                am_count = am_count_list[completed_index]
+                self.update_json_file(number=am_count, result='Cancelled')
                 print(f"Task at index {completed_index} was cancelled.")
+                self.all_done[completed_index].set()
             except TimeoutError:
                 completed_index = futures.index(future)
                 print(f"Task at index {completed_index} timed out.")
+                self.all_done[completed_index].set()
+
             except ProcessExpired as error:
                 completed_index = futures.index(future)
                 print(f"Task at index {completed_index} raised a ProcessExpired error: {error}")
+                self.all_done[completed_index].set()
             except Exception as error:
                 print(f"Task raised an exception: {error}")
                 traceback.print_exc()  # Print the full traceback to get more details
+                self.all_done[completed_index].set()
 
         return callback
 
     def refine_search(self, lower_bound, upper_bound, presolve_result):
         """Refine the search between lower_bound and upper_bound using binary search with n parallel workers."""
         am_count_best = None
+        target_result_best = None
+
+        if lower_bound > upper_bound:
+            print(f"@MSG@ : No Search Space to refine, returning...")
+            return None, None
+
         # Use a single pool with max_workers=self.worker
         pools = [ProcessPool(max_workers=1) for _ in range(self.worker)]
         res = [None for i in range(lower_bound, upper_bound+1)]
@@ -1193,9 +1377,9 @@ class MainProblem:
 
         h_zero_count = presolve_result['max_zero']
         target_result = None
-        target_result_best = None
+        config = self.config_gurobi()
 
-
+        
         try:
             while lower_bound <= upper_bound:
                 used_worker = 0
@@ -1206,7 +1390,9 @@ class MainProblem:
                 midpoints = sorted(set(midpoints))
                 midpoints = [m for m in midpoints if lower_bound <= m <= upper_bound]
                 print(f"Testing midpoints: {midpoints}")
-                
+                self.all_done = None
+                self.all_done = [multiprocessing.Event() for _ in range(len(midpoints))]
+
 
                 if not midpoints:
                     break  # No midpoints to test
@@ -1230,15 +1416,21 @@ class MainProblem:
                     # If the last id is reached, use the remaining threads
                     if idx == len(midpoints):
                         thread += self.gurobi_thread % used_worker
-                    future = pools[idx].schedule(self.try_asserted, args=(presolve_result, am_count_loc,h_zero_count, thread,), timeout=self.timeout)
+
+                    future = pools[idx].schedule(try_asserted, args=(config, presolve_result, am_count_loc,h_zero_count, thread,), timeout=self.timeout)
                     futures.append((future))
 
 
                 for future in futures:
-                    future.add_done_callback(self.task_done_gurobi_as(futures, pools))
+                    future.add_done_callback(self.task_done_refine(futures, pools, midpoints))
 
                 # Wait for all futures to complete
                 done, not_done = wait(futures, return_when=ALL_COMPLETED)
+
+                for all_done in self.all_done:
+                    all_done.wait()
+                
+            
 
                 # Collect results
                 sat_am_counts = []
@@ -1251,7 +1443,6 @@ class MainProblem:
                         am_count_idx = futures.index(future)
                         res_index = am_count - original_lower_bound
                         res[res_index] = satisfiability_loc
-                        self.update_json_file(number=am_count, result=satisfiability_loc)
                         if satisfiability_loc == "sat":
                             if am_count_idx == min_sat:
                                 target_result_best = target_result
@@ -1265,10 +1456,9 @@ class MainProblem:
                         am_count = midpoints[futures.index(future)]
                         res_index = am_count - original_lower_bound
                         res[res_index] = "Cancelled"
-                        self.update_json_file(number=am_count, result="Cancelled")
 
                     except Exception as e:
-                        print(f"Task raised an exception for am_count {am_count}: {e}")
+                        print(f"Task raised an exception: {e}")
                         traceback.print_exc()
 
                 if sat_am_counts:

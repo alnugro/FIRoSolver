@@ -1,0 +1,2 @@
+Key ;satisfiability;Leak flag; option; h_res;Gain;Total_adder ; Adder_m; Adder_s ;Duration;Filter Type;
+1;init;False;0; 0;0;0;0;0;0.0;2

@@ -154,7 +154,7 @@ class BackendRunner:
                             'option' : 'min(AS)'
                         })
                 else:
-                    print(f"@MSG@ :min(AS): Result Validated, no leaks found")
+                    print(f"@MSG@ : min(AS): Result Validated, no leaks found")
                     result1_valid = True
                     self.update_json_with_lock( target_result , 'result_valid.json')
                     break
@@ -233,6 +233,7 @@ class BackendRunner:
                         self.update_json_with_lock( target_result3 , 'result_valid.json')
                         break
         end_time = time.time()
+        self.solver_done_json()
         duration = end_time - start_time
         print(f"@MSG@ : Solver finished in {duration} seconds")
 
@@ -269,8 +270,11 @@ class BackendRunner:
         
         new_data.update({
                 'problem_id': self.problem_id,
-                'solver' : self.solver_name
-        })
+                'solver' : self.solver_name,
+                'avail_dsp' : self.avail_dsp,
+                'filter_type' : self.filter_type,
+                'adder_wordlength_ext' : self.adder_wordlength_ext,
+                        })
         lock_filename = filename + '.lock'
         lock = FileLock(lock_filename)
         key = None
