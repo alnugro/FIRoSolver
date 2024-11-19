@@ -34,7 +34,7 @@ def try_asserted(config, presolve_result, adderm, h_zero, thread, done_flag=None
     Tries to solve for the given adderm and h_zero values using a Gurobi instance.
     """
     
-    
+    worker_pid = os.getpid()
     
     # Create an instance of FIRFilterGurobi using the configuration dictionary
     gurobi_instance = FIRFilterGurobi(
@@ -60,7 +60,7 @@ def try_asserted(config, presolve_result, adderm, h_zero, thread, done_flag=None
             time.sleep(5)
             return None, None
 
-    print(f"@MSG@ : Trying to solve for adderm: {adderm} and h_zero: {h_zero} with thread: {thread}")
+    print(f"@MSG@ : Worker {worker_pid} Trying to solve for adderm: {adderm} and h_zero: {h_zero} with thread: {thread}")
 
     # Run the solver
     target_result, satisfiability_loc, h_zero_count = gurobi_instance.runsolver(

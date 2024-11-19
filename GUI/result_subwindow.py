@@ -139,8 +139,13 @@ class DetailsSubWindow(QWidget):
     def __init__(self, data_problem, data_result):
         super().__init__()
         h_res_int = []
-        for i in range(len(data_result['h_res'])):
-            h_res_int.append(data_result['h_res'][i] * 2**data_result['fracw'])
+        if data_result:
+            for i in range(len(data_result['h_res'])):
+                if 'fracw' in data_result:
+                    h_res_int.append(data_result['h_res'][i] * 2**data_result['fracw'])
+                else:
+                    fracw = data_problem['wordlength']-data_problem['intW']
+                    h_res_int.append(data_result['h_res'][i] * 2**fracw)
         data_result.update({'h_res_int': h_res_int})
 
         self.setWindowTitle("Problem and Result Details")
