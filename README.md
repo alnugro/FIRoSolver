@@ -6,7 +6,7 @@
 - An **optimal adder tree blueprint** (shown via a DOT file) to realize the filter multiplierlessly through bit shifts, adders, and optional DSP blocks in hardware.  
 - **VHDL code** you can directly integrate into your FPGA design.
 
-FIRoSolver generates partial or complete solutions for a given filter orders, wordlengths, DSP-block usage, and so on. both in “asserted” (manual parameter setting) mode and in fully “automatic” search mode (Gurobi only).
+FIRoSolver generates partial or complete solutions for a given filter orders, wordlengths, DSP-block usage, and so on. both in “asserted” (manual parameter setting) mode and in “automatic” search mode (Gurobi only).
 
 ---
 
