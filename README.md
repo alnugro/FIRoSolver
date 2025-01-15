@@ -210,9 +210,13 @@ FIRoSolver is part of my bachelor thesis. If you’d like to learn more about th
 
 ---
 
-##Contribution
+## Contribution
+
 FIRoSolver uses pydsp-toolbox by nfiege, the original repository can be found here:
 [pydsp-toolbox](https://gitlab.uni-kassel.de/uk025743/pydsp-toolbox)
+
+
+---
 
 
 
