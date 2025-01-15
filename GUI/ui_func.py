@@ -58,11 +58,11 @@ class UIFunc:
         'start_with_error_prediction': self.main_window.start_with_error_prediction_check.isChecked(),
         'deepsearch': self.main_window.deepsearch_check.isChecked(),
         'patch_multiplier' : self.main_window.patch_multiplier_box.value(),
-        'gurobi_auto_thread': self.main_window.gurobi_auto_thread_check.isChecked(),
         'worker': self.main_window.worker_box.value(),
         'search_step':self.main_window.search_step_box.value(),
         'continue_solver': False,
         'problem_id': None,
+        'intfeastol': 10 ** (-int(self.main_window.intfeastol_box.value())),
 
         }
         return input_data
@@ -95,13 +95,13 @@ class UIFunc:
         'start_with_error_prediction': self.main_window.start_with_error_prediction_check.isChecked(),
         'deepsearch': self.main_window.deepsearch_check.isChecked(),
         'patch_multiplier' : self.main_window.patch_multiplier_box.value(),
-        'gurobi_auto_thread': self.main_window.gurobi_auto_thread_check.isChecked(),
         'worker': self.main_window.worker_box.value(),
         'search_step':self.main_window.search_step_box.value(),
         'continue_solver': False,
         'problem_id': None,
         'asserted_wordlength': self.main_window.assert_wordlength_check.isChecked(),
         'real_wordlength': self.main_window.real_word_check.isChecked(),
+        'intfeastol': 10 ** (-int(self.main_window.intfeastol_box.value())),
         }
         return input_data
     

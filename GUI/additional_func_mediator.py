@@ -12,21 +12,39 @@ except:
     from backend.backend_main import SolverBackend
 
 
-class AutoParamMediator(QThread):
+class AdditionalFuncMediator(QThread):
     # Define a signal to send results back to the main thread
     result_signal = pyqtSignal(object, int, int)
     exception_message = pyqtSignal(str)
 
-    def __init__(self, initial_solver_input):
+    def __init__(self, initial_solver_input, option=None):
         super().__init__()
         self.initial_solver_input = copy.deepcopy(initial_solver_input)
+        self.option = option
+
     def run(self):
         backend = SolverBackend(self.initial_solver_input)
-        best_target_result, best_filter_type, wordlength = backend.automatic_param_search()
-        # Emit the results through the signal
-        self.result_signal.emit(best_target_result, best_filter_type, wordlength)
+        if self.option == 'automatic':
+            # Run the automatic parameter search
+            try:
+                best_target_result, best_filter_type, wordlength = backend.automatic_param_search()
+                # Emit the results through the signal
+                self.result_signal.emit(best_target_result, best_filter_type, wordlength)
+            except Exception as e:
+                self.exception_message.emit(str(e))
+                self.result_signal.emit(None, 0, 0)
+        elif self.option == 'quick_check_sat':
+            try:
+                # Run the asserted parameter search
+                target_result = backend.asserted_param_quick_check()
+                # Emit the results through the signal
+                self.result_signal.emit(target_result, 0, 0)
+            except Exception as e:
+                self.exception_message.emit(str(e))
+                self.result_signal.emit(None, 0, 0)
+            
 
-
+#AdditionalFuncMediator Test
 if __name__ == '__main__':
     # Test inputs
     filter_type = 0
@@ -141,7 +159,7 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
 
     # Instantiate the BackendMediator
-    mediator = AutoParamMediator(input_data)
+    mediator = AdditionalFuncMediator(input_data)
 
     # Start the mediator
     mediator.run()

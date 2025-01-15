@@ -50,8 +50,6 @@ class AutomaticSearch:
         self.coef_accuracy = None
         self.intW = None
 
-        self.gain_wordlength = None
-        self.gain_intW = None
 
         self.gurobi_thread = None
         self.z3_thread = None
@@ -73,6 +71,7 @@ class AutomaticSearch:
 
         self.asserted_wordlength = None
         self.real_wordlength = None
+        self.intfeastol = None
 
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
@@ -115,7 +114,8 @@ class AutomaticSearch:
             self.gain_upperbound,
             self.gain_lowerbound,
             self.coef_accuracy,
-            self.intW)
+            self.intW,
+            self.intfeastol)
         
         target_result = gurobi_instance.run_barebone_real(self.gurobi_thread, None ,None, None)
         satisfiability_loc = target_result['satisfiability']
@@ -137,7 +137,8 @@ class AutomaticSearch:
             self.gain_upperbound,
             self.gain_lowerbound,
             self.coef_accuracy,
-            self.intW)
+            self.intW,
+            self.intfeastol)
         
         target_result = gurobi_instance.run_barebone(self.gurobi_thread, solver_options ,h_zero)
         satisfiability_loc = target_result['satisfiability']
@@ -249,8 +250,6 @@ class AutomaticSearch:
                     self.gain_lowerbound,
                     self.coef_accuracy,
                     self.intW,
-                    self.gain_wordlength,
-                    self.gain_intW
                     )
         
         return z3_instance
@@ -273,8 +272,6 @@ if __name__ == "__main__":
     avail_dsp = 0
     adder_wordlength_ext = 4
 
-    gain_wordlength = 13
-    gain_intW = 4
 
     gurobi_thread = 5
     pysat_thread = 0
@@ -347,8 +344,6 @@ if __name__ == "__main__":
         'adder_depth': adder_depth,
         'avail_dsp': avail_dsp,
         'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
-        'gain_wordlength' : gain_wordlength,
-        'gain_intW' : gain_intW,
         'gain_upperbound': gain_upperbound,
         'gain_lowerbound': gain_lowerbound,
         'coef_accuracy': coef_accuracy,

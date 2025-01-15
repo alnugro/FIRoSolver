@@ -1,11 +1,14 @@
 import sys
 import os
-from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
-from PyQt6.QtCore import QProcess, pyqtSignal, QObject
 import json
 import tempfile
-import numpy as np
 import copy
+import psutil
+
+import numpy as np
+
+from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton
+from PyQt6.QtCore import QProcess, pyqtSignal, QObject
 
 try:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -29,69 +32,59 @@ class BackendMediator(QObject):
     def __init__(self, initial_solver_input):
         super().__init__()
         self.initial_solver_input = initial_solver_input
-        self.processes = {}  # Dictionary to store QProcess instances
-        self.temp_input_files = {}  # Dictionary to store temp file paths
-        self.stdout_buffers = {}  # Buffers for each process's stdout
-        self.solver_count = 0  # Total number of solvers running
+        self.processes = {}       # {solver_name: QProcess}
+        self.process_pids = {}    # {solver_name: PID (int)}
+        self.temp_input_files = {}
+        self.stdout_buffers = {}
+        self.solver_count = 0
         self.problem_id = None
 
         if initial_solver_input['problem_id'] is not None:
             if initial_solver_input['continue_solver'] == True:
                 self.problem_id = initial_solver_input['problem_id'] 
-            
 
         if self.problem_id is None:
             self.generate_bound_description()
-            self.initial_solver_input.update({
-                'problem_id' : self.problem_id
-            })
+            self.initial_solver_input.update({'problem_id' : self.problem_id})
 
-        #use to debug, print all outputs it will be very clutered
+        # Use to debug, print all outputs (very cluttered if True)
         self.verbose = True
-
 
     def generate_bound_description(self):
         problem_dict = copy.deepcopy(self.initial_solver_input)
         backend = SolverBackend(self.initial_solver_input)
-        problem_dict.update ({
-                # 'xdata' :  np.array(backend.xdata).tolist(),
-                # 'upperbound_lin':  np.array(backend.upperbound_lin).tolist(),
-                # 'lowerbound_lin': np.array(backend.lowerbound_lin).tolist(),
-                'done': 'False',
-                'original_xdata': np.array(self.initial_solver_input['original_xdata']).tolist(), #convert them to list, ndarray is not supported with json
-                'original_upperbound_lin': np.array(self.initial_solver_input['original_upperbound_lin']).tolist(),
-                'original_lowerbound_lin': np.array(self.initial_solver_input['original_lowerbound_lin']).tolist(),
-                'cutoffs_x': np.array(self.initial_solver_input['cutoffs_x']).tolist(),
-                'cutoffs_upper_ydata_lin': np.array(self.initial_solver_input['cutoffs_upper_ydata_lin']).tolist(),
-                'cutoffs_lower_ydata_lin': np.array(self.initial_solver_input['cutoffs_lower_ydata_lin']).tolist(),
-            })
+
+        # Populate dictionary with relevant data
+        problem_dict.update({
+            'done': 'False',
+            'original_xdata': np.array(self.initial_solver_input['original_xdata']).tolist(),
+            'original_upperbound_lin': np.array(self.initial_solver_input['original_upperbound_lin']).tolist(),
+            'original_lowerbound_lin': np.array(self.initial_solver_input['original_lowerbound_lin']).tolist(),
+            'cutoffs_x': np.array(self.initial_solver_input['cutoffs_x']).tolist(),
+            'cutoffs_upper_ydata_lin': np.array(self.initial_solver_input['cutoffs_upper_ydata_lin']).tolist(),
+            'cutoffs_lower_ydata_lin': np.array(self.initial_solver_input['cutoffs_lower_ydata_lin']).tolist(),
+        })
         
         filename = 'problem_description.json'
-
-        # Check if the file exists before reading
         if os.path.exists(filename):
             # Load current data from the file
             with open(filename, 'r') as json_file:
                 current_data = json.load(json_file)
-
-            # Find the largest key and set the new key as largest_key + 1
+            # Find the largest key and set the new key
             if current_data:
-                largest_key = max(map(int, current_data.keys()))  # Convert keys to integers
+                largest_key = max(map(int, current_data.keys()))  # Convert keys to int
                 self.problem_id = largest_key + 1
             else:
-                self.problem_id = 0  # If the file is empty, start with key 0
+                self.problem_id = 0
         else:
-            # If the file does not exist, start with an empty dictionary and key 0
             current_data = {}
             self.problem_id = 0
         
-        self.log_message.emit(f"Generated Problem id:{self.problem_id}")
+        self.log_message.emit(f"Generated Problem id: {self.problem_id}")
         
-        #Add new data under the determined key
-        current_data[str(self.problem_id)] = problem_dict  # Ensure the key is a string for JSON compatibility
-
+        current_data[str(self.problem_id)] = problem_dict
         with open(filename, 'w') as json_file:
-                json.dump(current_data, json_file, indent=4)
+            json.dump(current_data, json_file, indent=4)
 
     def run(self):
         solvers_to_run = []
@@ -113,11 +106,15 @@ class BackendMediator(QObject):
         process.readyReadStandardOutput.connect(lambda sn=solver_name: self.handle_stdout(sn))
         process.readyReadStandardError.connect(lambda sn=solver_name: self.handle_stderr(sn))
         process.finished.connect(lambda exitCode, exitStatus, sn=solver_name: self.process_finished(sn))
+
+        # Save process and create a buffer
         self.processes[solver_name] = process
         self.stdout_buffers[solver_name] = ''
 
-        print(f"solver name {solver_name}")
-        #rework the solver input
+        # We'll store the PID after process starts
+        self.process_pids[solver_name] = None
+
+        # Prepare solver-specific input
         solver_input = copy.deepcopy(self.initial_solver_input)
         if solver_name == 'gurobi':
             solver_input.update({
@@ -126,31 +123,46 @@ class BackendMediator(QObject):
                 'z3_thread': 0,
             })
         elif solver_name == 'pysat':
-             solver_input.update({
+            solver_input.update({
                 'gurobi_thread': 0,
                 'pysat_thread': self.initial_solver_input['pysat_thread'],
                 'z3_thread': 0,
             })
         elif solver_name == 'z3':
-             solver_input.update({
+            solver_input.update({
                 'gurobi_thread': 0,
                 'pysat_thread': 0,
                 'z3_thread': self.initial_solver_input['z3_thread'],
             })
         else:
             raise NotImplementedError(f"This solver: {solver_name} is not implemented")
-        
 
-        # Create temp input file for this solver
+        # Create temp input file
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json') as temp_file:
             self.temp_input_files[solver_name] = temp_file.name
             json.dump(solver_input, temp_file, cls=NumpyJSONEncoder)
 
-        # Adjust the script path according to the solver
         script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend', 'backend_runner.py'))
 
-        # Start the solver script via QProcess
+        # Start the solver script
         process.start(sys.executable, ["-u", script_path, self.temp_input_files[solver_name]])
+
+        # On some platforms, processId() is valid only after the QProcess actually starts
+        # We can check if it's already running:
+        if process.state() == QProcess.ProcessState.Running:
+            # The PID should now be available
+            self.process_pids[solver_name] = process.processId()
+        else:
+            # In case it hasn't started yet, connect a signal
+            process.started.connect(lambda sn=solver_name: self.store_pid(sn))
+
+    def store_pid(self, solver_name):
+        """
+        Called when the QProcess has definitely started. We can safely retrieve its PID now.
+        """
+        process = self.processes[solver_name]
+        pid = process.processId()  # OS-level PID
+        self.process_pids[solver_name] = pid
 
     def handle_stdout(self, solver_name):
         process = self.processes[solver_name]
@@ -159,12 +171,12 @@ class BackendMediator(QObject):
         self.stdout_buffers[solver_name] += stdout
         if self.verbose:
             print(stdout)
+
         # Process complete lines
         while '\n' in self.stdout_buffers[solver_name]:
             line, self.stdout_buffers[solver_name] = self.stdout_buffers[solver_name].split('\n', 1)
-            # Emit only lines that start with "@MSG@"
             if line.startswith('@MSG@'):
-                clean_line = line[len('@MSG@'):]  # Remove the "@MSG@" prefix
+                clean_line = line[len('@MSG@'):]
                 self.log_message.emit(f"[{solver_name}] {clean_line.strip()}")
 
     def handle_stderr(self, solver_name):
@@ -185,10 +197,14 @@ class BackendMediator(QObject):
                 print(f"Error deleting temp file for {solver_name}: {e}")
             del self.temp_input_files[solver_name]
 
-        # Remove the process from the dictionary
+        # Remove the process
         if solver_name in self.processes:
             self.processes[solver_name].deleteLater()
             del self.processes[solver_name]
+
+        # Also remove the PID reference
+        if solver_name in self.process_pids:
+            del self.process_pids[solver_name]
 
         # Check if all processes have finished
         if not self.processes:
@@ -196,14 +212,45 @@ class BackendMediator(QObject):
             self.finished.emit()
 
     def stop(self):
-        # Create a copy of the keys to iterate over
+        """
+        Using psutil to terminate each solver (and all of its spawned child processes).
+        """
         solver_names = list(self.processes.keys())
-
         for solver_name in solver_names:
             process = self.processes[solver_name]
-            if process and process.state() == QProcess.ProcessState.Running:
-                process.kill()
+            pid = self.process_pids.get(solver_name, None)
+
+            if process and process.state() == QProcess.ProcessState.Running and pid:
+                try:
+                    parent = psutil.Process(pid)
+                    # Terminate all children (and grandchildren, etc.)
+                    for child in parent.children(recursive=True):
+                        child.terminate()
+                    parent.terminate()
+
+                    # Optionally, wait a bit for graceful exit
+                    gone, still_alive = psutil.wait_procs(parent.children(recursive=True), timeout=3)
+                    for p in still_alive:
+                        p.kill()
+
+                    # Finally kill the parent if still alive
+                    try:
+                        parent.kill()
+                    except psutil.NoSuchProcess:
+                        pass
+
+                except psutil.NoSuchProcess:
+                    pass
+
+                # Wait for QProcess to acknowledge the process ended
                 process.waitForFinished()
+
+        # Clear local references
+        self.processes.clear()
+        self.process_pids.clear()
+        self.temp_input_files.clear()
+        self.stdout_buffers.clear()
+
 
 if __name__ == '__main__':
     # Test inputs

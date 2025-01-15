@@ -29,9 +29,9 @@ except ImportError:
     from solver_func import SolverFunc
 
 
-def try_asserted(config, presolve_result, adderm, h_zero, thread, done_flag=None):
+def try_asserted_gurobi(config, presolve_result, adderm, h_zero, thread, done_flag=None):
     """
-    Tries to solve for the given adderm and h_zero values using a Gurobi instance.
+    Tries to solve for the given adderm and h_zero values using a Gurobi.
     """
     
     worker_pid = os.getpid()
@@ -52,7 +52,8 @@ def try_asserted(config, presolve_result, adderm, h_zero, thread, done_flag=None
         config["gain_upperbound"],
         config["gain_lowerbound"],
         config["coef_accuracy"],
-        config["intW"]
+        config["intW"],
+        config["intfeastol"]
     )
 
     if done_flag is not None:
@@ -68,6 +69,88 @@ def try_asserted(config, presolve_result, adderm, h_zero, thread, done_flag=None
     )
 
     return target_result, satisfiability_loc
+
+def try_asserted_z3(config, presolve_result, adderm, h_zero, thread, done_flag=None):
+    """
+    Tries to solve for the given adderm and h_zero values using a z3.
+    """
+    
+    worker_pid = os.getpid()
+    
+    # Create an instance of FIRFilterZ3 using the configuration dictionary
+    z3_instance = FIRFilterZ3(
+                    config["filter_type"], 
+                    config["half_order"], 
+                    config["xdata"], 
+                    config["upperbound_lin"], 
+                    config["lowerbound_lin"], 
+                    config["ignore_lowerbound"], 
+                    config["adder_count"], 
+                    config["wordlength"], 
+                    config["adder_depth"],
+                    config["avail_dsp"],
+                    config["adder_wordlength_ext"],
+                    config["gain_upperbound"],
+                    config["gain_lowerbound"],
+                    config["coef_accuracy"],
+                    config["intW"],
+                    )
+        
+
+    if done_flag is not None:
+        if done_flag.value:
+            time.sleep(5)
+            return None, None
+
+    print(f"@MSG@ : Worker {worker_pid} Trying to solve for adderm: {adderm} and h_zero: {h_zero} with thread: {thread}")
+
+    # Run the solver
+    target_result, satisfiability_loc = z3_instance.runsolver(
+        thread, adderm, h_zero
+    )
+
+    return target_result, satisfiability_loc
+
+def try_asserted_pysat(config, presolve_result, adderm, h_zero, thread, done_flag=None):
+    """
+    Tries to solve for the given adderm and h_zero values using a pysat.
+    """
+    
+    worker_pid = os.getpid()
+    
+    # Create an instance of FIRFilterPysat using the configuration dictionary
+    pysat_instance = FIRFilterPysat(
+        config["filter_type"], 
+        config["half_order"], 
+        config["xdata"], 
+        config["upperbound_lin"], 
+        config["lowerbound_lin"], 
+        config["ignore_lowerbound"], 
+        config["adder_count"], 
+        config["wordlength"], 
+        config["adder_depth"],
+        config["avail_dsp"],
+        config["adder_wordlength_ext"],
+        config["gain_upperbound"],
+        config["gain_lowerbound"],
+        config["coef_accuracy"],
+        config["intW"]
+        )
+
+    if done_flag is not None:
+        if done_flag.value:
+            time.sleep(5)
+            return None, None
+
+    print(f"@MSG@ : Worker {worker_pid} Trying to solve for adderm: {adderm} and h_zero: {h_zero} with thread: {thread}")
+
+    # Run the solver
+    target_result, satisfiability_loc = pysat_instance.runsolver(
+        0, adderm, h_zero
+    )
+
+    return target_result, satisfiability_loc
+
 
 class MainProblem:
     def __init__(self, input_data):
@@ -90,9 +173,6 @@ class MainProblem:
         self.coef_accuracy = None
         self.intW = None
 
-        self.gain_wordlength = None
-        self.gain_intW = None
-
         self.gurobi_thread = None
         self.z3_thread = None
         self.pysat_thread = None
@@ -110,6 +190,8 @@ class MainProblem:
         self.adder_wordlength_ext = None
         self.am_start = None
         self.half_order = None
+        self.intfeastol = None
+
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
             if hasattr(self, key):  # Only set attributes that exist in the class
@@ -144,6 +226,29 @@ class MainProblem:
         self.increased_thread = None
         self.increased_thread_idx = None
         self.all_done = []
+    
+    def quick_check_sat(self):
+        gurobi_instance = FIRFilterGurobi(
+            self.filter_type, 
+            self.half_order, #you pass upperbound directly to gurobi
+            self.xdata, 
+            self.upperbound_lin, 
+            self.lowerbound_lin, 
+            self.ignore_lowerbound, 
+            0, 
+            self.wordlength,
+            0,
+            0,
+            0,
+            self.gain_upperbound,
+            self.gain_lowerbound,
+            self.coef_accuracy,
+            self.intW,
+            self.intfeastol
+        )
+
+        target_result = gurobi_instance.run_barebone(0)
+        return target_result
 
 
     def initialize_json_file(self, deepsearch = False):
@@ -421,385 +526,7 @@ class MainProblem:
             else:
                 return lst  # Return the element as is if it's not a string or list
 
-    def try_asserted(self, presolve_result , adderm,h_zero, thread = None):
-        print(f"@MSG@ :Trying to solve for adderm: {adderm} and h_zero: {h_zero}")
-        gurobi_instance = FIRFilterGurobi(
-            self.filter_type, 
-            self.half_order, #you pass upperbound directly to gurobi
-            self.xdata, 
-            self.upperbound_lin, 
-            self.lowerbound_lin, 
-            self.ignore_lowerbound, 
-            self.adder_count, 
-            self.wordlength, 
-            self.adder_depth,
-            self.avail_dsp,
-            self.adder_wordlength_ext,
-            self.gain_upperbound,
-            self.gain_lowerbound,
-            self.coef_accuracy,
-            self.intW)
-        
-        thread = thread if thread is not None else self.gurobi_thread
-        target_result, satisfiability_loc, h_zero_count = gurobi_instance.runsolver(thread, presolve_result, 'try_max_h_zero_count' ,adderm, h_zero)
-        print(f"@MSG@ :Result for adderm: {adderm} and h_zero: {h_zero} is {satisfiability_loc}")
-        return target_result, satisfiability_loc
     
-    def try_asserted_z3_pysat(self,adderm,h_zero):
-        
-        self.result_model = None
-        self.satisfiability = None
-        self.execute_z3_pysat(adderm, h_zero)
-
-        return self.result_model , self.satisfiability
-
-
-
-
-    def find_best_adder_s2(self, presolve_result):
-        gurobi_instance = FIRFilterGurobi(
-            self.filter_type, 
-            self.half_order, #you pass upperbound directly to gurobi
-            self.xdata, 
-            self.upperbound_lin, 
-            self.lowerbound_lin, 
-            self.ignore_lowerbound, 
-            self.adder_count, 
-            self.wordlength, 
-            self.adder_depth,
-            self.avail_dsp,
-            self.adder_wordlength_ext,
-            self.gain_upperbound,
-            self.gain_lowerbound,
-            self.coef_accuracy,
-            self.intW)
-        
-
-        iteration = self.am_start if self.am_start != None else presolve_result['min_adderm']
-        best_adderm = -1  # Default value if no 'sat' is found
-        target_result = None
-        target_result_best = None
-        print(f"presolve_result min adderm {presolve_result['min_adderm']}")
-
-        while True:            
-            print(f"iteration: {iteration}")
-            print(f"@MSG@ : finding am for min(AS), am: {iteration}")
-            max_h_zero = presolve_result['max_zero']
-            print(f"checking adderm of: {iteration}")
-            start_time = time.time()
-            target_result, satisfiability_loc, _ = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'try_max_h_zero_count' ,iteration, max_h_zero)
-            end_time = time.time()
-            duration = end_time - start_time
-            print(f"@MSG@ : iteration {iteration} took {duration} seconds and result is {satisfiability_loc}")
-
-            if satisfiability_loc == 'unsat':
-                iteration += 1
-
-            
-            elif satisfiability_loc == 'sat':
-                target_result_best = target_result
-                best_adderm = iteration  # Update max_adderm to the current 'sat' index
-                break
-            else:
-                raise TypeError("find_best_adder_s: Problem should be either sat or unsat, this should never happen contact developer")
-        
-        print(f"max iteration: {iteration}")
-
-        if best_adderm == -1:
-            print(f"presolve_result {presolve_result['min_adderm']}")
-            raise RuntimeError("Somehow cannot find any solution to all the multiplier adder count: unsat")
-
-        return target_result_best, best_adderm, max_h_zero
-    
-
-
-    
-    def find_best_adder_m(self, presolve_result):
-        gurobi_instance = FIRFilterGurobi(
-            self.filter_type, 
-            self.half_order, #you pass upperbound directly to gurobi
-            self.xdata, 
-            self.upperbound_lin, 
-            self.lowerbound_lin, 
-            self.ignore_lowerbound, 
-            self.adder_count, 
-            self.wordlength, 
-            self.adder_depth,
-            self.avail_dsp,
-            self.adder_wordlength_ext,
-            self.gain_upperbound,
-            self.gain_lowerbound,
-            self.coef_accuracy,
-            self.intW)
-        
-        max_iter = presolve_result['min_adderm'] * 4 * self.order_upperbound if presolve_result['min_adderm'] != 0 else 5 * self.order_upperbound
-        #iteration search to find the minimum adder count
-        
-        iteration = presolve_result['min_adderm_without_zero']
-        best_adderm = -1  # Default value if no 'sat' is found
-        target_result = None
-        target_result_best = None
-        # print(f"presolve_result min adderm {presolve_result['min_adderm_without_zero']}")
-        max_h_zero = None
-
-        while True:            
-            print(f"iteration: {iteration}")
-            
-        
-            print(f"checking adderm of: {iteration}")
-            target_result, satisfiability_loc ,h_zero_loc = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'find_max_zero' ,iteration)
-
-            if satisfiability_loc == 'unsat':
-                iteration += 1
-                if iteration > max_iter: #if iteration bigger than this, something is definitely wrong
-                    break
-
-            elif satisfiability_loc == 'sat':
-                target_result_best = target_result
-                best_adderm = iteration # Update max_adderm to the current 'sat' index
-                max_h_zero = h_zero_loc
-                break
-            else:
-                raise TypeError("find_best_adder_s: Problem should be either sat or unsat, this should never happen contact developer")
-        
-        print(f"max iteration: {iteration}")
-
-        if best_adderm == -1:
-            print(f"presolve_result {presolve_result['min_adderm']}")
-            raise RuntimeError("Somehow cannot find any solution to all the multiplier adder count: unsat")
-
-        return target_result_best, best_adderm, max_h_zero
-    
-    def deep_search2(self,presolve_result ,input_data_dict):
-        gurobi_instance = FIRFilterGurobi(
-            self.filter_type, 
-            self.half_order, #you pass upperbound directly to gurobi
-            self.xdata, 
-            self.upperbound_lin, 
-            self.lowerbound_lin, 
-            self.ignore_lowerbound, 
-            self.adder_count, 
-            self.wordlength, 
-            self.adder_depth,
-            self.avail_dsp,
-            self.adder_wordlength_ext,
-            self.gain_upperbound,
-            self.gain_lowerbound,
-            self.coef_accuracy,
-            self.intW)
-         
-        # Unpacking variables from the dictionary
-        best_adderm_from_s = input_data_dict['best_adderm_from_s']
-        total_adder_s = input_data_dict['total_adder_s']
-        adder_s_h_zero_best = input_data_dict['adder_s_h_zero_best']
-
-        print(f"presolveresult {presolve_result}")
-        print(f"input data dict {input_data_dict}")
-        
-
-        h_zero_search_space = [val for val in range(adder_s_h_zero_best)]
-        adder_m_cost = [None for i in range(len(h_zero_search_space))]
-        for i, val in enumerate(h_zero_search_space):
-            adder_m_cost[i] = total_adder_s - self.order_upperbound + (2*val) - 1
-
-
-        print(f"h_zero_search_space is {h_zero_search_space}")
-        print(f"adder_m_cost is {adder_m_cost}")
-
-        # Initialize vars
-        target_result_best = None
-        h_zero_best = None
-        best_adderm = None
-        done = False
-    
-        while True:
-            # print(f"im running")
-            for i, h_zero_val in enumerate(h_zero_search_space):
-                target_adderm = adder_m_cost[i] #calculate better adderm from current best -1
-                if all(val < 0 for val in adder_m_cost):
-                    done = True
-                    break
-
-                if target_adderm < 0:
-                    continue
-                
-
-                print(f"testing adderm {target_adderm} and h_zero {h_zero_val}")
-                target_result, satisfiability_loc ,h_zero_loc = gurobi_instance.runsolver(self.gurobi_thread, presolve_result, 'try_h_zero_count' ,target_adderm, h_zero_val)
-                if satisfiability_loc == 'sat':
-                    adder_m_cost = [val - 1 for val in adder_m_cost] #decrement all values by 1
-                    target_result_best = target_result
-                    h_zero_best = h_zero_loc
-                    best_adderm = target_adderm
-                    print(f"adder m cost best is {adder_m_cost[i]}")
-                else:
-                    adder_m_cost[i] = -1
-                
-            if done:
-                break
-        
-        if target_result_best == None:
-            print(f"No solution from deep search")
-        print(f"min_total_adder is {target_result_best}")
-        print(f"best adderm is {best_adderm}")
-        print(f"h_zero_best is {h_zero_best}")
-        return target_result_best, best_adderm, h_zero_best
-    
-    
-    
-    
-    def find_best_adder_s_z3_paysat(self, presolve_result):
-       
-        #iteration search to find the minimum adder count
-        max_iter = presolve_result['min_adderm_without_zero'] * 4 * self.order_upperbound if presolve_result['min_adderm_without_zero'] != 0 else 5 * self.order_upperbound
-        iteration = presolve_result['min_adderm_without_zero']
-        best_adderm = -1  # Default value if no 'sat' is found
-        target_result = None
-        target_result_best = None
-
-        while True:            
-            print(f"iteration: {iteration}")
-            
-        
-            max_h_zero = presolve_result['max_zero']
-            print(f"checking adderm of: {iteration}")
-
-            self.execute_z3_pysat(iteration, max_h_zero)
-
-
-            if self.satisfiability == 'unsat':
-                iteration += 1
-                if iteration > max_iter: #if iteration bigger than this, something is definitely wrong
-                    break
-
-            elif self.satisfiability == 'sat':
-                target_result_best = self.result_model
-                best_adderm = iteration  # Update max_adderm to the current 'sat' index
-                break
-            else:
-                raise TypeError("find_best_adder_s: Problem should be either sat or unsat, this should never happen contact developer")
-        
-        print(f"max iteration: {iteration}")
-
-        if best_adderm == -1:
-            raise RuntimeError("Somehow cannot find any solution to all the multiplier adder count: unsat")
-
-        return target_result_best, best_adderm ,max_h_zero
-
-        
-
-    def z3_run_main(self, adderm, h_zero_count=0):
-
-        result_model , satisfiability = self.z3_instance_creator().runsolver(self.z3_thread, adderm,h_zero_count)
-        
-        return result_model , satisfiability
-    
-    def pysat_run_main(self, solver_id, adderm, h_zero_count=0):
-
-        result_model , satisfiability= self.pysat_instance_creator().runsolver(solver_id,adderm,h_zero_count)
-        
-        return result_model , satisfiability
-    
-    
-    def execute_z3_pysat(self, adderm , h_zero_count = None):
-        pools = []  # To store active pools for cleanup
-        futures_z3 = []  # List to store Z3 futures
-        futures_pysat = []  # List to store PySAT futures
-        
-
-        try:
-            # Conditionally create the Z3 pool
-            if self.z3_thread > 0:
-                pool_z3 = ProcessPool(max_workers=1)
-                pools.append(pool_z3)
-                future_single_z3 = pool_z3.schedule(self.z3_run_main, args=(adderm, h_zero_count,), timeout=self.timeout)
-                futures_z3.append(future_single_z3)
-                    
-            else:
-                pool_z3 = None
-
-            # Conditionally create the PySAT pool
-            if self.pysat_thread > 0:
-                pool_pysat = ProcessPool(max_workers=self.pysat_thread)
-                pools.append(pool_pysat)
-                for i in range(self.pysat_thread):
-                    future_single_pysat = pool_pysat.schedule(self.pysat_run_main, args=(i , adderm, h_zero_count,), timeout=self.timeout)
-                    futures_pysat.append(future_single_pysat)
-                    
-            else:
-                pool_pysat = None
-
-            solver_pools = {
-                'z3': pool_z3,
-                'pysat': pool_pysat
-            }
-            
-            if self.z3_thread > 0:
-                for future in futures_z3:
-                    future.add_done_callback(self.task_done_z3_pysat('z3', futures_z3,solver_pools))
-            if self.pysat_thread > 0:
-                for future in futures_pysat:
-                    future.add_done_callback(self.task_done_z3_pysat('pysat', futures_pysat,solver_pools))
-            
-            # Wait for all futures to complete, handling timeouts as well
-            all_futures =  futures_z3 + futures_pysat
-            done, not_done = wait(all_futures, return_when=ALL_COMPLETED)
-
-            # Iterate over completed futures and handle exceptions
-            for future in done:
-                try:
-                    result_model , satisfiability = future.result()
-                except CancelledError:
-                    pass
-                except TimeoutError:
-                    pass
-                except Exception as e:
-                    # Handle other exceptions if necessary
-                    print(f"Task raised an exception: {e}")
-                    traceback.print_exc()
-
-        finally:
-            # Ensure all pools are properly cleaned up
-            for pool in pools:
-                pool.stop()
-                pool.join()
-        
-        return
-    
-    def task_done_z3_pysat(self, solver_name, futures, solver_pools):
-        def callback(future):
-            try:
-                h_res = []
-                result_model , satisfiability  = future.result()  # blocks until results are ready
-                print(f"{solver_name} task done")
-                
-                # Cancel all other processes for this solver (only within the same group)
-                for f in futures:
-                    if f is not future and not f.done():  # Check if `f` is a `Future`
-                        if not f.cancel():
-                        # If cancel() doesn't work, forcefully stop the corresponding pool
-                            print(f"{solver_name} process couldn't be cancelled. Force stopping the pool.")
-                            solver_pools[solver_name].stop()
-                
-
-
-                self.satisfiability = satisfiability
-                self.result_model = result_model
-               
-            except CancelledError:
-                print(f"{solver_name} task was cancelled.")
-            except TimeoutError:
-                print(f"{solver_name} task timed out.")
-            except ProcessExpired as error:
-                print(f"{solver_name} process {error.pid} expired.")
-            except Exception as error:
-                print(f"{solver_name} task raised an exception: {error}")
-                # traceback.print_exc()  # Print the full traceback to get more details
-
-
-        return callback
-    
-
 
     def deep_search(self, presolve_result, input_data_dict):
         sat_found_event = threading.Event()
@@ -862,7 +589,7 @@ class MainProblem:
             while not done:
                 if failed_cancel.is_set():
                     # Cancel failed, need to restart the loop wait a bit
-                    print("Failed cancel, waiting before restarting loop.")
+                    print("@MSG@ : Failed cancel, waiting before restarting loop.")
                     print(f"pool status: {pools}")
                     time.sleep(5)
                     print(f"pool status: {pools}")
@@ -889,7 +616,7 @@ class MainProblem:
                 # Dictionary to keep track of running tasks
                 futures_dict = {}
                 futures = [None for _ in range(min(self.worker, len(indices_to_process)))]
-                config = self.config_gurobi()
+                config = self.config_generator()
                 # Function to submit new tasks
                 def submit_task(idx):
                     with task_lock:
@@ -912,11 +639,26 @@ class MainProblem:
                         threads_per_worker +=1 if idx % self.worker==self.worker-1 else 0
 
                         print(f"pool_index: {future_index}, idx: {idx}, h_zero: {h_zero_val}, adder_m_cost: {target_adderm}")
-                        future = pools[future_index].schedule(
-                            try_asserted,
-                            args=(config, presolve_result, target_adderm, h_zero_val, threads_per_worker,),
-                            timeout=self.timeout
-                        )
+                        if self.gurobi_thread > 0:
+                            future = pools[future_index].schedule(
+                                try_asserted_gurobi,
+                                args=(config, presolve_result, target_adderm, h_zero_val, threads_per_worker,),
+                                timeout=self.timeout
+                            )
+                        elif self.z3_thread > 0:
+                            future = pools[future_index].schedule(
+                                try_asserted_z3,
+                                args=(config, presolve_result, target_adderm, h_zero_val, threads_per_worker,),
+                                timeout=self.timeout
+                            )
+                        elif self.pysat_thread > 0:
+                            future = pools[future_index].schedule(
+                                try_asserted_pysat,
+                                args=(config, presolve_result, target_adderm, h_zero_val, threads_per_worker,),
+                                timeout=self.timeout
+                            )
+                        else:
+                            raise ValueError("No solvers available for solving")
                         futures_dict[idx] = future
                         futures[future_index] = future
                         future.add_done_callback(
@@ -1054,7 +796,7 @@ class MainProblem:
         if self.direct_refine_search == False:
             target_result = None
             print(f"@MSG@ : Starting AM search for min(AS) with step size {self.search_step}")
-            lower_bound, upper_bound, found_sat, target_result_best_as = self.min_as_finder_gurobi(presolve_result)
+            lower_bound, upper_bound, found_sat, target_result_best_as = self.min_as_finder(presolve_result)
             print(f"@MSG@ : upper {upper_bound} and lower at {lower_bound} for min(AS)")
             #this is just to print 
             low = lower_bound-1 if lower_bound != 0 else 0
@@ -1152,8 +894,8 @@ class MainProblem:
             self.all_done[idx].set()
             traceback.print_exc()
         
-    def config_gurobi(self):
-        """Configure the Gurobi solver."""
+    def config_generator(self):
+        """Configure gen."""
         config = {
             "filter_type": self.filter_type,
             "half_order": self.half_order,
@@ -1171,17 +913,22 @@ class MainProblem:
             "coef_accuracy": self.coef_accuracy,
             "intW": self.intW,
             "gurobi_thread": self.gurobi_thread,
-            "worker": self.worker
+            "worker": self.worker,
+            "intfeastol": self.intfeastol,
         }
         return config
     
-    def min_as_finder_gurobi(self, presolve_result):
+    def min_as_finder(self, presolve_result):
         """Main function to search for the smallest SAT number."""
         # Determine the starting point for the adder count
-        if self.am_start is not None:
+        if self.am_start is not None and presolve_result['min_adderm'] is not None:
             am_start = max(self.am_start, presolve_result['min_adderm'])
-        else:
+        elif self.am_start is not None and presolve_result['min_adderm'] is None:
+            am_start = self.am_start
+        elif self.am_start is None and presolve_result['min_adderm'] is not None:
             am_start = presolve_result['min_adderm']
+        else:
+            am_start = 0
 
         lower_bound = None
         upper_bound = None
@@ -1190,7 +937,7 @@ class MainProblem:
         target_result_best = self.unload_target_result(deepsearch=False)
 
         # Configuration for the solver
-        config = self.config_gurobi()
+        config = self.config_generator()
 
         sat_found = multiprocessing.Event()
         self.increased_thread = multiprocessing.Event()
@@ -1213,11 +960,26 @@ class MainProblem:
                     thread += self.gurobi_thread % self.worker
                 if self.sat_list[idx] is None:
                     # Schedule the task
-                    future = pool.schedule(
-                        try_asserted,
-                        args=(config, presolve_result, number, h_zero_count, thread, sat_found_flag),
-                        timeout=self.timeout
-                    )
+                    if self.gurobi_thread > 0:
+                        future = pool.schedule(
+                            try_asserted_gurobi,
+                            args=(config, presolve_result, number, h_zero_count, thread, sat_found_flag),
+                            timeout=self.timeout
+                        )
+                    elif self.z3_thread > 0:
+                        future = pool.schedule(
+                            try_asserted_z3,
+                            args=(config, presolve_result, number, h_zero_count, thread, sat_found_flag),
+                            timeout=self.timeout
+                        )
+                    elif self.pysat_thread > 0:
+                        future = pool.schedule(
+                            try_asserted_pysat,
+                            args=(config, presolve_result, number, h_zero_count, thread, sat_found_flag),
+                            timeout=self.timeout
+                        )
+                    else:
+                        raise ValueError("No solvers available for solving")
                     self.futures[idx] = future
 
                     # Add the callback using functools.partial to pass extra arguments
@@ -1377,7 +1139,7 @@ class MainProblem:
 
         h_zero_count = presolve_result['max_zero']
         target_result = None
-        config = self.config_gurobi()
+        config = self.config_generator()
 
         
         try:
@@ -1413,11 +1175,20 @@ class MainProblem:
                     if self.sat_list[idx] is not None:
                         continue
                     thread = self.gurobi_thread // used_worker
+
                     # If the last id is reached, use the remaining threads
                     if idx == len(midpoints):
                         thread += self.gurobi_thread % used_worker
 
-                    future = pools[idx].schedule(try_asserted, args=(config, presolve_result, am_count_loc,h_zero_count, thread,), timeout=self.timeout)
+                    # Schedule the task
+                    if self.gurobi_thread > 0:
+                        future = pools[idx].schedule(try_asserted_gurobi, args=(config, presolve_result, am_count_loc,h_zero_count, thread,), timeout=self.timeout)
+                    elif self.z3_thread > 0:
+                        future = pools[idx].schedule(try_asserted_z3, args=(config, presolve_result, am_count_loc,h_zero_count, thread,), timeout=self.timeout)
+                    elif self.pysat_thread > 0:
+                        future = pools[idx].schedule(try_asserted_pysat, args=(config, presolve_result, am_count_loc,h_zero_count, thread,), timeout=self.timeout)
+                    else:
+                        raise ValueError("No solvers available for solving")
                     futures.append((future))
 
 
@@ -1499,51 +1270,6 @@ class MainProblem:
         return am_count_best, target_result_best
 
 
-    
-
-
-    def z3_instance_creator(self):
-        z3_instance = FIRFilterZ3(
-                    self.filter_type, 
-                    self.half_order, 
-                    self.xdata, 
-                    self.upperbound_lin, 
-                    self.lowerbound_lin, 
-                    self.ignore_lowerbound, 
-                    self.adder_count, 
-                    self.wordlength, 
-                    self.adder_depth,
-                    self.avail_dsp,
-                    self.adder_wordlength_ext,
-                    self.gain_upperbound,
-                    self.gain_lowerbound,
-                    self.coef_accuracy,
-                    self.intW,
-                    self.gain_wordlength,
-                    self.gain_intW
-                    )
-        
-        return z3_instance
-    
-    def pysat_instance_creator(self):
-        pysat_instance = FIRFilterPysat(
-                    self.filter_type, 
-                    self.half_order, 
-                    self.xdata, 
-                    self.upperbound_lin,
-                    self.lowerbound_lin,
-                    self.ignore_lowerbound, 
-                    self.adder_count, 
-                    self.wordlength, 
-                    self.adder_depth,
-                    self.avail_dsp,
-                    self.adder_wordlength_ext,
-                    self.gain_upperbound,
-                    self.gain_lowerbound,
-                    self.intW
-                    )
-        
-        return pysat_instance
 
 
 if __name__ == "__main__":

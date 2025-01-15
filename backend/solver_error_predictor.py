@@ -35,8 +35,6 @@ class ErrorPredictor:
         self.coef_accuracy = None
         self.intW = None
 
-        self.gain_wordlength = None
-        self.gain_intW = None
 
         self.gurobi_thread = None
         self.pysat_thread = None
@@ -53,6 +51,7 @@ class ErrorPredictor:
         self.cutoffs_lower_ydata_lin = None
 
         self.half_order = None
+        self.intfeastol = None
 
 
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
@@ -70,6 +69,11 @@ class ErrorPredictor:
 
         self.bound_too_small_flag = False
         self.error_predictor_canceled = False
+
+        self.fracW = self.wordlength - self.intW
+        self.gain_intW = 4 #bits to represent integer part of gain
+        self.gain_fracW =  self.fracW #bits to represent fractional part of gain
+        self.gain_wordlength= self.gain_intW + self.gain_fracW #bits wordlength for gain
 
     def get_solver_func_dict(self):
         input_data_sf = {
@@ -252,7 +256,8 @@ class ErrorPredictor:
             self.gain_upperbound,
             self.gain_lowerbound,
             self.coef_accuracy,
-            self.intW
+            self.intW,
+            self.intfeastol
         )
         if sat_check == False:
             target_result = gurobi_instance.run_barebone(self.gurobi_thread,None)
@@ -404,7 +409,8 @@ class ErrorPredictor:
             self.gain_upperbound,
             self.gain_lowerbound,
             self.coef_accuracy,
-            self.intW
+            self.intW,
+            self.intfeastol
         )
     
         return gurobi_instance
@@ -426,8 +432,6 @@ class ErrorPredictor:
                     self.gain_lowerbound,
                     self.coef_accuracy,
                     self.intW,
-                    self.gain_wordlength,
-                    self.gain_intW
                     )
         
         return z3_instance
@@ -539,8 +543,6 @@ if __name__ == "__main__":
         'adder_depth': 0,
         'avail_dsp': 0,
         'adder_wordlength_ext': 2, #this is extension not the adder wordlength
-        'gain_wordlength' : 6,
-        'gain_intW' : 2,
         'gain_upperbound': gain_upperbound,
         'gain_lowerbound': gain_lowerbound,
         'coef_accuracy': coef_accuracy,

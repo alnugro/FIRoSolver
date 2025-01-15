@@ -447,18 +447,17 @@ class FIRFilterPysat:
             for clause in cnf4:
                 solver.add_clause(clause)
             
-        
-
-        # dsp are odd numbers
-        for k in range(self.adder_count + 2, self.avail_dsp+1):
-            solver.add_clause([v2i(('c', k, 0))])
-
-        
+    
         # c0,w is always 0 except at 0 so input is 1
         for w in range(1, self.adder_wordlength):
             solver.add_clause([-v2i(('c', 0, w))])
 
         solver.add_clause([v2i(('c', 0, 0))])
+
+        # dsp are odd numbers
+      
+        for k in range(self.adder_count + 1, self.adder_count + 1 + self.avail_dsp):
+            solver.add_clause([v2i(('c', k, 0))])
     
         for i in range(1,self.adder_count+1):
             # Bound ci,0 to be odd number 
@@ -466,7 +465,7 @@ class FIRFilterPysat:
 
         #last c or c[N+1] is connected to ground, so all zeroes
         for w in range(self.adder_wordlength):
-            solver.add_clause([-v2i(('c', self.adder_count+1, w))])
+            solver.add_clause([-v2i(('c', self.adder_count + 1 + self.avail_dsp, w))])
 
             
         alpha_lits = []

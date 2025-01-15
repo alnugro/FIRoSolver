@@ -414,9 +414,9 @@ class AutomaticParameterResultSubWindow(QWidget):
         filter_order_label = QLabel("Filter Type Order        ")
         self.filter_order_spinbox = QSpinBox()
         self.filter_order_spinbox.setMinimum(1)
-        self.filter_order_spinbox.setMaximum(100)
+        self.filter_order_spinbox.setMaximum(10000)
         self.filter_order_spinbox.setValue(data_dict.get('filter_order', 1))
-        self.filter_order_spinbox.setSingleStep(1)
+        self.filter_order_spinbox.setSingleStep(2)
         self.filter_order_spinbox.setFixedSize(300, 40)  # Width: 100, Height: 50
 
 
@@ -483,6 +483,8 @@ class AutomaticParameterResultSubWindow(QWidget):
         # Connect buttons
         continue_button.clicked.connect(self.continue_clicked)
         cancel_button.clicked.connect(self.cancel_clicked)
+
+
 
 
     def format_dict_data(self, data_dict):

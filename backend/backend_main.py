@@ -46,9 +46,6 @@ class SolverBackend():
         self.intW = None
         self.worker = None
 
-        self.gain_wordlength = None
-        self.gain_intW = None
-
         self.gurobi_thread = None
         self.pysat_thread = None
         self.z3_thread = None
@@ -65,6 +62,7 @@ class SolverBackend():
         self.cutoffs_lower_ydata_lin = None
 
         self.solver_accuracy_multiplier = None
+        self.intfeastol = None
 
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
         for key, value in input_data.items():
@@ -121,6 +119,22 @@ class SolverBackend():
         automatic_search = AutomaticSearch(self.input_data)
         best_target_result, best_filter_type, wordlength = automatic_search.automatic_search()
         return best_target_result, best_filter_type, wordlength
+    
+    def asserted_param_quick_check(self):
+        self.gurobi_test()
+        main_problem = MainProblem(self.input_data)
+        target_result = main_problem.quick_check_sat()
+        leak_flag = False
+        if target_result['satisfiability'] == 'sat':
+            bound_patcher = BoundErrorHandler(self.input_data)
+            leaks,leaks_mag = bound_patcher.leak_validator(target_result['h_res'], target_result['gain_res'])
+            if leaks:
+                leak_flag = True
+        
+        target_result.update({
+            'leak_flag': leak_flag
+        })
+        return target_result
     
     def error_prediction(self):
         err_handler = ErrorPredictor(self.input_data)
@@ -191,13 +205,8 @@ class SolverBackend():
     def find_best_adder_s(self, presolve_result):
         main = MainProblem(self.input_data)
         
-        if self.gurobi_thread > 0:
-            target_result, best_adderm, adder_s_h_zero_best= main.find_best_adder_s(presolve_result)
+        target_result, best_adderm, adder_s_h_zero_best= main.find_best_adder_s(presolve_result)
             
-        
-        else:
-            target_result, best_adderm, adder_s_h_zero_best= main.find_best_adder_s_z3_paysat(presolve_result)
-        
         half_adder_s = self.half_order - adder_s_h_zero_best - 1
 
         if self.filter_type == 0:
@@ -447,7 +456,7 @@ class SolverBackend():
 
         except Exception as e:
             raise ImportError(f"Gurobi encountered an error, Check your installation: {e}")
-
+        
 
 
     
@@ -468,8 +477,6 @@ if __name__ == "__main__":
     avail_dsp = 0
     adder_wordlength_ext = 2
 
-    gain_wordlength = 13
-    gain_intW = 4
 
     gurobi_thread = 10
     pysat_thread = 0
@@ -542,8 +549,6 @@ if __name__ == "__main__":
         'adder_depth': adder_depth,
         'avail_dsp': avail_dsp,
         'adder_wordlength_ext': adder_wordlength_ext,  # This is extension, not the adder wordlength
-        'gain_wordlength': gain_wordlength,
-        'gain_intW': gain_intW,
         'gain_upperbound': gain_upperbound,
         'gain_lowerbound': gain_lowerbound,
         'coef_accuracy': coef_accuracy,

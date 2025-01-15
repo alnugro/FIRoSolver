@@ -40,9 +40,9 @@ class MagnitudePlotter:
         # plt.rcParams['figure.dpi'] = 20
 
         # Disable antialiasing globally
-        plt.rcParams['lines.antialiased'] = False   # For lines in plots
-        plt.rcParams['patch.antialiased'] = False   # For patches, like rectangles and polygons
-        plt.rcParams['text.antialiased'] = False    # For text
+        # plt.rcParams['lines.antialiased'] = False   # For lines in plots
+        # plt.rcParams['patch.antialiased'] = False   # For patches, like rectangles and polygons
+        # plt.rcParams['text.antialiased'] = False    # For text
         
 
         self.xdata_edges = []
@@ -51,7 +51,7 @@ class MagnitudePlotter:
 
 
     def initiate_plot(self, table_data, data_dict):
-
+        self.xdata_edges = []
         #reset plot if its not empty
         if self.draggable_lines:
             print("clearing")
@@ -130,6 +130,7 @@ class MagnitudePlotter:
         self.draggable_lines = DraggablePlotter(self.fig, self.ax,self.app.canvas, self.day_night, self.app.position_label, self.app)
         self.update_plotter(data_dict, False)
         self.draggable_lines.initialize_plot(xdata, middle_y, upper_y, lower_y)
+        self.draggable_lines.reset_draggable_points()
 
 
 
@@ -160,6 +161,8 @@ class MagnitudePlotter:
         self.draggable_lines.initialize_plot(xdata, middle_y, upper_y, lower_y)
         if history:
             self.draggable_lines.set_history(history)
+        self.draggable_lines.reset_draggable_points()
+
 
 
 
@@ -223,6 +226,7 @@ class MagnitudePlotter:
         cutoffs_lower_ydata = []
 
         cutoffs_x = copy.deepcopy(self.xdata_edges)
+        print(f"cutoffs_x {cutoffs_x}")
 
         xdata , middle_y , lower_y, upper_y = self.draggable_lines.get_plot_data()
 

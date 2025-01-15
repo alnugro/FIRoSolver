@@ -27,8 +27,6 @@ class FIRFilterZ3:
                  gain_lowerbound,
                  coef_accuracy,
                  intW,
-                 gain_wordlength,
-                 gain_intW
                  ):
         
         self.filter_type = filter_type
@@ -48,9 +46,10 @@ class FIRFilterZ3:
         self.fracW = self.wordlength - self.intW
 
         
-        self.gain_wordlength=gain_wordlength #bits wordlength for gain
-        self.gain_intW = gain_intW
-        self.gain_fracW =  self.gain_wordlength - self.gain_intW
+
+        self.gain_intW = 4 #bits to represent integer part of gain
+        self.gain_fracW =  self.fracW #bits to represent fractional part of gain
+        self.gain_wordlength= self.gain_intW + self.gain_fracW #bits wordlength for gain
 
         self.gain_upperbound= gain_upperbound
         self.gain_lowerbound= gain_lowerbound
@@ -450,11 +449,6 @@ class FIRFilterZ3:
         alpha = [[Bool(f'alpha_{i}_{a}', ctx=ctx) for a in range(i)] for i in range(1, self.adder_count + 1)]
         beta = [[Bool(f'Beta_{i}_{a}', ctx=ctx) for a in range(i)] for i in range(1, self.adder_count + 1)]
 
-        
-
-        # dsp are odd numbers
-        for k in range(self.adder_count + 2, self.avail_dsp+1):
-            solver.add(c[k][0])
     
         # c0,w is always 0 except at 1
         for w in range(1, self.adder_wordlength):
@@ -462,13 +456,17 @@ class FIRFilterZ3:
 
         solver.add(c[0][0])
 
+        # dsp are odd numbers
+        for k in range(self.adder_count + 1, self.adder_count + 1 + self.avail_dsp):
+            solver.add(c[k][0])
+
         # bound ci,0 to be odd number
         for i in range(1, self.adder_count + 1):
             solver.add(c[i][0])
 
         # last c or c[N+1] is connected to ground, so all zeroes
         for w in range(self.adder_wordlength):
-            solver.add(Not(c[self.adder_count + 1][w]))
+            solver.add(Not(c[self.adder_count + 1 + self.avail_dsp][w]))
 
         # input multiplexer
         for i in range(1, self.adder_count + 1):
@@ -698,6 +696,7 @@ class FIRFilterZ3:
         # solver connection
         theta = [[Bool(f'theta_{i}_{m}', ctx=ctx) for m in range(half_order + 1)] for i in range(self.adder_count + 2 + self.avail_dsp)]
         t = [[Bool(f't_{m}_{w}', ctx=ctx) for w in range(self.adder_wordlength)] for m in range(half_order + 1)]
+
         for m in range(half_order + 1):
             theta_or = []
             for i in range(self.adder_count + 2 + self.avail_dsp):
@@ -827,9 +826,13 @@ class FIRFilterZ3:
 
             for i in range(1, self.adder_count + 1):
                 clause60 = Or(Not(psi_alpha[i - 1][0]), alpha[i - 1][0])
+                clause60_2 = Or(psi_alpha[i - 1][0], Not(alpha[i - 1][0]))
                 clause61 = Or(Not(psi_beta[i - 1][0]), beta[i - 1][0])
+                clause61_2 = Or(psi_beta[i - 1][0], Not(beta[i - 1][0]))
                 solver.add(clause60)
+                solver.add(clause60_2)
                 solver.add(clause61)
+                solver.add(clause61_2)
 
                 psi_alpha_sum.append(psi_alpha[i - 1][0])
                 psi_beta_sum.append(psi_beta[i - 1][0])
@@ -837,10 +840,12 @@ class FIRFilterZ3:
                 
 
                 if self.adder_depth == 1:
+                    solver.add(AtMost(*psi_alpha_sum, 1))
+                    solver.add(AtLeast(*psi_alpha_sum, 1))
                     continue
 
                 for d in range(1, self.adder_depth):
-                    for a in range(i - 1):
+                    for a in range(1,i):
                         clause63 = Or(Not(psi_alpha[i - 1][d]), Not(alpha[i - 1][a]), psi_alpha[a-1][d - 1])
                         psi_beta_list = []
                         for j in range(d):

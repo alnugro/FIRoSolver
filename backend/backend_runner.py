@@ -7,8 +7,10 @@ import numpy as np
 import json
 import numpy as np
 import os
+import signal
 import time
 from filelock import FileLock
+
 
 
 
@@ -33,9 +35,6 @@ class BackendRunner:
         self.gain_lowerbound = None
         self.coef_accuracy = None
         self.intW = None
-
-        self.gain_wordlength = None
-        self.gain_intW = None
 
         self.gurobi_thread = None
         self.pysat_thread = None
@@ -63,6 +62,7 @@ class BackendRunner:
         for key, value in solver_input.items():
             if hasattr(self, key):  # Only set attributes that exist in the class
                 setattr(self, key, value)
+        
 
 
         self.solver_input = solver_input
@@ -380,6 +380,7 @@ class BackendRunner:
 
 
 def main():
+
     try:
         # Read the input file path from command-line arguments
         input_file = sys.argv[1]

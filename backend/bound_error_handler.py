@@ -35,8 +35,6 @@ class BoundErrorHandler:
         self.coef_accuracy = None
         self.intW = None
 
-        self.gain_wordlength = None
-        self.gain_intW = None
 
         self.gurobi_thread = None
         self.pysat_thread = None
@@ -61,6 +59,7 @@ class BoundErrorHandler:
 
         self.patch_multiplier = None
         self.half_order = None
+        self.intfeastol = None
 
 
 
@@ -76,9 +75,12 @@ class BoundErrorHandler:
         self.h_res = None
         self.gain_res = None
 
-        self.ignore_error = 10 ** (-60 / 20) #gurobi feasibility accuracy 1e-6
 
         self.plot_flag = False #turn this on to graph result
+        if self.intfeastol == None:
+            self.intfeastol = 1e-5 #if not found maybe from test, gurobi feasibility accuracy 1e-5 is set as default
+
+        self.ignore_error = self.intfeastol
         
             
 
@@ -273,9 +275,6 @@ if __name__ == "__main__":
     avail_dsp = 0
     adder_wordlength_ext = 4
 
-    gain_wordlength = 13
-    gain_intW = 4
-
     gurobi_thread = 10
     pysat_thread = 0
     z3_thread = 0
@@ -350,8 +349,6 @@ if __name__ == "__main__":
         'adder_depth': adder_depth,
         'avail_dsp': avail_dsp,
         'adder_wordlength_ext': adder_wordlength_ext,  # This is extension, not the adder wordlength
-        'gain_wordlength': gain_wordlength,
-        'gain_intW': gain_intW,
         'gain_upperbound': gain_upperbound,
         'gain_lowerbound': gain_lowerbound,
         'coef_accuracy': coef_accuracy,

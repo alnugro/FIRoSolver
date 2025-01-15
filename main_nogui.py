@@ -29,8 +29,8 @@ class IterationManager(QObject):
         if self.current_iteration < self.total_iterations:
             # Prepare data for this iteration
             i = self.current_iteration
-            delta = 0.030034
-            order_current = 20
+            delta = 0.3
+            order_current = 16
 
             # Test inputs (use your actual data preparation logic)
             filter_type = 0
@@ -46,12 +46,10 @@ class IterationManager(QObject):
             avail_dsp = 0
             adder_wordlength_ext = 2
 
-            gain_intW = 4       
-            gain_wordlength = wordlength + gain_intW - intW
 
-            gurobi_thread = 20
+            gurobi_thread = 0
             pysat_thread = 0
-            z3_thread = 0
+            z3_thread = 1
 
             timeout = 0
             deepsearch = True
@@ -125,8 +123,6 @@ class IterationManager(QObject):
                 'adder_depth': adder_depth,
                 'avail_dsp': avail_dsp,
                 'adder_wordlength_ext': adder_wordlength_ext,
-                'gain_wordlength': gain_wordlength,
-                'gain_intW': gain_intW,
                 'gain_upperbound': gain_upperbound,
                 'gain_lowerbound': gain_lowerbound,
                 'coef_accuracy': coef_accuracy,

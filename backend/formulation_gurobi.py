@@ -29,12 +29,15 @@ class FIRFilterGurobi:
                  gain_lowerbound,
                  coef_accuracy,
                  intW,
-                 run_auto_thread=False,
                  intfeasttol=None,
+                 run_auto_thread=False,
                  ):
         
-        
-        
+        if intfeasttol is not None:
+            self.intfeasttol = intfeasttol
+        else:
+            self.intfeasttol = 1e-5 # default value for intfeasttol
+
         self.filter_type = filter_type
         self.half_order = half_order
         self.freqx_axis = freqx_axis
@@ -94,28 +97,28 @@ class FIRFilterGurobi:
         internal_ignore_lowerbound = round(self.ignore_lowerbound*(2**self.fracW), self.coef_accuracy)
 
 
-        # print("\nRunning Gurobi with the following parameters:")
-        # print(f"thread: {thread}")
-        # print(f"minmax_option: {minmax_option}")
-        # print(f"h_zero_count: {h_zero_count}")
-        # print(f"filter_type: {self.filter_type}")
-        # print(f"freqx_axis: {self.freqx_axis}")
-        # print(f"upperbound_lin: {internal_upperbound_lin}")
-        # print(f"lowerbound_lin: {internal_lowerbound_lin}")
-        # print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
-        # print(f"gain_upperbound: {self.gain_upperbound}")
-        # print(f"gain_lowerbound: {self.gain_lowerbound}")
-        # print(f"wordlength: {self.wordlength}")
-        # print(f"fracW: {self.fracW}")
-        # print(f"intW: {self.intW}")
-        # print(f"coef_accuracy: {self.coef_accuracy}")
-        # print(f"half_order: {self.half_order}")
-        # print(f"adder_count: {self.adder_count}")
-        # print(f"adder_depth: {self.adder_depth}")
-        # print(f"avail_dsp: {self.avail_dsp}")
-        # print(f"adder_wordlength: {self.adder_wordlength}")
-        # print(f"gain_upperbound: {self.gain_upperbound}")
-        # print(f"gain_lowerbound: {self.gain_lowerbound}\n")
+        print("\nRunning Gurobi with the following parameters:")
+        print(f"thread: {thread}")
+        print(f"minmax_option: {minmax_option}")
+        print(f"h_zero_count: {h_zero_count}")
+        print(f"filter_type: {self.filter_type}")
+        print(f"freqx_axis: {self.freqx_axis}")
+        print(f"upperbound_lin: {internal_upperbound_lin}")
+        print(f"lowerbound_lin: {internal_lowerbound_lin}")
+        print(f"ignore_lowerbound: {internal_ignore_lowerbound}")
+        print(f"gain_upperbound: {self.gain_upperbound}")
+        print(f"gain_lowerbound: {self.gain_lowerbound}")
+        print(f"wordlength: {self.wordlength}")
+        print(f"fracW: {self.fracW}")
+        print(f"intW: {self.intW}")
+        print(f"coef_accuracy: {self.coef_accuracy}")
+        print(f"half_order: {self.half_order}")
+        print(f"adder_count: {self.adder_count}")
+        print(f"adder_depth: {self.adder_depth}")
+        print(f"avail_dsp: {self.avail_dsp}")
+        print(f"adder_wordlength: {self.adder_wordlength}")
+        print(f"gain_upperbound: {self.gain_upperbound}")
+        print(f"gain_lowerbound: {self.gain_lowerbound}\n")
         
 
         with gp.Env() as env:
@@ -124,6 +127,7 @@ class FIRFilterGurobi:
                     model.setParam('Threads', thread)
                     
                 model.setParam('OutputFlag', 0)
+                model.setParam('IntFeasTol', self.intfeasttol)
 
 
                 h = [[model.addVar(vtype=GRB.BINARY, name=f'h_{a}_{w}') for w in range(self.wordlength)] for a in range(half_order + 1)]
@@ -285,6 +289,8 @@ class FIRFilterGurobi:
         if self.run_auto_thread == False:
             model.setParam('Threads', thread)
         model.setParam('OutputFlag', 0)
+        model.setParam('IntFeasTol', self.intfeasttol)
+
 
         h_upperbound = ((2**(self.intW-1))-1)+(1-2**-self.fracW)
         h_lowerbound = -2**(self.intW-1)
@@ -481,13 +487,12 @@ class FIRFilterGurobi:
 
                 model.setParam('Presolve', 2)
                 model.setParam('Method', 2)
+                model.setParam('IntFeasTol', self.intfeasttol)
 
                 if solver_option == 'try_max_h_zero_count' or solver_option == 'try_h_zero_count':
                     model.setParam('SolutionLimit', 1)
                     model.setParam('MIPFocus', 1)
                     # model.setParam('Cuts', 0)
-
-                
 
                 if adderm > 2:
                     if h_zero_count == None:
@@ -582,9 +587,7 @@ class FIRFilterGurobi:
                 beta = [[model.addVar(vtype=GRB.BINARY, name=f'beta_{i}_{a}') for a in range(i)] for i in range(1, self.adder_count + 1)]
 
                 
-
-                
-                # c0,w is always 0 except at w = 0
+                # c0,w is 0 except at w = 0
                 for w in range(1, self.adder_wordlength):
                     model.addConstr(c[0][w] == 0)
 
@@ -593,8 +596,6 @@ class FIRFilterGurobi:
                 # dsp are odd numbers
                 for k in range(self.adder_count + 1, self.adder_count + 1 + self.avail_dsp):
                     model.addConstr(c[k][0] == 1)
-
-                #c0 c1 c2 dsp czero
 
                 # Bound ci,0 to be an odd number
                 for i in range(1, self.adder_count + 1):
@@ -788,6 +789,7 @@ class FIRFilterGurobi:
                             model.addConstr(-phi[m][k] - t[m][j] + o[m][j + k] >= -1)
                             model.addConstr(-phi[m][k] + t[m][j] - o[m][j + k] >= -1)
                         phi_sum += phi[m][k]
+                        
                     # AtMost and AtLeast (phi_sum == 1)
                     model.addConstr(phi_sum == 1)
                     for kf in range(1, self.adder_wordlength - 1):

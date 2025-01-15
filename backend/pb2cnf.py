@@ -23,294 +23,316 @@ class PB2CNF():
         self.r2b = Rat2bool()
         self.weight_wordlength = weight_wordlength
 
-    def addition_matcher(self,res, a, b, cin):
-        
+    def addition_matcher(self, res, a, b, cin):
         cnf_addit = []
         cout = None
-        match (a, b, cin):
-            #put the most likely one on the top
-            case (int() as a_int, int() as b_int, int() as cin_int):
-                #print(f"Case1: a == {a_int}, b == {b_int}, cin == {cin_int}")
-                cout = self.aux_var_setter()
-                cnf_addit.append([a_int, b_int, cin_int, -res])
-                cnf_addit.append([a_int, b_int, -cin_int, res])
-                cnf_addit.append([a_int, -b_int, cin_int, res])
-                cnf_addit.append([-a_int, b_int, cin_int, res])
-                cnf_addit.append([-a_int, -b_int, -cin_int, res])
-                cnf_addit.append([-a_int, -b_int, cin_int, -res])
-                cnf_addit.append([-a_int, b_int, -cin_int, -res])
-                cnf_addit.append([a_int, -b_int, -cin_int, -res])
 
-                cnf_addit.append([-a_int, -b_int, cout])
-                cnf_addit.append([a_int, b_int, -cout])
-                cnf_addit.append([-a_int, -cin_int, cout])
-                cnf_addit.append([a_int, cin_int, -cout])
-                cnf_addit.append([-b_int, -cin_int, cout])
-                cnf_addit.append([b_int, cin_int, -cout])
-                return cnf_addit, cout
-            
-            case (int() as a_int, 'zero', 'zero'):
-                #print(f"Case2: a == {a_int}, b == 'zero', cin == 'zero'")
-                cout =  'zero'
-                cnf_addit.append([-res, a_int])
-                cnf_addit.append([res, -a_int])
+        # Case 1: (int, int, int)
+        if isinstance(a, int) and isinstance(b, int) and isinstance(cin, int):
+            a_int, b_int, cin_int = a, b, cin
+            # print(f"Case1: a == {a_int}, b == {b_int}, cin == {cin_int}")
+            cout = self.aux_var_setter()
+            cnf_addit.append([a_int, b_int, cin_int, -res])
+            cnf_addit.append([a_int, b_int, -cin_int, res])
+            cnf_addit.append([a_int, -b_int, cin_int, res])
+            cnf_addit.append([-a_int, b_int, cin_int, res])
+            cnf_addit.append([-a_int, -b_int, -cin_int, res])
+            cnf_addit.append([-a_int, -b_int, cin_int, -res])
+            cnf_addit.append([-a_int, b_int, -cin_int, -res])
+            cnf_addit.append([a_int, -b_int, -cin_int, -res])
 
-                return cnf_addit, cout
-            
-            case (int() as a_int, 'zero', 'one'):
-                #print(f"Case3: a == {a_int}, b == 'zero', cin == 'one'")
-                cout = self.aux_var_setter()
-                cnf_addit.append([-res, -a_int])
-                cnf_addit.append([res, a_int])
+            cnf_addit.append([-a_int, -b_int, cout])
+            cnf_addit.append([a_int, b_int, -cout])
+            cnf_addit.append([-a_int, -cin_int, cout])
+            cnf_addit.append([a_int, cin_int, -cout])
+            cnf_addit.append([-b_int, -cin_int, cout])
+            cnf_addit.append([b_int, cin_int, -cout])
 
-                cnf_addit.append([-cout, a_int])
-                cnf_addit.append([cout, -a_int])
-                #print(cout)
-                return cnf_addit, cout
-            
-            case (int() as a_int, 'zero', int() as cin_int):
-                #print(f"Case4: a == {a_int}, b == 'zero', cin == {cin_int}")
-                cout = self.aux_var_setter()
+            return cnf_addit, cout
 
-                cnf_addit.append([a_int, cin_int, -res])
-                cnf_addit.append([a_int, -cin_int, res])
-                cnf_addit.append([-a_int, cin_int, res])
-                cnf_addit.append([-a_int, -cin_int, -res])
+        # Case 2: (int, 'zero', 'zero')
+        elif isinstance(a, int) and b == 'zero' and cin == 'zero':
+            a_int = a
+            # print(f"Case2: a == {a_int}, b == 'zero', cin == 'zero'")
+            cout = 'zero'
+            cnf_addit.append([-res, a_int])
+            cnf_addit.append([res, -a_int])
+            return cnf_addit, cout
 
+        # Case 3: (int, 'zero', 'one')
+        elif isinstance(a, int) and b == 'zero' and cin == 'one':
+            a_int = a
+            # print(f"Case3: a == {a_int}, b == 'zero', cin == 'one'")
+            cout = self.aux_var_setter()
+            cnf_addit.append([-res, -a_int])
+            cnf_addit.append([res, a_int])
 
-                cnf_addit.append([a_int, -cout])
-                cnf_addit.append([-a_int, -cin_int, cout])
-                cnf_addit.append([a_int, cin_int, -cout])
-                cnf_addit.append([cin_int, -cout])
+            cnf_addit.append([-cout, a_int])
+            cnf_addit.append([cout, -a_int])
+            return cnf_addit, cout
 
-                return cnf_addit, cout
-            
-            case ('zero', int() as b_int, int() as cin_int):
-                #print(f"Case5: a == 'zero', b == {b_int}, cin == {cin_int}")
-                cout = self.aux_var_setter()
+        # Case 4: (int, 'zero', int)
+        elif isinstance(a, int) and b == 'zero' and isinstance(cin, int):
+            a_int, cin_int = a, cin
+            # print(f"Case4: a == {a_int}, b == 'zero', cin == {cin_int}")
+            cout = self.aux_var_setter()
+            cnf_addit.append([a_int, cin_int, -res])
+            cnf_addit.append([a_int, -cin_int, res])
+            cnf_addit.append([-a_int, cin_int, res])
+            cnf_addit.append([-a_int, -cin_int, -res])
 
-                cnf_addit.append([b_int, cin_int, -res])
-                cnf_addit.append([b_int, -cin_int, res])
-                cnf_addit.append([-b_int, cin_int, res])
-                cnf_addit.append([-b_int, -cin_int, -res])
+            cnf_addit.append([a_int, -cout])
+            cnf_addit.append([-a_int, -cin_int, cout])
+            cnf_addit.append([a_int, cin_int, -cout])
+            cnf_addit.append([cin_int, -cout])
+            return cnf_addit, cout
 
+        # Case 5: ('zero', int, int)
+        elif a == 'zero' and isinstance(b, int) and isinstance(cin, int):
+            b_int, cin_int = b, cin
+            # print(f"Case5: a == 'zero', b == {b_int}, cin == {cin_int}")
+            cout = self.aux_var_setter()
+            cnf_addit.append([b_int, cin_int, -res])
+            cnf_addit.append([b_int, -cin_int, res])
+            cnf_addit.append([-b_int, cin_int, res])
+            cnf_addit.append([-b_int, -cin_int, -res])
 
-                cnf_addit.append([b_int, -cout])
-                cnf_addit.append([cin_int, -cout])
-                cnf_addit.append([-b_int, -cin_int, cout])
-                cnf_addit.append([b_int, cin_int, -cout])
-                return cnf_addit, cout
-            
-            case ('zero', 'zero', 'zero'):
-                #print(f"Case6: a == 'zero', b == 'zero', cin == 'zero'")
-                cout =  'zero'
-                cnf_addit.append([-res])
-                return cnf_addit, cout
+            cnf_addit.append([b_int, -cout])
+            cnf_addit.append([cin_int, -cout])
+            cnf_addit.append([-b_int, -cin_int, cout])
+            cnf_addit.append([b_int, cin_int, -cout])
+            return cnf_addit, cout
 
-            case ('zero', 'one', 'zero'):
-                #print(f"Case7: a == 'zero', b == 'one', cin == 'zero'")
-                cout =  'zero'
-                cnf_addit.append([res])
-                return cnf_addit, cout
+        # Case 6: ('zero', 'zero', 'zero')
+        elif a == 'zero' and b == 'zero' and cin == 'zero':
+            # print(f"Case6: a == 'zero', b == 'zero', cin == 'zero'")
+            cout = 'zero'
+            cnf_addit.append([-res])
+            return cnf_addit, cout
 
-            case ('one', 'zero', 'zero'):
-                #print(f"Case8: a == 'one', b == 'zero', cin == 'zero'")
-                cout =  'zero'
-                cnf_addit.append([res])
-                return cnf_addit, cout
+        # Case 7: ('zero', 'one', 'zero')
+        elif a == 'zero' and b == 'one' and cin == 'zero':
+            # print(f"Case7: a == 'zero', b == 'one', cin == 'zero'")
+            cout = 'zero'
+            cnf_addit.append([res])
+            return cnf_addit, cout
 
-            case ('one', 'one', 'zero'):
-                #print(f"Case9: a == 'one', b == 'one', cin == 'zero'")
-                cout =  'one'
-                cnf_addit.append([-res])
-                return cnf_addit, cout
-            
-            case ('zero', 'zero', 'one'):
-                #print(f"Case10: a == 'zero', b == 'zero', cin == 'one'")
-                cout =  'zero'
-                cnf_addit.append([res])
-                return cnf_addit, cout
+        # Case 8: ('one', 'zero', 'zero')
+        elif a == 'one' and b == 'zero' and cin == 'zero':
+            # print(f"Case8: a == 'one', b == 'zero', cin == 'zero'")
+            cout = 'zero'
+            cnf_addit.append([res])
+            return cnf_addit, cout
 
-            case ('zero', 'one', 'one'):
-                #print(f"Case11: a == 'zero', b == 'one', cin == 'one'")
-                cout =  'one'
-                cnf_addit.append([-res])
-                return cnf_addit, cout
+        # Case 9: ('one', 'one', 'zero')
+        elif a == 'one' and b == 'one' and cin == 'zero':
+            # print(f"Case9: a == 'one', b == 'one', cin == 'zero'")
+            cout = 'one'
+            cnf_addit.append([-res])
+            return cnf_addit, cout
 
-            case ('one', 'zero', 'one'):
-                #print(f"Case12: a == 'one', b == 'zero', cin == 'one'")
-                cout =  'one'
-                cnf_addit.append([-res])
-                return cnf_addit, cout
+        # Case 10: ('zero', 'zero', 'one')
+        elif a == 'zero' and b == 'zero' and cin == 'one':
+            # print(f"Case10: a == 'zero', b == 'zero', cin == 'one'")
+            cout = 'zero'
+            cnf_addit.append([res])
+            return cnf_addit, cout
 
-            case ('one', 'one', 'one'):
-                #print(f"Case13: a == 'one', b == 'one', cin == 'one'")
-                cout =  'one'
-                cnf_addit.append([res])
-                return cnf_addit, cout
+        # Case 11: ('zero', 'one', 'one')
+        elif a == 'zero' and b == 'one' and cin == 'one':
+            # print(f"Case11: a == 'zero', b == 'one', cin == 'one'")
+            cout = 'one'
+            cnf_addit.append([-res])
+            return cnf_addit, cout
 
-            
+        # Case 12: ('one', 'zero', 'one')
+        elif a == 'one' and b == 'zero' and cin == 'one':
+            # print(f"Case12: a == 'one', b == 'zero', cin == 'one'")
+            cout = 'one'
+            cnf_addit.append([-res])
+            return cnf_addit, cout
 
-            case (int() as a_int, 'one', 'zero'):
-                #print(f"Case14: a == {a_int}, b == 'one', cin == 'zero'")
+        # Case 13: ('one', 'one', 'one')
+        elif a == 'one' and b == 'one' and cin == 'one':
+            # print(f"Case13: a == 'one', b == 'one', cin == 'one'")
+            cout = 'one'
+            cnf_addit.append([res])
+            return cnf_addit, cout
 
-                cout = self.aux_var_setter()
-                cnf_addit.append([-res, -a_int])
-                cnf_addit.append([res, a_int])
+        # Case 14: (int, 'one', 'zero')
+        elif isinstance(a, int) and b == 'one' and cin == 'zero':
+            a_int = a
+            # print(f"Case14: a == {a_int}, b == 'one', cin == 'zero'")
+            cout = self.aux_var_setter()
+            cnf_addit.append([-res, -a_int])
+            cnf_addit.append([res, a_int])
 
-                cnf_addit.append([-cout, a_int])
-                cnf_addit.append([cout, -a_int])
+            cnf_addit.append([-cout, a_int])
+            cnf_addit.append([cout, -a_int])
+            return cnf_addit, cout
 
-                return cnf_addit, cout
+        # Case 15: ('zero', int, 'zero')
+        elif a == 'zero' and isinstance(b, int) and cin == 'zero':
+            b_int = b
+            # print(f"Case15: a == 'zero', b == {b_int}, cin == 'zero'")
+            cout = 'zero'
+            cnf_addit.append([-res, b_int])
+            cnf_addit.append([res, -b_int])
+            return cnf_addit, cout
 
-            case ('zero', int() as b_int, 'zero'):
-                #print(f"Case15: a == 'zero', b == {b_int}, cin == 'zero'")
-                cout =  'zero'
-                cnf_addit.append([-res, b_int])
-                cnf_addit.append([res, -b_int])
-                return cnf_addit, cout
+        # Case 16: ('one', int, 'zero')
+        elif a == 'one' and isinstance(b, int) and cin == 'zero':
+            b_int = b
+            # print(f"Case16: a == 'one', b == {b_int}, cin == 'zero'")
+            cout = self.aux_var_setter()
+            cnf_addit.append([-res, -b_int])
+            cnf_addit.append([res, b_int])
 
-            case ('one', int() as b_int, 'zero'):
-                #print(f"Case16: a == 'one', b == {b_int}, cin == 'zero'")
-                cout = self.aux_var_setter()
-                cnf_addit.append([-res, -b_int])
-                cnf_addit.append([res, b_int])
+            cnf_addit.append([-cout, b_int])
+            cnf_addit.append([cout, -b_int])
+            return cnf_addit, cout
 
-                cnf_addit.append([-cout, b_int])
-                cnf_addit.append([cout, -b_int])
-                return cnf_addit, cout
+        # Case 17: (int, int, 'zero')
+        elif isinstance(a, int) and isinstance(b, int) and cin == 'zero':
+            a_int, b_int = a, b
+            # print(f"Case17: a == {a_int}, b == {b_int}, cin == 'zero'")
+            cout = self.aux_var_setter()
+            cnf_addit.append([a_int, b_int, -res])
+            cnf_addit.append([a_int, -b_int, res])
+            cnf_addit.append([-a_int, b_int, res])
+            cnf_addit.append([-a_int, -b_int, -res])
 
-            case (int() as a_int, int() as b_int, 'zero'):
-                #print(f"Case17: a == {a_int}, b == {b_int}, cin == 'zero'")
-                cout = self.aux_var_setter()
+            cnf_addit.append([-a_int, -b_int, cout])
+            cnf_addit.append([a_int, b_int, -cout])
+            cnf_addit.append([a_int, -cout])
+            cnf_addit.append([b_int, -cout])
+            return cnf_addit, cout
 
-                cnf_addit.append([a_int, b_int, -res])
-                cnf_addit.append([a_int, -b_int, res])
-                cnf_addit.append([-a_int, b_int, res])
-                cnf_addit.append([-a_int, -b_int, -res])
+        # Case 18: (int, 'one', 'one')
+        elif isinstance(a, int) and b == 'one' and cin == 'one':
+            a_int = a
+            # print(f"Case18: a == {a_int}, b == 'one', cin == 'one'")
+            cout = 'one'
+            cnf_addit.append([-res, a_int])
+            cnf_addit.append([res, -a_int])
+            return cnf_addit, cout
 
-                cnf_addit.append([-a_int, -b_int, cout])
-                cnf_addit.append([a_int, b_int, -cout])
-                cnf_addit.append([a_int, -cout])
-                cnf_addit.append([b_int, -cout])
-                
-                return cnf_addit, cout
-                        
-            case (int() as a_int, 'one', 'one'):
-                #print(f"Case18: a == {a_int}, b == 'one', cin == 'one'")
-                cout =  'one'
-                cnf_addit.append([-res, a_int])
-                cnf_addit.append([res, -a_int])
-                return cnf_addit, cout
+        # Case 19: ('zero', int, 'one')
+        elif a == 'zero' and isinstance(b, int) and cin == 'one':
+            b_int = b
+            # print(f"Case19: a == 'zero', b == {b_int}, cin == 'one'")
+            cout = self.aux_var_setter()
+            cnf_addit.append([-res, -b_int])
+            cnf_addit.append([res, b_int])
 
-            case ('zero', int() as b_int, 'one'):
-                #print(f"Case19: a == 'zero', b == {b_int}, cin == 'one'")
-                cout = self.aux_var_setter()
-                cnf_addit.append([-res, -b_int])
-                cnf_addit.append([res, b_int])
+            cnf_addit.append([-cout, b_int])
+            cnf_addit.append([cout, -b_int])
+            return cnf_addit, cout
 
-                cnf_addit.append([-cout, b_int])
-                cnf_addit.append([cout, -b_int])
-                return cnf_addit, cout
+        # Case 20: ('one', int, 'one')
+        elif a == 'one' and isinstance(b, int) and cin == 'one':
+            b_int = b
+            # print(f"Case20: a == 'one', b == {b_int}, cin == 'one'")
+            cout = 'one'
+            cnf_addit.append([-res, b_int])
+            cnf_addit.append([res, -b_int])
+            return cnf_addit, cout
 
-            case ('one', int() as b_int, 'one'):
-                #print(f"Case20: a == 'one', b == {b_int}, cin == 'one'")
-                cout =  'one'
-                cnf_addit.append([-res, b_int])
-                cnf_addit.append([res, -b_int])
-                return cnf_addit, cout
+        # Case 21: (int, int, 'one')
+        elif isinstance(a, int) and isinstance(b, int) and cin == 'one':
+            a_int, b_int = a, b
+            # print(f"Case21: a == {a_int}, b == {b_int}, cin == 'one'")
+            cout = self.aux_var_setter()
+            cnf_addit.append([a_int, b_int, res])
+            cnf_addit.append([-a_int, -b_int, res])
+            cnf_addit.append([-a_int, b_int, -res])
+            cnf_addit.append([a_int, -b_int, -res])
 
-            case (int() as a_int, int() as b_int, 'one'):
-                #print(f"Case21: a == {a_int}, b == {b_int}, cin == 'one'")
-                cout = self.aux_var_setter()
+            cnf_addit.append([-a_int, -b_int, cout])
+            cnf_addit.append([a_int, b_int, -cout])
+            cnf_addit.append([-a_int, cout])
+            cnf_addit.append([-b_int, cout])
+            return cnf_addit, cout
 
-                cnf_addit.append([a_int, b_int, res])
-                cnf_addit.append([-a_int, -b_int, res])
-                cnf_addit.append([-a_int, b_int, -res])
-                cnf_addit.append([a_int, -b_int, -res])
+        # Case 22: ('zero', 'zero', int)
+        elif a == 'zero' and b == 'zero' and isinstance(cin, int):
+            cin_int = cin
+            # print(f"Case22: a == 'zero', b == 'zero', cin == {cin_int}")
+            cout = 'zero'
+            cnf_addit.append([-res, cin_int])
+            cnf_addit.append([res, -cin_int])
+            return cnf_addit, cout
 
-                cnf_addit.append([-a_int, -b_int, cout])
-                cnf_addit.append([a_int, b_int, -cout])
-                cnf_addit.append([-a_int, cout])
-                cnf_addit.append([-b_int, cout])
-                
-                return cnf_addit, cout
-            
-            case ('zero', 'zero', int() as cin_int):
-                #print(f"Case22: a == 'zero', b == 'zero', cin == {cin_int}")
-                cout =  'zero'
-                cnf_addit.append([-res, cin_int])
-                cnf_addit.append([res, -cin_int])
-                
-                return cnf_addit, cout
+        # Case 23: ('zero', 'one', int)
+        elif a == 'zero' and b == 'one' and isinstance(cin, int):
+            cin_int = cin
+            # print(f"Case23: a == 'zero', b == 'one', cin == {cin_int}")
+            cout = self.aux_var_setter()
+            cnf_addit.append([-res, -cin_int])
+            cnf_addit.append([res, cin_int])
 
-            case ('zero', 'one', int() as cin_int):
-                #print(f"Case23: a == 'zero', b == 'one', cin == {cin_int}")
-                cout = self.aux_var_setter()
+            cnf_addit.append([-cout, cin_int])
+            cnf_addit.append([cout, -cin_int])
+            return cnf_addit, cout
 
-                cnf_addit.append([-res, -cin_int])
-                cnf_addit.append([res, cin_int])
+        # Case 24: ('one', 'zero', int)
+        elif a == 'one' and b == 'zero' and isinstance(cin, int):
+            cin_int = cin
+            # print(f"Case24: a == 'one', b == 'zero', cin == {cin_int}")
+            cout = self.aux_var_setter()
+            cnf_addit.append([-res, -cin_int])
+            cnf_addit.append([res, cin_int])
 
-                cnf_addit.append([-cout, cin_int])
-                cnf_addit.append([cout, -cin_int])
+            cnf_addit.append([-cout, cin_int])
+            cnf_addit.append([cout, -cin_int])
+            return cnf_addit, cout
 
-                return cnf_addit, cout
+        # Case 25: ('one', 'one', int)
+        elif a == 'one' and b == 'one' and isinstance(cin, int):
+            cin_int = cin
+            # print(f"Case25: a == 'one', b == 'one', cin == {cin_int}")
+            cout = 'one'
+            cnf_addit.append([-res, -cin_int])
+            cnf_addit.append([res, cin_int])
+            return cnf_addit, cout
 
-            case ('one', 'zero', int() as cin_int):
-                #print(f"Case24: a == 'one', b == 'zero', cin == {cin_int}")
-                cout = self.aux_var_setter()
-                
-                cnf_addit.append([-res, -cin_int])
-                cnf_addit.append([res, cin_int])
+        # Case 26: (int, 'one', int)
+        elif isinstance(a, int) and b == 'one' and isinstance(cin, int):
+            a_int, cin_int = a, cin
+            # print(f"Case26: a == {a_int}, b == 'one', cin == {cin_int}")
+            cout = self.aux_var_setter()
+            cnf_addit.append([a_int, cin_int, res])
+            cnf_addit.append([-a_int, -cin_int, res])
+            cnf_addit.append([-a_int, cin_int, -res])
+            cnf_addit.append([a_int, -cin_int, -res])
 
-                cnf_addit.append([-cout, cin_int])
-                cnf_addit.append([cout, -cin_int])
-                return cnf_addit, cout
+            cnf_addit.append([-a_int, cout])
+            cnf_addit.append([-a_int, -cin_int, cout])
+            cnf_addit.append([a_int, cin_int, -cout])
+            cnf_addit.append([-cin_int, cout])
+            return cnf_addit, cout
 
-            case ('one', 'one', int() as cin_int):
-                #print(f"Case25: a == 'one', b == 'one', cin == {cin_int}")
-                cout =  'one'
-                cnf_addit.append([-res, -cin_int])
-                cnf_addit.append([res, cin_int])
+        # Case 27: ('one', int, int)
+        elif a == 'one' and isinstance(b, int) and isinstance(cin, int):
+            b_int, cin_int = b, cin
+            # print(f"Case27: a == 'one', b == {b_int}, cin == {cin_int}")
+            cout = self.aux_var_setter()
+            cnf_addit.append([b_int, cin_int, res])
+            cnf_addit.append([-b_int, -cin_int, res])
+            cnf_addit.append([-b_int, cin_int, -res])
+            cnf_addit.append([b_int, -cin_int, -res])
 
-                return cnf_addit, cout
+            cnf_addit.append([-b_int, cout])
+            cnf_addit.append([-cin_int, cout])
+            cnf_addit.append([-b_int, -cin_int, cout])
+            cnf_addit.append([b_int, cin_int, -cout])
+            return cnf_addit, cout
 
-            
+        # No case found
+        else:
+            # print("no case found")
+            raise InterruptedError("caser error, no case found. contact the developer")
 
-            case (int() as a_int, 'one', int() as cin_int):
-                #print(f"Case26: a == {a_int}, b == 'one', cin == {cin_int}")
-                cout = self.aux_var_setter()
-                cnf_addit.append([a_int, cin_int, res])
-                cnf_addit.append([-a_int, -cin_int, res])
-                cnf_addit.append([-a_int, cin_int, -res])
-                cnf_addit.append([a_int, -cin_int, -res])
-
-
-                cnf_addit.append([-a_int, cout])
-                cnf_addit.append([-a_int, -cin_int, cout])
-                cnf_addit.append([a_int, cin_int, -cout])
-                cnf_addit.append([-cin_int, cout])
-                return cnf_addit, cout
-
-            case ('one', int() as b_int, int() as cin_int):
-                #print(f"Case27: a == 'one', b == {b_int}, cin == {cin_int}")
-                cout = self.aux_var_setter()
-                cnf_addit.append([b_int, cin_int, res])
-                cnf_addit.append([-b_int, -cin_int, res])
-                cnf_addit.append([-b_int, cin_int, -res])
-                cnf_addit.append([b_int, -cin_int, -res])
-
-
-                cnf_addit.append([-b_int, cout])
-                cnf_addit.append([-cin_int, cout])
-                cnf_addit.append([-b_int, -cin_int, cout])
-                cnf_addit.append([b_int, cin_int, -cout])
-
-                return cnf_addit, cout
-
-            case (_, _, _):
-                #print("no case found")
-                raise InterruptedError("caser error, no case found. contact the developer")
 
     def atmost(self, weight, lits, bounds, fracW):
         self.input_validation(lits,weight)

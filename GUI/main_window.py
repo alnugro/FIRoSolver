@@ -33,9 +33,9 @@ try:
     from .ui_func import UIFunc
     from backend.backend_main import SolverBackend
     from .result_handler import JsonUnloader, PydspHandler, DynamicTableWidgetResult, DynamicTableWidgetProblems
-    from .save_load_handler import SaveLoadHandler
-    from .auto_param_mediator import AutoParamMediator
-    from .result_subwindow import AutomaticParameterResultSubWindow
+    from .save_load_handler import SaveLoadPlotHandler, SaveLoadResHandler
+    from .additional_func_mediator import AdditionalFuncMediator
+    from .result_subwindow import AutomaticParameterResultSubWindow, DetailsSubWindow
 
 except:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -46,9 +46,9 @@ except:
     from ui_func import UIFunc
     from backend.backend_main import SolverBackend
     from result_handler import JsonUnloader, PydspHandler, DynamicTableWidgetResult, DynamicTableWidgetProblems
-    from save_load_handler import SaveLoadHandler
-    from auto_param_mediator import AutoParamMediator
-    from result_subwindow import AutomaticParameterResultSubWindow
+    from save_load_handler import SaveLoadPlotHandler, SaveLoadResHandler
+    from GUI.additional_func_mediator import AdditionalFuncMediator
+    from result_subwindow import AutomaticParameterResultSubWindow, DetailsSubWindow
 
 
 
@@ -153,7 +153,8 @@ class MainWindow(QMainWindow):
         #declare additional classes
         self.logger = LiveLogger(self)
 
-        self.load_saver = SaveLoadHandler()
+        self.plot_load_saver = SaveLoadPlotHandler()
+        self.res_load_saver = SaveLoadResHandler()
 
         self.plot_generated_flag = False    
        
@@ -211,6 +212,7 @@ class MainWindow(QMainWindow):
         # Save and Load buttons
         self.res_save_but = self.findChild(QPushButton, 'res_save_but')
         self.res_load_but = self.findChild(QPushButton, 'res_load_but')
+        self.res_reset_but = self.findChild(QPushButton, 'res_reset_but')
 
         
         self.position_label = self.findChild(QLabel, 'position_label')
@@ -241,6 +243,7 @@ class MainWindow(QMainWindow):
         self.cancel_solver_but = self.findChild(QPushButton, 'cancel_solver_but')
         self.day_night_but = self.findChild(QPushButton, 'day_night_but')
         self.reset_dot_but = self.findChild(QPushButton, 'reset_dot_but')
+        self.quick_check_sat_but = self.findChild(QPushButton, 'quick_check_sat_but')
 
         self.asserted_search_check = self.findChild(QCheckBox, 'asserted_search_check')
         self.auto_search_check = self.findChild(QCheckBox, 'auto_search_check')
@@ -265,18 +268,23 @@ class MainWindow(QMainWindow):
 
 
         self.filter_type_drop = self.findChild(QComboBox, 'filter_type_drop')
+        self.filter_type_drop.currentIndexChanged.connect(self.order_changed)
 
         self.sampling_rate_box = self.findChild(QSpinBox, 'sampling_rate_box')
         self.bound_accuracy_box = self.findChild(QSpinBox, 'bound_accuracy')
-        self.order_upper_box = self.findChild(QSpinBox, 'order_upper_box')
         self.wordlength_box = self.findChild(QSpinBox, 'wordlength_box')
+
+        self.order_upper_box = self.findChild(QSpinBox, 'order_upper_box')
+        self.order_upper_box.valueChanged.connect(self.order_changed)
+        self.order_upper_last_value = self.order_upper_box.value()
         
-        self.ignore_lowerbound_box = self.findChild(QDoubleSpinBox, 'ignore_lower_box')
         self.flatten_box = self.findChild(QDoubleSpinBox, 'flatten_box')
 
         self.gausian_slid = self.findChild(QSlider, 'gausian_slid')
         self.average_points_slid = self.findChild(QSlider, 'average_points_slid')
         self.smoothing_kernel_slid = self.findChild(QSlider, 'smoothing_kernel_slid')
+
+        self.intfeastol_box = self.findChild(QSpinBox, 'intfeastol_box')
 
         
         
@@ -298,6 +306,7 @@ class MainWindow(QMainWindow):
         self.day_night_but.clicked.connect(self.on_day_night_but_click)
         self.reset_dot_but.clicked.connect(self.on_reset_dot_but_click)
         self.cancel_solver_but.clicked.connect(self.kill_solver_instance)
+        self.quick_check_sat_but.clicked.connect(self.quick_check_sat_but_click)
 
 
         #connect tables
@@ -330,9 +339,47 @@ class MainWindow(QMainWindow):
         # Connect the widgets
         self.res_save_but.clicked.connect(self.on_res_save_but_click)
         self.res_load_but.clicked.connect(self.on_res_load_but_click)
+        self.res_reset_but.clicked.connect(self.on_res_reset_but_click)
 
+
+        #not implemented yet
+        self.first_coef_check = self.findChild(QCheckBox, 'first_coef_check')
+        self.first_coef_check.stateChanged.connect(self.first_coef_check_changed)
+
+    def first_coef_check_changed(self):
+        if self.first_coef_check.isChecked():
+            self.logger.plog("The feature \"first filter coefficient cannot be flipped\" is not implemented yet, your result might need a bit inversion at the first coefficient")
+        else:
+            self.logger.plog("The feature \"first filter coefficient cannot be flipped\" is not implemented yet, your result might need a bit inversion at the first coefficient")
+
+    def order_changed(self):
+        even = None
+        order_current = int(self.order_upper_box.value())
+        if order_current%2 == 0:
+            even = True
+        else:
+            even = False
+
+        diff = None
+
+        if self.order_upper_last_value > order_current:
+            diff = -1
+        else:
+            diff = 1
+        
+        if self.filter_type_drop.currentIndex() == 0 and not even:
+            self.order_upper_box.setValue(order_current+diff)
+        elif self.filter_type_drop.currentIndex() == 1 and even:
+            self.order_upper_box.setValue(order_current+diff)
+        elif self.filter_type_drop.currentIndex() == 2 and not even:
+            self.order_upper_box.setValue(order_current+diff)
+        elif self.filter_type_drop.currentIndex() == 3 and even:
+            self.order_upper_box.setValue(order_current+diff)
+        
+        self.order_upper_last_value = self.order_upper_box.value()
 
     
+
     def on_cell_changed(self, row, column):
         # self.magnitude_plotter_table.blockSignals(True)
         print(f"Cell [{row}, {column}] changed")
@@ -341,10 +388,12 @@ class MainWindow(QMainWindow):
             item_text = item.text()
             if column == 2:
                 item2 = self.magnitude_plotter_table.item(row, 3)
-                item2.setText(item_text)
+                if item2:
+                    item2.setText(item_text)
             elif column == 3:
                 item2 = self.magnitude_plotter_table.item(row, 2)
-                item2.setText(item_text)
+                if item2:
+                    item2.setText(item_text)
         
 
 
@@ -384,17 +433,49 @@ class MainWindow(QMainWindow):
 
 
     def on_res_save_but_click(self):
-        # Add functionality for res_save_but click
-        print("Save button clicked!")
+        self.res_load_saver.save_data()
 
     def on_res_load_but_click(self):
-        # Add functionality for res_load_but click
         print("Load button clicked!")
+        if self.show_yes_no_dialog("Are you sure you want to Load something else? any unsaved data will be lost"):
+            self.res_load_saver.load_data()
+            self.valid_table_widget.last_max_key = -1
+            self.invalid_table_widget.last_max_key = -1
+            self.solver_runs_table_widget.last_max_key = -1
+        else:
+            return
 
+    def on_res_reset_but_click(self):
+        print("Reset button clicked!")
+        if self.show_yes_no_dialog("Are you sure you want to reset the results? any unsaved data will be lost"):
+            self.file_remover('result_valid.json')
+            self.file_remover('result_invalid.json')
+            self.file_remover('problem_description.json')
+            self.result_valid_table.setRowCount(0)
+            self.result_invalid_table.setRowCount(0)
+            self.solver_runs_table.setRowCount(0)
+            self.valid_table_widget.last_max_key = -1
+            self.invalid_table_widget.last_max_key = -1
+            self.solver_runs_table_widget.last_max_key = -1
+            self.logger.plog("Results reset, deleted all json files")
+        else:
+            return
+    
+    def file_remover(self, file_path):
+        try:
+            os.remove(file_path)
+            print(f"{file_path} has been deleted.")
+        except FileNotFoundError:
+            print(f"{file_path} does not exist.")
+        except PermissionError:
+            print(f"Permission denied: Cannot delete {file_path}.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+        
     def widget_connect_after(self):
         #connect value changed
         self.sampling_rate_box.valueChanged.connect(lambda: self.magnitude_plotter.update_plotter(self.get_ui_data_dict()))
-        self.ignore_lowerbound_box.valueChanged.connect(lambda: self.magnitude_plotter.update_plotter(self.get_ui_data_dict()))
 
 
     def get_ui_data_dict(self):
@@ -403,7 +484,6 @@ class MainWindow(QMainWindow):
         "flat_level": self.flatten_box.value(),
         "gaussian_width": self.gausian_slid.value(),
         "smoothing_kernel": self.smoothing_kernel_slid.value(),
-        "ignore_lowerbound_point": 10 ** (float(self.ignore_lowerbound_box.value())/20),
         "selection_mode":self.selection_mode,
     }
         return data_dict
@@ -436,12 +516,12 @@ class MainWindow(QMainWindow):
             'lower_y' : lower_y,
             'upper_y' : upper_y,
         }
-        self.load_saver.save_data(data_dict, True)
+        self.plot_load_saver.save_data(data_dict, True)
         
 
 
     def on_plot_load_but_click(self):
-        loaded_data_dict = self.load_saver.load_data(True)
+        loaded_data_dict = self.plot_load_saver.load_data(True)
         if loaded_data_dict is None:
             return
         self.magnitude_plotter.load_plot(self.get_ui_data_dict(), loaded_data_dict)
@@ -544,12 +624,15 @@ class MainWindow(QMainWindow):
 
     def on_day_night_but_click(self):
         self.day_night = not self.day_night
+        load_flag = False
         if self.day_night:
             self.day_night_but.setText("Black Background")
         else:
             self.day_night_but.setText("White Background")
+            
         if self.magnitude_plotter.draggable_lines is not None:
             x, middle_y, lower_y, upper_y , history = self.magnitude_plotter.get_current_data()
+            load_flag = True
 
         # Remove the old canvas and toolbar if they exist
         if self.canvas is not None:
@@ -574,7 +657,9 @@ class MainWindow(QMainWindow):
         self.mag_toolbar.addWidget(self.toolbar)
         print("Day night button clicked")
         print("Updating plot")
-        self.magnitude_plotter.load_plot(self.get_ui_data_dict(), {'xdata': x, 'middle_y': middle_y, 'upper_y': upper_y, 'lower_y': lower_y}, history)
+
+        if load_flag:
+            self.magnitude_plotter.load_plot(self.get_ui_data_dict(), {'xdata': x, 'middle_y': middle_y, 'upper_y': upper_y, 'lower_y': lower_y}, history)
 
     def on_nyquist_freq_but_click(self):
         self.magnitude_plotter.update_plotter(self.get_ui_data_dict())
@@ -639,6 +724,78 @@ class MainWindow(QMainWindow):
         # Start the mediator
         self.mediator.run()
     
+    def quick_check_sat_but_click(self):
+        if self.solver_is_running:
+            self.logger.plog("Solver is currently running")
+            return
+        self.logger.plog("Quick check SAT running...")
+
+
+        if self.gurobi_thread_box.value() == 0 and not self.gurobi_auto_thread_check.isChecked() and self.z3_thread_box.value() == 0 and self.pysat_thread_box.value() == 0:
+            self.logger.plog("Solver threads can't be 0")
+            return
+            
+
+        if not(self.plot_generated_flag):
+            self.logger.plog("No bounds found, Please generate the bounds first in magnitude plotter!")
+            return
+        
+        # Check if all necessary inputs are valid
+        if self.input_validation_before_run() == 1:
+            return
+        
+        self.solver_is_running = True
+        #update input data
+        xdata, upper_ydata, lower_ydata ,cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata = self.magnitude_plotter.get_frequency_bounds()
+        print(f"cutoffs_x {cutoffs_x}, cutoffs_upper_ydata {cutoffs_upper_ydata}, cutoffs_lower_ydata {cutoffs_lower_ydata}")
+        #validate data
+        for i in range(len(xdata)):
+            if np.isnan(upper_ydata[i]) and np.isnan(lower_ydata[i]):
+                continue
+            if not(np.isnan(upper_ydata[i])) and not(np.isnan(lower_ydata[i])):
+                continue
+            raise ValueError(f"Bounds is not the same at {i}, upper: {upper_ydata[i]} and lower: {lower_ydata[i]}. This is a bug, Contact Developer")
+        
+        ui_functionality = UIFunc(self)
+        
+        #do this if transition band interpolation is chosen
+        if self.interpolate_transition_band_check.isChecked():
+            upper_ydata, lower_ydata = ui_functionality.interpolate_transition_band()
+
+        
+        self.quick_check_dict = ui_functionality.solver_input_dict_generator(xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
+    
+        self.quick_check_mediator = AdditionalFuncMediator(self.quick_check_dict, 'quick_check_sat')
+
+        self.quick_check_mediator.exception_message.connect(self.show_error_dialog)
+        self.quick_check_mediator.result_signal.connect(self.quick_check_done)
+
+        
+        self.quick_check_mediator.start()
+    
+    def quick_check_done(self, result, _, __):
+        self.logger.plog("Quick check done")
+        self.solver_is_running = False
+        
+        if result == None:
+            self.logger.plog("Quick check failed")
+            self.quick_check_dict = None
+            return
+        print(result)
+        if result['satisfiability'] == 'sat':
+            self.logger.plog(f"Problem is satisfiable")
+            if result['leak_flag'] == True:
+                self.logger.plog(f"Problem is satisfiable but Given Frequency Accuracy has leakage, increase it!!!")
+            else:
+                self.logger.plog(f"Problem is satisfiable and Given Frequency Accuracy should be safe from leak")
+            self.subwindow_quick_check = DetailsSubWindow(self.quick_check_dict, result)
+            self.subwindow_quick_check.show()
+        else:
+            self.logger.plog(f"Problem is unsatisfiable")
+
+        
+        
+        
 
 
     def auto_search(self):
@@ -663,7 +820,7 @@ class MainWindow(QMainWindow):
         
         self.auto_search_dict = ui_functionality.solver_input_dict_generator_auto(xdata, upper_ydata, lower_ydata, cutoffs_x, cutoffs_upper_ydata, cutoffs_lower_ydata)
     
-        self.auto_param_mediator = AutoParamMediator(self.auto_search_dict)
+        self.auto_param_mediator = AdditionalFuncMediator(self.auto_search_dict, 'automatic')
 
         self.auto_param_mediator.exception_message.connect(self.show_error_dialog)
         self.auto_param_mediator.result_signal.connect(self.auto_param_done)
@@ -672,6 +829,10 @@ class MainWindow(QMainWindow):
         self.auto_param_mediator.start()
 
     def auto_param_done(self, best_target_result, best_filter_type, wordlength):
+        if best_target_result == None:
+            self.logger.plog("Auto parameter search failed")
+            self.solver_is_running = False
+            return
         best_target_result.update({
             'best_filter_type': best_filter_type+1,
             'wordlength': wordlength,
@@ -686,6 +847,7 @@ class MainWindow(QMainWindow):
         self.subwindow.continue_signal.connect(self.handle_subwindow_continue)
         self.subwindow.cancel_signal.connect(self.handle_subwindow_cancel)
         self.subwindow.show()
+        del self.auto_param_mediator
 
     def handle_subwindow_continue(self, filter_order, word_length):
         # Proceed with the solver using the given parameters
@@ -715,11 +877,11 @@ class MainWindow(QMainWindow):
    
     def on_run_solver_but_click(self):
         if self.auto_search_check.isChecked():
-            self.logger.plog("Auto search is enabled, Searching for the best parameters")
             if self.solver_is_running:
                 self.logger.plog("Solver is currently running")
                 return
-        
+            self.logger.plog("Auto search is enabled, Searching for the best parameters")
+
 
             if self.gurobi_thread_box.value() == 0 and not self.gurobi_auto_thread_check.isChecked() and self.z3_thread_box.value() == 0 and self.pysat_thread_box.value() == 0:
                 self.logger.plog("Solver threads can't be 0")
@@ -816,6 +978,8 @@ class MainWindow(QMainWindow):
 
     def on_closing(self):
         pass        
+
+    
 
 
     def input_validation_before_run(self):

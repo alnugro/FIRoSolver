@@ -40,8 +40,6 @@ class Presolver:
         self.coef_accuracy = None
         self.intW = None
 
-        self.gain_wordlength = None
-        self.gain_intW = None
 
         self.gurobi_thread = None
         self.z3_thread = None
@@ -63,6 +61,7 @@ class Presolver:
 
         self.half_order = None
         self.problem_id = None
+        self.intfeastol = None
 
 
         # Dynamically assign values from input_data, skipping any keys that don't have matching attributes
@@ -174,7 +173,8 @@ class Presolver:
             self.gain_upperbound,
             self.gain_lowerbound,
             self.coef_accuracy,
-            self.intW
+            self.intW,
+            self.intfeastol
             )
         
         target_result_max = gurobi_instance.run_barebone_real(self.gurobi_thread//2, 'maximize_h',self.max_h_zero_for_minmax, input_m)
@@ -203,7 +203,8 @@ class Presolver:
             self.gain_upperbound,
             self.gain_lowerbound,
             self.coef_accuracy,
-            self.intW
+            self.intW,
+            self.intfeastol
             )
         
         target_result_max = gurobi_instance.run_barebone_real(self.gurobi_thread//2, 'maximize_h_without_zero',None, input_m)
@@ -245,11 +246,12 @@ class Presolver:
         if self.continue_solver:
             presolve_result = self.load_presolve()
             if presolve_result:
-                print(f"@MSG@ : Presolve result loaded from JSON file for problem ID {self.problem_id}.")
-                max_zero = presolve_result['max_zero']
-                min_adderm = presolve_result['min_adderm']
-                print(f"@MSG@ : Loaded max zero: {max_zero}, min adder count: {min_adderm}")
-                return presolve_result
+                if presolve_result['min_adderm'] != None:
+                    print(f"@MSG@ : Presolve result loaded from JSON file for problem ID {self.problem_id}.")
+                    max_zero = presolve_result['max_zero']
+                    min_adderm = presolve_result['min_adderm']
+                    print(f"@MSG@ : Loaded max zero: {max_zero}, min adder count: {min_adderm}")
+                    return presolve_result
             else:
                 presolve_result = {}
 
@@ -269,7 +271,8 @@ class Presolver:
             self.gain_upperbound,
             self.gain_lowerbound,
             self.coef_accuracy,
-            self.intW)
+            self.intW,
+            self.intfeastol)
         
         if h_zero_input == None:
             #find max zero
@@ -346,9 +349,20 @@ class Presolver:
     def run_presolve_z3_pysat(self):
         presolve_result = {}
 
+        if self.continue_solver:
+            presolve_result = self.load_presolve()
+            if presolve_result:
+                print(f"@MSG@ : Presolve result loaded from JSON file for problem ID {self.problem_id}.")
+                max_zero = presolve_result['max_zero']
+                min_adderm = presolve_result['min_adderm']
+                print(f"@MSG@ : Loaded max zero: {max_zero}, min adder count: {min_adderm}")
+                return presolve_result
+            else:
+                presolve_result = {}
+
 
         if self.start_with_error_prediction == False:
-            #try satisfiability first if error pred havent run
+            #try satisfiability first if error pred havent run, i dont care about this in gurobi because it takes only seconds on gurobi
             print("run_presolve_z3_pysat")
             #check first if the problem is even satisfiable
             self.execute_z3_pysat()
@@ -395,12 +409,9 @@ class Presolver:
             'max_zero_reduced' : None,
             'h_res': h_res_at_max,
             'gain_res': gain_res_at_max,
-
-            'min_gain_without_zero' : None,
-            'hmax_without_zero' : None,
-            'hmin_without_zero' : None,
-            'h_res_without_zero': None,
+            'min_adderm': None,
         })
+        self.presolve_update(presolve_result)
 
         print(presolve_result)
 
@@ -540,8 +551,6 @@ class Presolver:
                     self.gain_lowerbound,
                     self.coef_accuracy,
                     self.intW,
-                    self.gain_wordlength,
-                    self.gain_intW
                     )
         
         return z3_instance
@@ -693,8 +702,6 @@ if __name__ == "__main__":
     avail_dsp = 0
     adder_wordlength_ext = 4
 
-    gain_wordlength = 13
-    gain_intW = 4
 
     gurobi_thread = 5
     pysat_thread = 0
@@ -767,8 +774,6 @@ if __name__ == "__main__":
         'adder_depth': adder_depth,
         'avail_dsp': avail_dsp,
         'adder_wordlength_ext': adder_wordlength_ext, #this is extension not the adder wordlength
-        'gain_wordlength' : gain_wordlength,
-        'gain_intW' : gain_intW,
         'gain_upperbound': gain_upperbound,
         'gain_lowerbound': gain_lowerbound,
         'coef_accuracy': coef_accuracy,
